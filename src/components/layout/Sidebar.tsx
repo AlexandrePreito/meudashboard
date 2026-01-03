@@ -40,7 +40,7 @@ export default function Sidebar() {
   const [screens, setScreens] = useState<Screen[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const showScreens = pathname === '/' || pathname.startsWith('/tela');
+  const showScreens = pathname === '/' || pathname.startsWith('/tela') || pathname.startsWith('/powerbi');
 
   useEffect(() => {
     if (activeGroup?.id) {
