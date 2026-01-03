@@ -11,7 +11,9 @@ import {
   Clock,
   Loader2,
   Workflow,
-  Activity
+  Activity,
+  History,
+  X
 } from 'lucide-react';
 
 interface Dataset {
@@ -50,6 +52,9 @@ export default function PowerBIDashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'datasets' | 'dataflows'>('datasets');
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [historyModal, setHistoryModal] = useState<{ open: boolean; datasetId: string; datasetName: string; connectionName: string } | null>(null);
+  const [history, setHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const loadData = async () => {
     try {
@@ -144,6 +149,60 @@ export default function PowerBIDashboardPage() {
       alert('Erro ao iniciar atualização');
     } finally {
       setRefreshingId(null);
+    }
+  };
+
+  const loadHistory = async (datasetId: string, datasetName: string, connectionName: string) => {
+    setHistoryModal({ open: true, datasetId, datasetName, connectionName });
+    setLoadingHistory(true);
+    setHistory([]);
+    
+    try {
+      const connRes = await fetch('/api/powerbi/connections');
+      const connData = await connRes.json();
+      const connection = connData.connections?.find((c: any) => c.name === connectionName);
+      
+      if (!connection) {
+        setHistory([]);
+        return;
+      }
+
+      const res = await fetch(`/api/powerbi/refresh?dataset_id=${datasetId}&connection_id=${connection.id}`);
+      const data = await res.json();
+      
+      if (res.ok) {
+        setHistory(data.history || []);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar histórico:', err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const formatDateTime = (dateString: string | null) => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return date.toLocaleString('pt-BR', { 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getHistoryStatusBadge = (status: string) => {
+    switch (status) {
+      case 'Completed':
+        return <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700">Sucesso</span>;
+      case 'Failed':
+        return <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-700">Falhou</span>;
+      case 'Unknown':
+      case 'InProgress':
+        return <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-700">Em andamento</span>;
+      default:
+        return <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">{status}</span>;
     }
   };
 
@@ -356,6 +415,16 @@ export default function PowerBIDashboardPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
+                            loadHistory(dataset.id, dataset.name, dataset.workspaceName);
+                          }}
+                          className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                          title="Ver histórico"
+                        >
+                          <History className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
                             handleRefresh(dataset.id, dataset.workspaceName);
                           }}
                           disabled={refreshingId === dataset.id}
@@ -400,6 +469,59 @@ export default function PowerBIDashboardPage() {
             )}
           </div>
         </div>
+
+        {/* Modal de Histórico */}
+        {historyModal?.open && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+              <div className="flex items-center justify-between p-4 border-b border-gray-200">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Histórico de Atualizações</h3>
+                  <p className="text-sm text-gray-500">{historyModal.datasetName}</p>
+                </div>
+                <button
+                  onClick={() => setHistoryModal(null)}
+                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="p-4 max-h-96 overflow-y-auto">
+                {loadingHistory ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                  </div>
+                ) : history.length === 0 ? (
+                  <p className="text-center text-gray-500 py-8">Nenhum histórico encontrado</p>
+                ) : (
+                  <div className="space-y-3">
+                    {history.map((item, index) => (
+                      <div key={item.id || index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{formatDateTime(item.startTime)}</p>
+                          <p className="text-xs text-gray-500">
+                            {item.endTime ? `Duração: ${Math.round((new Date(item.endTime).getTime() - new Date(item.startTime).getTime()) / 1000)}s` : 'Em andamento...'}
+                          </p>
+                        </div>
+                        {getHistoryStatusBadge(item.status)}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex justify-end p-4 border-t border-gray-200">
+                <button
+                  onClick={() => setHistoryModal(null)}
+                  className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </MainLayout>
   );
