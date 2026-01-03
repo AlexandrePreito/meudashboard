@@ -49,6 +49,7 @@ export default function PowerBIDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'datasets' | 'dataflows'>('datasets');
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
 
   const loadData = async () => {
     try {
@@ -104,6 +105,46 @@ export default function PowerBIDashboardPage() {
     if (hoursAgo < 24) return `${hoursAgo}h atrás`;
     const days = Math.floor(hoursAgo / 24);
     return `${days}d atrás`;
+  };
+
+  const handleRefresh = async (datasetId: string, connectionName: string) => {
+    if (refreshingId) return;
+    
+    setRefreshingId(datasetId);
+    try {
+      // Buscar connection_id pelo nome
+      const connRes = await fetch('/api/powerbi/connections');
+      const connData = await connRes.json();
+      const connection = connData.connections?.find((c: any) => c.name === connectionName);
+      
+      if (!connection) {
+        alert('Conexão não encontrada');
+        return;
+      }
+
+      const res = await fetch('/api/powerbi/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dataset_id: datasetId,
+          connection_id: connection.id
+        })
+      });
+
+      const data = await res.json();
+      
+      if (res.ok) {
+        alert('Atualização iniciada com sucesso!');
+        // Recarrega os dados após 2 segundos
+        setTimeout(() => loadData(), 2000);
+      } else {
+        alert(data.error || 'Erro ao iniciar atualização');
+      }
+    } catch (err: any) {
+      alert('Erro ao iniciar atualização');
+    } finally {
+      setRefreshingId(null);
+    }
   };
 
   const totalItems = datasetsSummary.total + dataflowsSummary.total;
@@ -312,6 +353,17 @@ export default function PowerBIDashboardPage() {
                           <p className="text-sm font-medium text-gray-700">{formatTimeAgo(dataset.hoursAgo)}</p>
                         </div>
                         {getStatusBadge(dataset.lastRefreshStatus, dataset.isStale)}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRefresh(dataset.id, dataset.workspaceName);
+                          }}
+                          disabled={refreshingId === dataset.id}
+                          className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                          title="Atualizar dataset"
+                        >
+                          <RefreshCw className={`w-4 h-4 ${refreshingId === dataset.id ? 'animate-spin' : ''}`} />
+                        </button>
                       </div>
                     </div>
                   ))
