@@ -53,3 +53,57 @@ export interface Alert {
   sent_at?: string;
   created_at: string;
 }
+
+// =============================================
+// TIPOS DE AUTENTICAÇÃO
+// =============================================
+
+// Payload do token JWT
+export interface JWTPayload {
+  id: string;
+  email: string;
+  is_master: boolean;
+  session_id: string;
+  iat?: number;
+  exp?: number;
+}
+
+// Usuário autenticado (retornado pelo middleware)
+export interface AuthUser {
+  id: string;
+  email: string;
+  full_name: string;
+  is_master: boolean;
+  status: 'active' | 'suspended' | 'pending';
+  avatar_url?: string;
+}
+
+// Resposta do login
+export interface LoginResponse {
+  success: boolean;
+  message: string;
+  user?: AuthUser;
+}
+
+// Grupo de empresas
+export interface CompanyGroup {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  logo_url?: string;
+  status: 'active' | 'suspended' | 'trial';
+  max_users: number;
+  max_companies: number;
+  created_at: string;
+}
+
+// Membership do usuário em um grupo
+export interface UserGroupMembership {
+  id: string;
+  user_id: string;
+  company_group_id: string;
+  role: 'admin' | 'manager' | 'operator' | 'viewer';
+  is_active: boolean;
+  company_group?: CompanyGroup;
+}
