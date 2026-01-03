@@ -268,3 +268,4 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
     </MainLayout>
   );
 }
+

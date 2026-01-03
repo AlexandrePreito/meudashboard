@@ -40,7 +40,7 @@ export default function Sidebar() {
   const [screens, setScreens] = useState<Screen[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const showScreens = pathname === '/' || pathname.startsWith('/powerbi/tela');
+  const showScreens = pathname === '/' || pathname.startsWith('/tela');
 
   useEffect(() => {
     if (activeGroup?.id) {
@@ -119,9 +119,9 @@ export default function Sidebar() {
               ) : (
                 <nav className="px-2 space-y-1">
                   {screens.map((screen) => {
-                    const Icon = ICON_MAP[screen.icon || 'default'] || Monitor;
-                    const href = `/powerbi/tela/${screen.id}`;
-                    const isActive = pathname === href;
+                const Icon = ICON_MAP[screen.icon || 'default'] || Monitor;
+                const href = `/tela/${screen.id}`;
+                const isActive = pathname === href;
                     return (
                       <Link
                         key={screen.id}
