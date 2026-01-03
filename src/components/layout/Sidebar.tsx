@@ -40,6 +40,8 @@ export default function Sidebar() {
   const [screens, setScreens] = useState<Screen[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const showScreens = pathname === '/' || pathname.startsWith('/powerbi/tela');
+
   useEffect(() => {
     if (activeGroup?.id) {
       loadScreens(activeGroup.id);
@@ -92,51 +94,55 @@ export default function Sidebar() {
         </button>
 
         <div className="flex flex-col h-full overflow-y-auto py-4">
-          {!isCollapsed && (
-            <div className="px-4 pb-2 mb-2 border-b border-gray-100">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Telas
-              </h3>
-            </div>
-          )}
-
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
-            </div>
-          ) : screens.length === 0 ? (
-            <div className="px-4 py-8 text-center">
+          {showScreens && (
+            <>
               {!isCollapsed && (
-                <p className="text-sm text-gray-400">
-                  {activeGroup ? 'Nenhuma tela disponível' : 'Selecione um grupo'}
-                </p>
+                <div className="px-4 pb-2 mb-2 border-b border-gray-100">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    Telas
+                  </h3>
+                </div>
               )}
-            </div>
-          ) : (
-            <nav className="px-2 space-y-1">
-              {screens.map((screen) => {
-                const Icon = ICON_MAP[screen.icon || 'default'] || Monitor;
-                const href = `/powerbi/tela/${screen.id}`;
-                const isActive = pathname === href;
-                return (
-                  <Link
-                    key={screen.id}
-                    href={href}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                      isActive 
-                        ? 'bg-blue-50 text-blue-600' 
-                        : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                    title={isCollapsed ? screen.title : undefined}
-                  >
-                    <Icon size={20} />
-                    {!isCollapsed && (
-                      <span className="text-sm font-medium truncate">{screen.title}</span>
-                    )}
-                  </Link>
-                );
-              })}
-            </nav>
+
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                </div>
+              ) : screens.length === 0 ? (
+                <div className="px-4 py-8 text-center">
+                  {!isCollapsed && (
+                    <p className="text-sm text-gray-400">
+                      {activeGroup ? 'Nenhuma tela disponível' : 'Selecione um grupo'}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <nav className="px-2 space-y-1">
+                  {screens.map((screen) => {
+                    const Icon = ICON_MAP[screen.icon || 'default'] || Monitor;
+                    const href = `/powerbi/tela/${screen.id}`;
+                    const isActive = pathname === href;
+                    return (
+                      <Link
+                        key={screen.id}
+                        href={href}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
+                          isActive 
+                            ? 'bg-blue-50 text-blue-600' 
+                            : 'text-gray-600 hover:bg-gray-50'
+                        }`}
+                        title={isCollapsed ? screen.title : undefined}
+                      >
+                        <Icon size={20} />
+                        {!isCollapsed && (
+                          <span className="text-sm font-medium truncate">{screen.title}</span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </nav>
+              )}
+            </>
           )}
         </div>
       </aside>
