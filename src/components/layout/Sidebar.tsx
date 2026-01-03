@@ -12,7 +12,9 @@ import {
   PieChart,
   TrendingUp,
   Activity,
-  Loader2
+  Loader2,
+  Link as LinkIcon,
+  Layers
 } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
 
@@ -41,6 +43,14 @@ export default function Sidebar() {
   const [loading, setLoading] = useState(false);
 
   const showScreens = pathname === '/' || pathname.startsWith('/tela') || pathname.startsWith('/powerbi');
+
+  const showPowerBIMenu = pathname.startsWith('/powerbi');
+
+  const powerBIMenuItems = [
+    { href: '/powerbi/conexoes', icon: LinkIcon, label: 'Conexões' },
+    { href: '/powerbi/relatorios', icon: FileText, label: 'Relatórios' },
+    { href: '/powerbi/telas', icon: Layers, label: 'Telas' },
+  ];
 
   useEffect(() => {
     if (activeGroup?.id) {
@@ -94,6 +104,38 @@ export default function Sidebar() {
         </button>
 
         <div className="flex flex-col h-full overflow-y-auto py-4">
+          {showPowerBIMenu && (
+            <>
+              {!isCollapsed && (
+                <div className="px-4 pt-4 pb-2">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    Power BI
+                  </h3>
+                </div>
+              )}
+              <nav className="px-2 pb-4 border-b border-gray-100 mb-2">
+                  {powerBIMenuItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = pathname === item.href;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 ${
+                          isActive
+                            ? 'bg-blue-50 text-blue-600'
+                            : 'text-gray-600 hover:bg-gray-50'
+                        }`}
+                        title={item.label}
+                      >
+                        <Icon size={20} />
+                        {!isCollapsed && <span className="font-medium">{item.label}</span>}
+                      </Link>
+                    );
+                  })}
+                </nav>
+            </>
+          )}
           {showScreens && (
             <>
               {!isCollapsed && (
