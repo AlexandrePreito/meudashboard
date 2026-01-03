@@ -88,7 +88,9 @@ export default function Header({ user }: HeaderProps) {
   }
 
   function isActiveNav(href: string) {
-    if (href === '/') return pathname === '/';
+    if (href === '/') {
+      return pathname === '/' || pathname.startsWith('/tela');
+    }
     return pathname.startsWith(href);
   }
 
