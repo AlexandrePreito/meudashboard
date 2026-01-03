@@ -15,7 +15,8 @@ import {
   Loader2,
   Link as LinkIcon,
   Layers,
-  Server
+  Server,
+  Brain
 } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
 
@@ -53,6 +54,7 @@ export default function Sidebar() {
     { href: '/powerbi/relatorios', icon: FileText, label: 'Relatórios' },
     { href: '/powerbi/telas', icon: Layers, label: 'Telas' },
     { href: '/powerbi/gateways', icon: Server, label: 'Gateways' },
+    { href: '/powerbi/contextos', icon: Brain, label: 'Contextos IA' },
   ];
 
   useEffect(() => {
