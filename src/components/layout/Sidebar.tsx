@@ -14,7 +14,8 @@ import {
   Activity,
   Loader2,
   Link as LinkIcon,
-  Layers
+  Layers,
+  Server
 } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
 
@@ -47,9 +48,11 @@ export default function Sidebar() {
   const showPowerBIMenu = pathname.startsWith('/powerbi');
 
   const powerBIMenuItems = [
+    { href: '/powerbi', icon: Activity, label: 'Dashboard' },
     { href: '/powerbi/conexoes', icon: LinkIcon, label: 'Conexões' },
     { href: '/powerbi/relatorios', icon: FileText, label: 'Relatórios' },
     { href: '/powerbi/telas', icon: Layers, label: 'Telas' },
+    { href: '/powerbi/gateways', icon: Server, label: 'Gateways' },
   ];
 
   useEffect(() => {
@@ -116,7 +119,9 @@ export default function Sidebar() {
               <nav className="px-2 pb-4 border-b border-gray-100 mb-2">
                   {powerBIMenuItems.map((item) => {
                     const Icon = item.icon;
-                    const isActive = pathname === item.href;
+                    const isActive = item.href === '/powerbi' 
+                      ? pathname === '/powerbi'
+                      : pathname.startsWith(item.href);
                     return (
                       <Link
                         key={item.href}
