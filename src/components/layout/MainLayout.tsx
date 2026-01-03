@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { MenuProvider } from '@/contexts/MenuContext';
+import { MenuProvider, useMenu } from '@/contexts/MenuContext';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import { Loader2 } from 'lucide-react';
@@ -16,6 +16,20 @@ interface User {
 
 interface MainLayoutProps {
   children: React.ReactNode;
+}
+
+function MainContent({ children }: MainLayoutProps) {
+  const { isCollapsed } = useMenu();
+  
+  return (
+    <main className={`pt-16 min-h-screen transition-all duration-300 ${
+      isCollapsed ? 'lg:pl-16' : 'lg:pl-64'
+    }`}>
+      <div className="p-6">
+        {children}
+      </div>
+    </main>
+  );
 }
 
 export default function MainLayout({ children }: MainLayoutProps) {
@@ -63,12 +77,8 @@ export default function MainLayout({ children }: MainLayoutProps) {
     <MenuProvider>
       <div className="min-h-screen bg-gray-50">
         <Header user={user} />
-        <Sidebar user={user} />
-        <main className="lg:pl-64 pt-16 min-h-screen transition-all duration-300">
-          <div className="p-6">
-            {children}
-          </div>
-        </main>
+        <Sidebar />
+        <MainContent>{children}</MainContent>
       </div>
     </MenuProvider>
   );

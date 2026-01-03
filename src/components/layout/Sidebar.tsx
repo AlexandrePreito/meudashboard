@@ -4,20 +4,15 @@ import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
-  LayoutDashboard,
-  BarChart3,
-  MessageSquare,
-  Bell,
-  Users,
-  Building2,
-  Settings,
   ChevronLeft,
   ChevronRight,
   Monitor,
+  BarChart3,
   FileText,
-  Database,
-  Link as LinkIcon,
-  Layers
+  PieChart,
+  TrendingUp,
+  Activity,
+  Loader2
 } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
 
@@ -29,26 +24,21 @@ interface Screen {
   is_first?: boolean;
 }
 
-interface SidebarProps {
-  user: {
-    id: string;
-    is_master?: boolean;
-  };
-}
-
 const ICON_MAP: Record<string, any> = {
-  'LayoutDashboard': LayoutDashboard,
-  'BarChart3': BarChart3,
   'Monitor': Monitor,
+  'BarChart3': BarChart3,
   'FileText': FileText,
-  'Database': Database,
+  'PieChart': PieChart,
+  'TrendingUp': TrendingUp,
+  'Activity': Activity,
   'default': Monitor
 };
 
-export default function Sidebar({ user }: SidebarProps) {
+export default function Sidebar() {
   const pathname = usePathname();
   const { isCollapsed, setIsCollapsed, activeGroup } = useMenu();
   const [screens, setScreens] = useState<Screen[]>([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (activeGroup?.id) {
@@ -59,6 +49,7 @@ export default function Sidebar({ user }: SidebarProps) {
   }, [activeGroup?.id]);
 
   async function loadScreens(groupId: string) {
+    setLoading(true);
     try {
       const res = await fetch(`/api/powerbi/screens?group_id=${groupId}`, {
         credentials: 'include'
@@ -76,26 +67,10 @@ export default function Sidebar({ user }: SidebarProps) {
       }
     } catch (error) {
       console.error('Erro ao carregar telas:', error);
+    } finally {
+      setLoading(false);
     }
   }
-
-  const mainMenuItems = [
-    { href: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { href: '/chat', icon: MessageSquare, label: 'Chat IA' },
-    { href: '/alertas', icon: Bell, label: 'Alertas' },
-  ];
-
-  const powerbiMenuItems = user.is_master ? [
-    { href: '/powerbi/conexoes', icon: LinkIcon, label: 'Conexões' },
-    { href: '/powerbi/relatorios', icon: FileText, label: 'Relatórios' },
-    { href: '/powerbi/telas', icon: Layers, label: 'Telas' },
-  ] : [];
-
-  const adminMenuItems = user.is_master ? [
-    { href: '/admin/usuarios', icon: Users, label: 'Usuários' },
-    { href: '/admin/grupos', icon: Building2, label: 'Grupos' },
-    { href: '/admin/config', icon: Settings, label: 'Configurações' },
-  ] : [];
 
   return (
     <>
@@ -117,128 +92,51 @@ export default function Sidebar({ user }: SidebarProps) {
         </button>
 
         <div className="flex flex-col h-full overflow-y-auto py-4">
-          <nav className="px-2 space-y-1">
-            {mainMenuItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                    isActive 
-                      ? 'bg-blue-50 text-blue-600' 
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                  title={isCollapsed ? item.label : undefined}
-                >
-                  <Icon size={20} />
-                  {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
-                </Link>
-              );
-            })}
-          </nav>
-
-          {screens.length > 0 && (
-            <>
-              {!isCollapsed && (
-                <div className="px-4 py-2 mt-4">
-                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                    Telas Power BI
-                  </h3>
-                </div>
-              )}
-              <nav className="px-2 space-y-1">
-                {screens.map((screen) => {
-                  const Icon = ICON_MAP[screen.icon || 'default'] || Monitor;
-                  const href = `/powerbi/tela/${screen.id}`;
-                  const isActive = pathname === href;
-                  return (
-                    <Link
-                      key={screen.id}
-                      href={href}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                        isActive 
-                          ? 'bg-blue-50 text-blue-600' 
-                          : 'text-gray-600 hover:bg-gray-50'
-                      }`}
-                      title={isCollapsed ? screen.title : undefined}
-                    >
-                      <Icon size={20} />
-                      {!isCollapsed && (
-                        <span className="text-sm font-medium truncate">{screen.title}</span>
-                      )}
-                    </Link>
-                  );
-                })}
-              </nav>
-            </>
+          {!isCollapsed && (
+            <div className="px-4 pb-2 mb-2 border-b border-gray-100">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                Telas
+              </h3>
+            </div>
           )}
 
-          {powerbiMenuItems.length > 0 && (
-            <>
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+            </div>
+          ) : screens.length === 0 ? (
+            <div className="px-4 py-8 text-center">
               {!isCollapsed && (
-                <div className="px-4 py-2 mt-4">
-                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                    Power BI
-                  </h3>
-                </div>
+                <p className="text-sm text-gray-400">
+                  {activeGroup ? 'Nenhuma tela disponível' : 'Selecione um grupo'}
+                </p>
               )}
-              <nav className="px-2 space-y-1">
-                {powerbiMenuItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = pathname === item.href;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                        isActive 
-                          ? 'bg-blue-50 text-blue-600' 
-                          : 'text-gray-600 hover:bg-gray-50'
-                      }`}
-                      title={isCollapsed ? item.label : undefined}
-                    >
-                      <Icon size={20} />
-                      {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
-                    </Link>
-                  );
-                })}
-              </nav>
-            </>
-          )}
-
-          {adminMenuItems.length > 0 && (
-            <>
-              {!isCollapsed && (
-                <div className="px-4 py-2 mt-4">
-                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                    Administração
-                  </h3>
-                </div>
-              )}
-              <nav className="px-2 space-y-1">
-                {adminMenuItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = pathname === item.href;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                        isActive 
-                          ? 'bg-blue-50 text-blue-600' 
-                          : 'text-gray-600 hover:bg-gray-50'
-                      }`}
-                      title={isCollapsed ? item.label : undefined}
-                    >
-                      <Icon size={20} />
-                      {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
-                    </Link>
-                  );
-                })}
-              </nav>
-            </>
+            </div>
+          ) : (
+            <nav className="px-2 space-y-1">
+              {screens.map((screen) => {
+                const Icon = ICON_MAP[screen.icon || 'default'] || Monitor;
+                const href = `/powerbi/tela/${screen.id}`;
+                const isActive = pathname === href;
+                return (
+                  <Link
+                    key={screen.id}
+                    href={href}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
+                      isActive 
+                        ? 'bg-blue-50 text-blue-600' 
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                    title={isCollapsed ? screen.title : undefined}
+                  >
+                    <Icon size={20} />
+                    {!isCollapsed && (
+                      <span className="text-sm font-medium truncate">{screen.title}</span>
+                    )}
+                  </Link>
+                );
+              })}
+            </nav>
           )}
         </div>
       </aside>
