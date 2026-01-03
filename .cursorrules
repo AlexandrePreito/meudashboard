@@ -1,0 +1,29 @@
+# REGRAS DO PROJETO MEUDASHBOARD
+
+## REGRAS CRÍTICAS - NUNCA VIOLAR:
+
+1. NUNCA apague código existente sem perguntar
+2. NUNCA modifique arquivos que não foram solicitados
+3. SEMPRE mostre o código completo antes de aplicar mudanças
+4. SEMPRE preserve comentários e estrutura existente
+5. Ao adicionar código, NÃO remova o que já existe
+
+## ESTRUTURA DO PROJETO:
+- /src/components - Componentes React
+- /src/lib - Configurações e utilitários
+- /src/hooks - Hooks customizados
+- /src/types - Tipagens TypeScript
+- /src/services - Chamadas de API
+- /src/contexts - Contextos React
+
+## STACK:
+- Next.js 16 (App Router)
+- TypeScript
+- Tailwind CSS
+- Supabase
+- Anthropic Claude API
+
+## AO CRIAR ARQUIVOS:
+- Sempre adicione comentário de cabeçalho explicando o propósito
+- Use TypeScript strict
+- Siga a estrutura de pastas existente
