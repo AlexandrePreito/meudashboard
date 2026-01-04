@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import {
   Users,
-  Building2,
   Plus,
   Edit,
   Trash2,
@@ -14,8 +13,6 @@ import {
   EyeOff,
   Shield,
   ShieldCheck,
-  UserCheck,
-  UserX,
   Search
 } from 'lucide-react';
 
@@ -39,33 +36,20 @@ interface User {
 interface Group {
   id: string;
   name: string;
-  slug: string;
-  description: string | null;
-  status: string;
-  max_users: number;
-  max_companies: number;
-  max_powerbi_screens: number;
-  users_count: number;
-  created_at: string;
 }
 
-export default function ConfiguracoesPage() {
-  const [activeTab, setActiveTab] = useState<'users' | 'groups'>('users');
+export default function UsuariosPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Modais
-  const [showUserModal, setShowUserModal] = useState(false);
-  const [showGroupModal, setShowGroupModal] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Form de usuário
-  const [userForm, setUserForm] = useState({
+  const [formData, setFormData] = useState({
     email: '',
     full_name: '',
     phone: '',
@@ -73,15 +57,6 @@ export default function ConfiguracoesPage() {
     is_master: false,
     company_group_id: '',
     role: 'user'
-  });
-
-  // Form de grupo
-  const [groupForm, setGroupForm] = useState({
-    name: '',
-    description: '',
-    max_users: 10,
-    max_companies: 5,
-    max_powerbi_screens: 10
   });
 
   useEffect(() => {
@@ -118,9 +93,8 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  // USUÁRIOS
-  function openNewUser() {
-    setUserForm({
+  function resetForm() {
+    setFormData({
       email: '',
       full_name: '',
       phone: '',
@@ -131,12 +105,16 @@ export default function ConfiguracoesPage() {
     });
     setEditingUser(null);
     setShowPassword(false);
-    setShowUserModal(true);
+  }
+
+  function openNewUser() {
+    resetForm();
+    setShowModal(true);
   }
 
   function openEditUser(user: User) {
     setEditingUser(user);
-    setUserForm({
+    setFormData({
       email: user.email,
       full_name: user.full_name,
       phone: user.phone || '',
@@ -146,15 +124,15 @@ export default function ConfiguracoesPage() {
       role: user.memberships[0]?.role || 'user'
     });
     setShowPassword(false);
-    setShowUserModal(true);
+    setShowModal(true);
   }
 
-  async function saveUser() {
-    if (!userForm.email || !userForm.full_name) {
+  async function handleSave() {
+    if (!formData.email || !formData.full_name) {
       alert('Email e nome são obrigatórios');
       return;
     }
-    if (!editingUser && !userForm.password) {
+    if (!editingUser && !formData.password) {
       alert('Senha é obrigatória para novo usuário');
       return;
     }
@@ -162,16 +140,16 @@ export default function ConfiguracoesPage() {
     setSaving(true);
     try {
       const payload: any = {
-        email: userForm.email,
-        full_name: userForm.full_name,
-        phone: userForm.phone || null,
-        is_master: userForm.is_master,
-        company_group_id: userForm.company_group_id || null,
-        role: userForm.role
+        email: formData.email,
+        full_name: formData.full_name,
+        phone: formData.phone || null,
+        is_master: formData.is_master,
+        company_group_id: formData.company_group_id || null,
+        role: formData.role
       };
 
-      if (userForm.password) {
-        payload.password = userForm.password;
+      if (formData.password) {
+        payload.password = formData.password;
       }
 
       if (editingUser) {
@@ -186,7 +164,8 @@ export default function ConfiguracoesPage() {
 
       if (res.ok) {
         alert(editingUser ? 'Usuário atualizado!' : 'Usuário criado!');
-        setShowUserModal(false);
+        setShowModal(false);
+        resetForm();
         loadUsers();
       } else {
         const data = await res.json();
@@ -199,7 +178,7 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  async function deleteUser(id: string) {
+  async function handleDelete(id: string) {
     if (!confirm('Excluir este usuário?')) return;
 
     try {
@@ -216,89 +195,6 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  // GRUPOS
-  function openNewGroup() {
-    setGroupForm({
-      name: '',
-      description: '',
-      max_users: 10,
-      max_companies: 5,
-      max_powerbi_screens: 10
-    });
-    setEditingGroup(null);
-    setShowGroupModal(true);
-  }
-
-  function openEditGroup(group: Group) {
-    setEditingGroup(group);
-    setGroupForm({
-      name: group.name,
-      description: group.description || '',
-      max_users: group.max_users,
-      max_companies: group.max_companies,
-      max_powerbi_screens: group.max_powerbi_screens
-    });
-    setShowGroupModal(true);
-  }
-
-  async function saveGroup() {
-    if (!groupForm.name) {
-      alert('Nome é obrigatório');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const payload: any = {
-        name: groupForm.name,
-        description: groupForm.description || null,
-        max_users: groupForm.max_users,
-        max_companies: groupForm.max_companies,
-        max_powerbi_screens: groupForm.max_powerbi_screens
-      };
-
-      if (editingGroup) {
-        payload.id = editingGroup.id;
-      }
-
-      const res = await fetch('/api/config/groups', {
-        method: editingGroup ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (res.ok) {
-        alert(editingGroup ? 'Grupo atualizado!' : 'Grupo criado!');
-        setShowGroupModal(false);
-        loadGroups();
-      } else {
-        const data = await res.json();
-        alert(data.error || 'Erro ao salvar');
-      }
-    } catch (err) {
-      alert('Erro ao salvar grupo');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function deleteGroup(id: string) {
-    if (!confirm('Excluir este grupo?')) return;
-
-    try {
-      const res = await fetch(`/api/config/groups?id=${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        alert('Grupo excluído!');
-        loadGroups();
-      } else {
-        const data = await res.json();
-        alert(data.error || 'Erro ao excluir');
-      }
-    } catch (err) {
-      alert('Erro ao excluir grupo');
-    }
-  }
-
   function formatDate(dateString: string | null) {
     if (!dateString) return 'Nunca';
     return new Date(dateString).toLocaleString('pt-BR', {
@@ -310,7 +206,6 @@ export default function ConfiguracoesPage() {
     });
   }
 
-  // Filtros
   const filteredUsers = users.filter(user => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
@@ -320,52 +215,21 @@ export default function ConfiguracoesPage() {
     );
   });
 
-  const filteredGroups = groups.filter(group => {
-    if (!searchTerm) return true;
-    return group.name.toLowerCase().includes(searchTerm.toLowerCase());
-  });
-
   return (
     <MainLayout>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Configurações</h1>
-            <p className="text-gray-500 text-sm mt-1">Gerencie usuários e grupos do sistema</p>
+            <h1 className="text-2xl font-bold text-gray-900">Usuários</h1>
+            <p className="text-gray-500 text-sm mt-1">Gerencie os usuários do sistema</p>
           </div>
           <button
-            onClick={activeTab === 'users' ? openNewUser : openNewGroup}
+            onClick={openNewUser}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
             <Plus size={20} />
-            {activeTab === 'users' ? 'Novo Usuário' : 'Novo Grupo'}
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex gap-4 border-b border-gray-200">
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors ${
-              activeTab === 'users'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Users size={20} />
-            Usuários ({users.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('groups')}
-            className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors ${
-              activeTab === 'groups'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Building2 size={20} />
-            Grupos ({groups.length})
+            Novo Usuário
           </button>
         </div>
 
@@ -374,166 +238,102 @@ export default function ConfiguracoesPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
           <input
             type="text"
-            placeholder={activeTab === 'users' ? 'Buscar usuários...' : 'Buscar grupos...'}
+            placeholder="Buscar usuários..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
           />
         </div>
 
-        {/* Loading */}
+        {/* Lista */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
         ) : (
-          <>
-            {/* Lista de Usuários */}
-            {activeTab === 'users' && (
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Usuário</th>
-                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Grupo</th>
-                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Perfil</th>
-                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Último Acesso</th>
-                      <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {filteredUsers.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
-                          Nenhum usuário encontrado
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredUsers.map((user) => (
-                        <tr key={user.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-medium ${
-                                user.is_master ? 'bg-purple-600' : 'bg-blue-600'
-                              }`}>
-                                {user.full_name.charAt(0).toUpperCase()}
-                              </div>
-                              <div>
-                                <p className="font-medium text-gray-900">{user.full_name}</p>
-                                <p className="text-sm text-gray-500">{user.email}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="text-sm text-gray-600">
-                              {user.memberships[0]?.company_group?.name || '-'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            {user.is_master ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-                                <ShieldCheck size={12} />
-                                Master
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                                <Shield size={12} />
-                                {user.memberships[0]?.role || 'Usuário'}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-500">
-                            {formatDate(user.last_login_at)}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                onClick={() => openEditUser(user)}
-                                className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                title="Editar"
-                              >
-                                <Edit size={16} />
-                              </button>
-                              <button
-                                onClick={() => deleteUser(user.id)}
-                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Excluir"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Lista de Grupos */}
-            {activeTab === 'groups' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredGroups.length === 0 ? (
-                  <div className="col-span-full bg-white rounded-xl border border-gray-200 p-8 text-center">
-                    <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                    <p className="text-gray-500">Nenhum grupo encontrado</p>
-                  </div>
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Usuário</th>
+                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Grupo</th>
+                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Perfil</th>
+                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Último Acesso</th>
+                  <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                      Nenhum usuário encontrado
+                    </td>
+                  </tr>
                 ) : (
-                  filteredGroups.map((group) => (
-                    <div key={group.id} className="bg-white rounded-xl border border-gray-200 p-5">
-                      <div className="flex items-start justify-between mb-4">
+                  filteredUsers.map((user) => (
+                    <tr key={user.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                            <Building2 className="text-blue-600" size={24} />
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-medium ${
+                            user.is_master ? 'bg-purple-600' : 'bg-blue-600'
+                          }`}>
+                            {user.full_name.charAt(0).toUpperCase()}
                           </div>
                           <div>
-                            <h3 className="font-semibold text-gray-900">{group.name}</h3>
-                            <p className="text-sm text-gray-500">{group.slug}</p>
+                            <p className="font-medium text-gray-900">{user.full_name}</p>
+                            <p className="text-sm text-gray-500">{user.email}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1">
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-sm text-gray-600">
+                          {user.memberships[0]?.company_group?.name || '-'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {user.is_master ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                            <ShieldCheck size={12} />
+                            Master
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                            <Shield size={12} />
+                            {user.memberships[0]?.role || 'Usuário'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {formatDate(user.last_login_at)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
                           <button
-                            onClick={() => openEditGroup(group)}
-                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            onClick={() => openEditUser(user)}
+                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Editar"
                           >
                             <Edit size={16} />
                           </button>
                           <button
-                            onClick={() => deleteGroup(group.id)}
-                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            onClick={() => handleDelete(user.id)}
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Excluir"
                           >
                             <Trash2 size={16} />
                           </button>
                         </div>
-                      </div>
-                      {group.description && (
-                        <p className="text-sm text-gray-600 mb-4">{group.description}</p>
-                      )}
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div className="bg-gray-50 rounded-lg p-2">
-                          <p className="text-lg font-bold text-gray-900">{group.users_count}</p>
-                          <p className="text-xs text-gray-500">Usuários</p>
-                        </div>
-                        <div className="bg-gray-50 rounded-lg p-2">
-                          <p className="text-lg font-bold text-gray-900">{group.max_users}</p>
-                          <p className="text-xs text-gray-500">Máx. Users</p>
-                        </div>
-                        <div className="bg-gray-50 rounded-lg p-2">
-                          <p className="text-lg font-bold text-gray-900">{group.max_powerbi_screens}</p>
-                          <p className="text-xs text-gray-500">Telas BI</p>
-                        </div>
-                      </div>
-                    </div>
+                      </td>
+                    </tr>
                   ))
                 )}
-              </div>
-            )}
-          </>
+              </tbody>
+            </table>
+          </div>
         )}
 
-        {/* Modal Usuário */}
-        {showUserModal && (
+        {/* Modal */}
+        {showModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl w-full max-w-lg">
               <div className="flex items-center justify-between p-4 border-b border-gray-200">
@@ -541,7 +341,7 @@ export default function ConfiguracoesPage() {
                   {editingUser ? 'Editar Usuário' : 'Novo Usuário'}
                 </h2>
                 <button
-                  onClick={() => setShowUserModal(false)}
+                  onClick={() => { setShowModal(false); resetForm(); }}
                   className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
                 >
                   <X size={20} />
@@ -553,8 +353,8 @@ export default function ConfiguracoesPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo *</label>
                   <input
                     type="text"
-                    value={userForm.full_name}
-                    onChange={(e) => setUserForm({ ...userForm, full_name: e.target.value })}
+                    value={formData.full_name}
+                    onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
                   />
                 </div>
@@ -563,8 +363,8 @@ export default function ConfiguracoesPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
                   <input
                     type="email"
-                    value={userForm.email}
-                    onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
                   />
                 </div>
@@ -573,8 +373,8 @@ export default function ConfiguracoesPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
                   <input
                     type="tel"
-                    value={userForm.phone}
-                    onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
                   />
                 </div>
@@ -586,8 +386,8 @@ export default function ConfiguracoesPage() {
                   <div className="relative">
                     <input
                       type={showPassword ? 'text' : 'password'}
-                      value={userForm.password}
-                      onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                       className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
                     />
                     <button
@@ -604,8 +404,8 @@ export default function ConfiguracoesPage() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Grupo</label>
                     <select
-                      value={userForm.company_group_id}
-                      onChange={(e) => setUserForm({ ...userForm, company_group_id: e.target.value })}
+                      value={formData.company_group_id}
+                      onChange={(e) => setFormData({ ...formData, company_group_id: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
                     >
                       <option value="">Nenhum</option>
@@ -617,8 +417,8 @@ export default function ConfiguracoesPage() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Perfil</label>
                     <select
-                      value={userForm.role}
-                      onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
+                      value={formData.role}
+                      onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
                     >
                       <option value="user">Usuário</option>
@@ -632,8 +432,8 @@ export default function ConfiguracoesPage() {
                   <input
                     type="checkbox"
                     id="is_master"
-                    checked={userForm.is_master}
-                    onChange={(e) => setUserForm({ ...userForm, is_master: e.target.checked })}
+                    checked={formData.is_master}
+                    onChange={(e) => setFormData({ ...formData, is_master: e.target.checked })}
                     className="w-4 h-4 rounded border-gray-300"
                   />
                   <label htmlFor="is_master" className="text-sm text-gray-700">
@@ -644,13 +444,13 @@ export default function ConfiguracoesPage() {
 
               <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
                 <button
-                  onClick={() => setShowUserModal(false)}
+                  onClick={() => { setShowModal(false); resetForm(); }}
                   className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
-                  onClick={saveUser}
+                  onClick={handleSave}
                   disabled={saving}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
                 >
@@ -661,96 +461,7 @@ export default function ConfiguracoesPage() {
             </div>
           </div>
         )}
-
-        {/* Modal Grupo */}
-        {showGroupModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl w-full max-w-lg">
-              <div className="flex items-center justify-between p-4 border-b border-gray-200">
-                <h2 className="text-lg font-bold text-gray-900">
-                  {editingGroup ? 'Editar Grupo' : 'Novo Grupo'}
-                </h2>
-                <button
-                  onClick={() => setShowGroupModal(false)}
-                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="p-4 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
-                  <input
-                    type="text"
-                    value={groupForm.name}
-                    onChange={(e) => setGroupForm({ ...groupForm, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
-                  <textarea
-                    value={groupForm.description}
-                    onChange={(e) => setGroupForm({ ...groupForm, description: e.target.value })}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Máx. Usuários</label>
-                    <input
-                      type="number"
-                      value={groupForm.max_users}
-                      onChange={(e) => setGroupForm({ ...groupForm, max_users: parseInt(e.target.value) || 10 })}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Máx. Empresas</label>
-                    <input
-                      type="number"
-                      value={groupForm.max_companies}
-                      onChange={(e) => setGroupForm({ ...groupForm, max_companies: parseInt(e.target.value) || 5 })}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Telas BI</label>
-                    <input
-                      type="number"
-                      value={groupForm.max_powerbi_screens}
-                      onChange={(e) => setGroupForm({ ...groupForm, max_powerbi_screens: parseInt(e.target.value) || 10 })}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
-                <button
-                  onClick={() => setShowGroupModal(false)}
-                  className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={saveGroup}
-                  disabled={saving}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-                >
-                  {saving && <Loader2 size={16} className="animate-spin" />}
-                  {editingGroup ? 'Salvar' : 'Criar'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </MainLayout>
   );
 }
-

@@ -28,7 +28,7 @@ export async function GET() {
         status,
         last_login_at,
         created_at,
-        memberships:user_group_membership(
+        memberships:user_group_membership!user_group_membership_user_id_fkey(
           id,
           role,
           is_active,
