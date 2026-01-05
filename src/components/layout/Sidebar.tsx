@@ -19,7 +19,14 @@ import {
   Brain,
   Settings,
   Users,
-  Building2
+  Building2,
+  Smartphone,
+  UsersRound,
+  MessageSquare,
+  Webhook,
+  LayoutDashboard,
+  Bell,
+  Plus
 } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
 
@@ -52,6 +59,7 @@ export default function Sidebar() {
 
   const showPowerBIMenu = pathname.startsWith('/powerbi');
   const showConfigMenu = pathname.startsWith('/configuracoes');
+  const showWhatsAppMenu = pathname.startsWith('/whatsapp') || pathname.startsWith('/alertas');
 
   const powerBIMenuItems = [
     { href: '/powerbi', icon: Activity, label: 'Dashboard' },
@@ -65,6 +73,16 @@ export default function Sidebar() {
   const configMenuItems = [
     { href: '/configuracoes', icon: Users, label: 'Usuários' },
     { href: '/configuracoes/grupos', icon: Building2, label: 'Grupos' },
+  ];
+
+  const whatsappMenuItems = [
+    { href: '/whatsapp', icon: LayoutDashboard, label: 'Dashboard' },
+    { href: '/whatsapp/instancias', icon: Smartphone, label: 'Instâncias' },
+    { href: '/whatsapp/numeros', icon: Users, label: 'Números Autorizados' },
+    { href: '/whatsapp/grupos', icon: UsersRound, label: 'Grupos Autorizados' },
+    { href: '/whatsapp/mensagens', icon: MessageSquare, label: 'Mensagens' },
+    { href: '/alertas', icon: Bell, label: 'Alertas' },
+    { href: '/whatsapp/webhook', icon: Webhook, label: 'Webhook' },
   ];
 
   useEffect(() => {
@@ -150,6 +168,41 @@ export default function Sidebar() {
                   const Icon = item.icon;
                   const isActive = item.href === '/configuracoes' 
                     ? pathname === '/configuracoes'
+                    : pathname.startsWith(item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 ${
+                        isActive
+                          ? 'bg-blue-50 text-blue-600'
+                          : 'text-gray-600 hover:bg-gray-50'
+                      }`}
+                      title={item.label}
+                    >
+                      <Icon size={20} />
+                      {!isCollapsed && <span className="font-medium">{item.label}</span>}
+                    </Link>
+                  );
+                })}
+              </nav>
+            </>
+          )}
+
+          {showWhatsAppMenu && (
+            <>
+              {!isCollapsed && (
+                <div className="px-4 pt-4 pb-2">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    WhatsApp
+                  </h3>
+                </div>
+              )}
+              <nav className="px-2 pb-4 border-b border-gray-100 mb-2">
+                {whatsappMenuItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = item.href === '/whatsapp' 
+                    ? pathname === '/whatsapp'
                     : pathname.startsWith(item.href);
                   return (
                     <Link
