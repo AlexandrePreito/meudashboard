@@ -274,6 +274,52 @@ export async function POST(request: Request) {
 ⚠️ NUNCA invente valores! Use SEMPRE a função execute_dax para buscar dados reais.
 ⚠️ Se não conseguir executar a query, diga que não encontrou os dados.
 
+## QUERIES DAX CORRETAS - USE EXATAMENTE ASSIM
+
+### Faturamento de um mês específico:
+EVALUATE ROW("Valor", CALCULATE([QA_Faturamento], Calendario[Ano] = 2025, Calendario[NumeroMes] = 9))
+
+### Faturamento por filial:
+EVALUATE SUMMARIZECOLUMNS(Empresa[Filial], "Valor", [QA_Faturamento])
+
+### Top 10 vendedores:
+EVALUATE TOPN(10, SUMMARIZECOLUMNS(Colaboradores[COLABORADOR], "Valor", [QA_Faturamento]), [Valor], DESC)
+
+### Top 10 produtos:
+EVALUATE TOPN(10, SUMMARIZECOLUMNS(Produtos[PRODUTO], "Valor", [QA_Faturamento]), [Valor], DESC)
+
+### Faturamento com MoM (mês anterior):
+EVALUATE 
+VAR MesAtual = CALCULATE([QA_Faturamento], Calendario[Ano] = 2025, Calendario[NumeroMes] = 12)
+VAR MesAnterior = CALCULATE([QA_Faturamento], Calendario[Ano] = 2025, Calendario[NumeroMes] = 11)
+VAR Variacao = DIVIDE(MesAtual - MesAnterior, MesAnterior, 0) * 100
+RETURN ROW("Atual", MesAtual, "Anterior", MesAnterior, "MoM", Variacao)
+
+### Vendas de um vendedor específico:
+EVALUATE ROW("Valor", CALCULATE([QA_Faturamento], Colaboradores[COLABORADOR] = "DARCIVAN"))
+
+### Vendas de um produto específico:
+EVALUATE ROW("Valor", CALCULATE([QA_Faturamento], CONTAINSSTRING(Produtos[PRODUTO], "CHOPP")))
+
+### Vendas por filial em um mês:
+EVALUATE SUMMARIZECOLUMNS(Empresa[Filial], "Valor", CALCULATE([QA_Faturamento], Calendario[Ano] = 2025, Calendario[NumeroMes] = 9))
+
+## NOMES DAS TABELAS E COLUNAS (USE EXATAMENTE):
+- Medida principal: [QA_Faturamento]
+- Calendário: Calendario[Ano], Calendario[NumeroMes], Calendario[Data]
+- Filiais: Empresa[Filial] - valores: "Jd. da Luz", "Marista", "Quintal", "Alto da Glória"
+- Vendedores: Colaboradores[COLABORADOR]
+- Produtos: Produtos[PRODUTO]
+
+## REGRAS DE QUERY:
+1. SEMPRE use a medida [QA_Faturamento] para valores de venda
+2. Para filtrar mês, use Calendario[NumeroMes] (1-12)
+3. Para filtrar ano, use Calendario[Ano] (2024, 2025, 2026)
+4. Para busca parcial de texto, use CONTAINSSTRING()
+5. NUNCA invente colunas ou tabelas que não existem
+
+⚠️ IMPORTANTE: Sempre consulte a seção "DOCUMENTAÇÃO DO MODELO" abaixo para saber os nomes corretos das tabelas e colunas. NUNCA adivinhe nomes de tabelas.
+
 ## FORMATAÇÃO DAS MENSAGENS
 - NÃO use asteriscos (*) para negrito - o WhatsApp já formata automaticamente
 - NÃO inclua "Período:" redundante - já está no título
@@ -351,10 +397,10 @@ Exemplos de queries com múltiplos filtros:
   EVALUATE ROW("Vendas", CALCULATE([QA_Faturamento], Colaboradores[COLABORADOR] = "ADAO", Produtos[PRODUTO] CONTAINS "CHOPP BRAHMA"))
 
 - Filial + Período:
-  EVALUATE ROW("Vendas", CALCULATE([QA_Faturamento], Filial[Filial] = "Marista", Calendario[Ano] = 2025, Calendario[NumeroMes] = 10))
+  EVALUATE ROW("Vendas", CALCULATE([QA_Faturamento], Empresa[Filial] = "Marista", Calendario[Ano] = 2025, Calendario[NumeroMes] = 10))
 
 - Vendedor + Período + Filial:
-  EVALUATE ROW("Vendas", CALCULATE([QA_Faturamento], Colaboradores[COLABORADOR] = "ADAO", Filial[Filial] = "Jd. da Luz", Calendario[Ano] = 2025))
+  EVALUATE ROW("Vendas", CALCULATE([QA_Faturamento], Colaboradores[COLABORADOR] = "ADAO", Empresa[Filial] = "Jd. da Luz", Calendario[Ano] = 2025))
 
 ## MANTER CONTEXTO DA CONVERSA
 - Se o usuário estava vendo dados de Dezembro/2025, mantenha esse período nas próximas perguntas
@@ -364,7 +410,7 @@ Exemplos de queries com múltiplos filtros:
 ## NOMES NO MODELO (USE EXATAMENTE ASSIM)
 - Tabela de vendedores: Colaboradores[COLABORADOR]
 - Tabela de produtos: Produtos[PRODUTO] ou Produtos[DESCRICAO]
-- Tabela de filiais: Filial[Filial]
+- Tabela de filiais: Empresa[Filial]
 - Tabela de datas: Calendario[Ano], Calendario[NumeroMes], Calendario[Data]
 - Use CONTAINS para busca parcial: Produtos[PRODUTO] CONTAINS "CHOPP"
 
