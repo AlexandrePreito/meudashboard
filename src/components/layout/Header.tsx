@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { 
-  Bell, LogOut, ChevronDown, Building2, User, Zap, Menu, X
+  Bell, LogOut, ChevronDown, Building2, User, Zap, Menu, X, Key
 } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
 
@@ -36,10 +36,9 @@ export default function Header({ user }: HeaderProps) {
   const { activeGroup, setActiveGroup, setIsCollapsed } = useMenu();
   const [groups, setGroups] = useState<CompanyGroup[]>([]);
   const [showGroupDropdown, setShowGroupDropdown] = useState(false);
-  const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const groupDropdownRef = useRef<HTMLDivElement>(null);
-  const userDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadGroups();
@@ -49,9 +48,6 @@ export default function Header({ user }: HeaderProps) {
     function handleClickOutside(event: MouseEvent) {
       if (groupDropdownRef.current && !groupDropdownRef.current.contains(event.target as Node)) {
         setShowGroupDropdown(false);
-      }
-      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) {
-        setShowUserDropdown(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -104,8 +100,9 @@ export default function Header({ user }: HeaderProps) {
 
   return (
     <>
-      <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-6 sticky top-0 z-50">
-        <div className="flex items-center gap-4 lg:gap-8">
+      <header className="h-16 bg-white border-b border-gray-200 flex items-center px-4 lg:px-6 sticky top-0 z-50">
+        {/* Logo */}
+        <div className="flex items-center gap-4">
           <button
             onClick={handleMobileMenuToggle}
             className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"
@@ -121,27 +118,29 @@ export default function Header({ user }: HeaderProps) {
               MeuDashboard
             </span>
           </div>
-
-          <nav className="hidden lg:flex items-center gap-1">
-            {mainNavItems.map((item) => {
-              const isActive = isActiveNav(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
-                    isActive
-                      ? 'bg-blue-50 text-blue-600'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
         </div>
 
+        {/* Navigation - Centralizado */}
+        <nav className="flex-1 flex items-center justify-center gap-6 hidden lg:flex">
+          {mainNavItems.map((item) => {
+            const isActive = isActiveNav(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+                  isActive
+                    ? 'bg-blue-50 text-blue-600'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Right side */}
         <div className="flex items-center gap-2 lg:gap-4">
           <div className="relative" ref={groupDropdownRef}>
             <button
@@ -176,31 +175,54 @@ export default function Header({ user }: HeaderProps) {
             <Bell size={20} className="text-gray-500" />
           </button>
 
-          <div className="relative" ref={userDropdownRef}>
+          {/* User Menu */}
+          <div className="relative">
             <button
-              onClick={() => setShowUserDropdown(!showUserDropdown)}
-              className="flex items-center gap-2 px-2 lg:px-3 py-2 hover:bg-gray-100 rounded-lg transition-colors"
+              onClick={() => setShowUserMenu(!showUserMenu)}
+              className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 hover:bg-blue-200 transition-colors"
             >
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center">
-                <User size={16} className="text-white" />
-              </div>
-              <div className="text-left hidden md:block">
-                <div className="text-sm font-medium text-gray-700">{user.full_name || 'Usuário'}</div>
-                <div className="text-xs text-gray-500">{user.email}</div>
-              </div>
-              <ChevronDown size={16} className="text-gray-400 hidden sm:block" />
+              <User size={20} className="text-blue-600" />
             </button>
-
-            {showUserDropdown && (
-              <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50">
-                <button
-                  onClick={handleLogout}
-                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
-                >
-                  <LogOut size={16} />
-                  Sair
-                </button>
-              </div>
+            
+            {showUserMenu && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={() => setShowUserMenu(false)}
+                />
+                <div className="absolute right-0 top-12 w-56 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-50">
+                  <div className="px-4 py-2 border-b border-gray-100">
+                    <p className="font-medium text-gray-800">{user?.full_name || 'Usuário'}</p>
+                    <p className="text-sm text-gray-500">{user?.email}</p>
+                  </div>
+                  
+                  <button
+                    onClick={() => { setShowUserMenu(false); router.push('/perfil'); }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-gray-700 hover:bg-gray-50"
+                  >
+                    <User size={18} />
+                    Meus Dados
+                  </button>
+                  
+                  <button
+                    onClick={() => { setShowUserMenu(false); router.push('/trocar-senha'); }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-gray-700 hover:bg-gray-50"
+                  >
+                    <Key size={18} />
+                    Trocar Senha
+                  </button>
+                  
+                  <div className="border-t border-gray-100 mt-2 pt-2">
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-3 px-4 py-2 text-red-600 hover:bg-red-50"
+                    >
+                      <LogOut size={18} />
+                      Sair
+                    </button>
+                  </div>
+                </div>
+              </>
             )}
           </div>
         </div>
