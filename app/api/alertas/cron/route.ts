@@ -153,8 +153,9 @@ export async function GET(request: Request) {
         '{{threshold}}': alert.threshold?.toLocaleString('pt-BR') || '0',
       };
 
+      let daxResult: any = null;
       if (alert.connection_id && alert.dataset_id && alert.dax_query) {
-        const daxResult = await executeDaxQuery(alert.connection_id, alert.dataset_id, alert.dax_query, supabase);
+        daxResult = await executeDaxQuery(alert.connection_id, alert.dataset_id, alert.dax_query, supabase);
         
         if (daxResult.success && daxResult.results?.length > 0) {
           const row = daxResult.results[0];
@@ -191,6 +192,62 @@ export async function GET(request: Request) {
       }
 
       console.log('[CRON] Variáveis disponíveis:', Object.keys(variables));
+
+      // Verificar condição de disparo
+      let shouldTrigger = true;
+      let firstNumericValue: number | null = null;
+      
+      // Extrair o primeiro valor numérico do resultado DAX
+      if (daxResult?.success && daxResult?.results?.[0]) {
+        const row = daxResult.results[0];
+        for (const value of Object.values(row)) {
+          if (typeof value === 'number') {
+            firstNumericValue = value;
+            break;
+          }
+        }
+      }
+      
+      console.log('[CRON] daxResult:', JSON.stringify(daxResult?.results?.[0]));
+      console.log('[CRON] firstNumericValue:', firstNumericValue);
+      
+      // Aplicar condição se configurada
+      if (alert.condition && alert.threshold !== null && alert.threshold !== undefined && firstNumericValue !== null) {
+        switch (alert.condition) {
+          case 'greater_than':
+            shouldTrigger = firstNumericValue > alert.threshold;
+            break;
+          case 'less_than':
+            shouldTrigger = firstNumericValue < alert.threshold;
+            break;
+          case 'equals':
+            shouldTrigger = firstNumericValue === alert.threshold;
+            break;
+          case 'not_equals':
+            shouldTrigger = firstNumericValue !== alert.threshold;
+            break;
+          case 'greater_or_equal':
+            shouldTrigger = firstNumericValue >= alert.threshold;
+            break;
+          case 'less_or_equal':
+            shouldTrigger = firstNumericValue <= alert.threshold;
+            break;
+        }
+        
+        console.log(`[CRON] Condição: ${firstNumericValue} ${alert.condition} ${alert.threshold} = ${shouldTrigger}`);
+      }
+
+      // Se a condição não for atendida, pula este alerta
+      if (!shouldTrigger) {
+        console.log(`[CRON] Alerta ${alert.name} - condição não atendida, não disparando`);
+        
+        await supabase
+          .from('ai_alerts')
+          .update({ last_checked_at: now.toISOString() })
+          .eq('id', alert.id);
+        
+        continue;
+      }
 
       let message = alert.message_template || '🔔 {{nome_alerta}}\n📊 Valor: {{valor}}\n📅 {{data}} às {{hora}}';
       for (const [key, value] of Object.entries(variables)) {
