@@ -1,0 +1,9 @@
+{
+  "crons": [
+    {
+      "path": "/api/alertas/cron?key=${CRON_SECRET}",
+      "schedule": "* * * * *"
+    }
+  ]
+}
+
