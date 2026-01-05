@@ -60,7 +60,7 @@ export async function POST(
       const { data: instance } = await supabase
         .from('whatsapp_instances')
         .select('*')
-        .eq('is_active', true)
+        .eq('is_connected', true)
         .limit(1)
         .maybeSingle();
       
@@ -73,7 +73,7 @@ export async function POST(
       
       for (const phone of numbers) {
         try {
-          const response = await fetch(`${instanceData.base_url}/message/sendText/${instanceData.instance_name}`, {
+          const response = await fetch(`${instanceData.api_url}/message/sendText/${instanceData.instance_name}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -103,7 +103,7 @@ export async function POST(
       
       for (const groupId of groups) {
         try {
-          const response = await fetch(`${instanceData.base_url}/message/sendText/${instanceData.instance_name}`, {
+          const response = await fetch(`${instanceData.api_url}/message/sendText/${instanceData.instance_name}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
