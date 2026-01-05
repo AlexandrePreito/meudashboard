@@ -2,6 +2,82 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser } from '@/lib/auth';
 
+// Função para executar DAX
+async function executeDaxQuery(connectionId: string, datasetId: string, query: string, supabase: any): Promise<{ success: boolean; results?: any[]; error?: string }> {
+  try {
+    const { data: connection } = await supabase
+      .from('powerbi_connections')
+      .select('*')
+      .eq('id', connectionId)
+      .single();
+
+    if (!connection) {
+      return { success: false, error: 'Conexão não encontrada' };
+    }
+
+    // Obter token
+    const tokenUrl = `https://login.microsoftonline.com/${connection.tenant_id}/oauth2/v2.0/token`;
+    const tokenResponse = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: connection.client_id,
+        client_secret: connection.client_secret,
+        scope: 'https://analysis.windows.net/powerbi/api/.default',
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      return { success: false, error: 'Erro na autenticação' };
+    }
+
+    const tokenData = await tokenResponse.json();
+
+    // Executar DAX
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    try {
+      const daxRes = await fetch(
+        `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/datasets/${datasetId}/executeQueries`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${tokenData.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            queries: [{ query }],
+            serializerSettings: { includeNulls: true }
+          }),
+          signal: controller.signal
+        }
+      );
+
+      clearTimeout(timeoutId);
+
+      if (!daxRes.ok) {
+        const errorText = await daxRes.text();
+        return { success: false, error: `Erro DAX: ${errorText}` };
+      }
+
+      const daxData = await daxRes.json();
+      const results = daxData.results?.[0]?.tables?.[0]?.rows || [];
+
+      return { success: true, results };
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        return { success: false, error: 'Timeout: A consulta DAX demorou mais de 30 segundos' };
+      }
+      throw fetchError;
+    }
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
 // POST - Disparar alerta manualmente
 export async function POST(
   request: Request,
@@ -31,11 +107,44 @@ export async function POST(
       return NextResponse.json({ error: 'Alerta está desativado' }, { status: 400 });
     }
 
+    // Executar query DAX para obter valor real
+    let valorReal = 'Valor não disponível';
+    
+    if (alert.connection_id && alert.dataset_id && alert.dax_query) {
+      console.log('Executando DAX para alerta:', alert.name);
+      const daxResult = await executeDaxQuery(
+        alert.connection_id,
+        alert.dataset_id,
+        alert.dax_query,
+        supabase
+      );
+      
+      console.log('Resultado DAX completo:', JSON.stringify(daxResult));
+      
+      if (daxResult.success && daxResult.results && daxResult.results.length > 0) {
+        // Pegar o primeiro valor do resultado
+        const firstRow = daxResult.results[0];
+        console.log('Primeira linha:', JSON.stringify(firstRow));
+        const firstValue = Object.values(firstRow)[0];
+        console.log('Primeiro valor:', firstValue, 'Tipo:', typeof firstValue);
+        
+        // Formatar como moeda se for número
+        if (typeof firstValue === 'number') {
+          valorReal = firstValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        } else {
+          valorReal = String(firstValue);
+        }
+        console.log('Valor DAX obtido:', valorReal);
+      } else {
+        console.error('Erro ao executar DAX:', daxResult.error);
+      }
+    }
+
     // Variáveis para a mensagem
     const now = new Date();
     const variables: Record<string, string> = {
       '{{nome_alerta}}': alert.name,
-      '{{valor}}': 'Teste Manual',
+      '{{valor}}': valorReal,
       '{{data}}': now.toLocaleDateString('pt-BR'),
       '{{hora}}': now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
       '{{condicao}}': alert.condition || '-',
