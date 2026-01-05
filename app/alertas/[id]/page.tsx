@@ -104,6 +104,7 @@ export default function EditarAlertaPage() {
   const [selectedGroupToAdd, setSelectedGroupToAdd] = useState('');
   const [testingDax, setTestingDax] = useState(false);
   const [daxTestResult, setDaxTestResult] = useState<{ success: boolean; message: string; value?: any } | null>(null);
+  const [previewValue, setPreviewValue] = useState<string>('');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -133,6 +134,12 @@ export default function EditarAlertaPage() {
       loadDatasets(formData.connection_id);
     }
   }, [formData.connection_id, connections]);
+
+  useEffect(() => {
+    if (activeTab === 'notificacoes') {
+      fetchPreviewValue();
+    }
+  }, [activeTab, formData.connection_id, formData.dataset_id, formData.dax_query]);
 
   async function loadData() {
     try {
@@ -254,6 +261,36 @@ export default function EditarAlertaPage() {
       });
     } finally {
       setTestingDax(false);
+    }
+  }
+
+  async function fetchPreviewValue() {
+    if (!formData.connection_id || !formData.dataset_id || !formData.dax_query) return;
+    
+    try {
+      const res = await fetch('/api/powerbi/datasets/execute-dax', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          connection_id: formData.connection_id,
+          dataset_id: formData.dataset_id,
+          query: formData.dax_query
+        })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        if (data.results?.[0]) {
+          const firstValue = Object.values(data.results[0])[0];
+          if (typeof firstValue === 'number') {
+            setPreviewValue(firstValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
+          } else {
+            setPreviewValue(String(firstValue));
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao buscar preview:', error);
     }
   }
 
@@ -838,6 +875,7 @@ export default function EditarAlertaPage() {
                       onChange={(value) => setFormData(prev => ({ ...prev, message_template: value }))}
                       alertName={formData.name || 'Meu Alerta'}
                       showTemplates={true}
+                      previewValue={previewValue}
                     />
                   </div>
                 </div>

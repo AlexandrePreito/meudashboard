@@ -31,6 +31,7 @@ export async function middleware(request: NextRequest) {
     '/api/whatsapp/webhook/messages-upsert',
     '/api/whatsapp/webhook/contacts-update',
     '/api/whatsapp/webhook/chats-update',
+    '/api/alertas/cron',
   ];
   
   // Obtém o pathname da requisição

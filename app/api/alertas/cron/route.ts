@@ -1,0 +1,214 @@
+import { NextResponse } from 'next/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+
+// Função para executar DAX
+async function executeDaxQuery(connectionId: string, datasetId: string, query: string, supabase: any) {
+  try {
+    const { data: connection } = await supabase
+      .from('powerbi_connections')
+      .select('*')
+      .eq('id', connectionId)
+      .single();
+
+    if (!connection) return { success: false, error: 'Conexão não encontrada' };
+
+    const tokenUrl = `https://login.microsoftonline.com/${connection.tenant_id}/oauth2/v2.0/token`;
+    const tokenResponse = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: connection.client_id,
+        client_secret: connection.client_secret,
+        scope: 'https://analysis.windows.net/powerbi/api/.default',
+      }),
+    });
+
+    if (!tokenResponse.ok) return { success: false, error: 'Erro na autenticação' };
+    const tokenData = await tokenResponse.json();
+
+    const daxRes = await fetch(
+      `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/datasets/${datasetId}/executeQueries`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${tokenData.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          queries: [{ query }],
+          serializerSettings: { includeNulls: true }
+        })
+      }
+    );
+
+    if (!daxRes.ok) return { success: false, error: 'Erro DAX' };
+    const daxData = await daxRes.json();
+    return { success: true, results: daxData.results?.[0]?.tables?.[0]?.rows || [] };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
+// Função para enviar WhatsApp
+async function sendWhatsApp(instance: any, phone: string, message: string) {
+  try {
+    const res = await fetch(`${instance.api_url}/message/sendText/${instance.instance_name}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': instance.api_key },
+      body: JSON.stringify({ number: phone.replace(/\D/g, ''), text: message })
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
+export async function GET(request: Request) {
+  try {
+    // Verificar chave secreta (proteção básica)
+    const { searchParams } = new URL(request.url);
+    const key = searchParams.get('key');
+    if (key !== process.env.CRON_SECRET && key !== 'manual-trigger') {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    }
+
+    const supabase = createAdminClient();
+    const now = new Date();
+    const currentTime = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const currentDay = now.getDay(); // 0=Dom, 1=Seg...
+    const currentDayOfMonth = now.getDate();
+
+    console.log(`[CRON] Verificando alertas às ${currentTime}`);
+
+    // Buscar alertas ativos
+    const { data: alerts } = await supabase
+      .from('ai_alerts')
+      .select('*')
+      .eq('is_enabled', true)
+      .eq('notify_whatsapp', true);
+
+    if (!alerts?.length) {
+      return NextResponse.json({ message: 'Nenhum alerta ativo', checked: 0 });
+    }
+
+    // Buscar instância WhatsApp
+    const { data: instance } = await supabase
+      .from('whatsapp_instances')
+      .select('*')
+      .eq('is_connected', true)
+      .limit(1)
+      .maybeSingle();
+
+    if (!instance) {
+      return NextResponse.json({ error: 'Nenhuma instância WhatsApp conectada' }, { status: 400 });
+    }
+
+    const results: any[] = [];
+
+    for (const alert of alerts) {
+      // Verificar se é hora de disparar
+      const checkTimes = alert.check_times || [];
+      const checkDaysOfWeek = alert.check_days_of_week || [];
+      const checkDaysOfMonth = alert.check_days_of_month || [];
+
+      // Verifica horário
+      const isTimeMatch = checkTimes.includes(currentTime);
+      
+      // Verifica dia da semana (se configurado)
+      const isDayOfWeekMatch = checkDaysOfWeek.length === 0 || checkDaysOfWeek.includes(currentDay);
+      
+      // Verifica dia do mês (se configurado)
+      const isDayOfMonthMatch = checkDaysOfMonth.length === 0 || checkDaysOfMonth.includes(currentDayOfMonth);
+
+      if (!isTimeMatch || !isDayOfWeekMatch || !isDayOfMonthMatch) {
+        continue;
+      }
+
+      // Verificar se já disparou neste minuto
+      if (alert.last_triggered_at) {
+        const lastTriggered = new Date(alert.last_triggered_at);
+        const diffMinutes = (now.getTime() - lastTriggered.getTime()) / 60000;
+        if (diffMinutes < 1) {
+          console.log(`[CRON] Alerta ${alert.name} já disparou recentemente`);
+          continue;
+        }
+      }
+
+      console.log(`[CRON] Disparando alerta: ${alert.name}`);
+
+      // Executar DAX
+      let valorReal = 'Valor não disponível';
+      if (alert.connection_id && alert.dataset_id && alert.dax_query) {
+        const daxResult = await executeDaxQuery(alert.connection_id, alert.dataset_id, alert.dax_query, supabase);
+        if (daxResult.success && daxResult.results?.length > 0) {
+          const firstValue = Object.values(daxResult.results[0])[0];
+          if (typeof firstValue === 'number') {
+            valorReal = firstValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          } else {
+            valorReal = String(firstValue);
+          }
+        }
+      }
+
+      // Preparar mensagem
+      const variables: Record<string, string> = {
+        '{{nome_alerta}}': alert.name,
+        '{{valor}}': valorReal,
+        '{{data}}': now.toLocaleDateString('pt-BR'),
+        '{{hora}}': now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      };
+
+      let message = alert.message_template || '🔔 {{nome_alerta}}\n📊 Valor: {{valor}}\n📅 {{data}} às {{hora}}';
+      for (const [key, value] of Object.entries(variables)) {
+        message = message.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), value);
+      }
+
+      // Enviar para números
+      let sent = 0;
+      if (alert.whatsapp_number) {
+        const numbers = alert.whatsapp_number.split(',').filter(Boolean);
+        for (const phone of numbers) {
+          if (await sendWhatsApp(instance, phone, message)) sent++;
+        }
+      }
+
+      // Enviar para grupos
+      if (alert.whatsapp_group_id) {
+        const groups = alert.whatsapp_group_id.split(',').filter(Boolean);
+        for (const groupId of groups) {
+          if (await sendWhatsApp(instance, groupId, message)) sent++;
+        }
+      }
+
+      // Atualizar alerta
+      await supabase
+        .from('ai_alerts')
+        .update({ last_triggered_at: now.toISOString(), last_checked_at: now.toISOString() })
+        .eq('id', alert.id);
+
+      // Registrar histórico
+      await supabase.from('ai_alert_history').insert({
+        alert_id: alert.id,
+        triggered_at: now.toISOString(),
+        trigger_type: 'scheduled',
+        value_at_trigger: valorReal,
+        notification_sent: true,
+        notification_details: JSON.stringify({ sent })
+      });
+
+      results.push({ alert: alert.name, sent, valor: valorReal });
+    }
+
+    return NextResponse.json({
+      message: `Verificação concluída`,
+      time: currentTime,
+      checked: alerts.length,
+      triggered: results.length,
+      results
+    });
+
+  } catch (error: any) {
+    console.error('[CRON] Erro:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+

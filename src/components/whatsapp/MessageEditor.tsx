@@ -18,6 +18,7 @@ interface MessageEditorProps {
   onChange: (value: string) => void;
   alertName?: string;
   showTemplates?: boolean;
+  previewValue?: string;  // NOVO - valor real do DAX para preview
 }
 
 const TEMPLATES = [
@@ -41,7 +42,7 @@ const TEMPLATES = [
 
 const EMOJIS = ['📊', '📈', '📉', '💰', '🎯', '✅', '❌', '⚠️', '🔔', '🚨', '📅', '🕐', '💡', '🏆', '🎉', '👏', '📋', '📌', '🔥', '⭐'];
 
-export default function MessageEditor({ value, onChange, alertName = 'Meu Alerta', showTemplates = true }: MessageEditorProps) {
+export default function MessageEditor({ value, onChange, alertName = 'Meu Alerta', showTemplates = true, previewValue }: MessageEditorProps) {
   const [showPreview, setShowPreview] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showTemplatesPicker, setShowTemplatesPicker] = useState(false);
@@ -89,7 +90,7 @@ export default function MessageEditor({ value, onChange, alertName = 'Meu Alerta
     const now = new Date();
     preview = preview
       .replace(/\{\{nome_alerta\}\}/g, `<span class="bg-blue-100 text-blue-700 px-1 rounded">${alertName}</span>`)
-      .replace(/\{\{valor\}\}/g, '<span class="bg-green-100 text-green-700 px-1 rounded">R$ 91.603,96</span>')
+      .replace(/\{\{valor\}\}/g, `<span class="bg-green-100 text-green-700 px-1 rounded">${previewValue || 'R$ 0,00'}</span>`)
       .replace(/\{\{data\}\}/g, `<span class="bg-purple-100 text-purple-700 px-1 rounded">${now.toLocaleDateString('pt-BR')}</span>`)
       .replace(/\{\{hora\}\}/g, `<span class="bg-purple-100 text-purple-700 px-1 rounded">${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>`)
       .replace(/\{\{condicao\}\}/g, '<span class="bg-orange-100 text-orange-700 px-1 rounded">Maior que</span>')
