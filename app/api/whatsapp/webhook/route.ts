@@ -1,0 +1,342 @@
+import { NextResponse } from 'next/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import Anthropic from '@anthropic-ai/sdk';
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY || '',
+});
+
+// Função para executar DAX
+async function executeDaxQuery(connectionId: string, datasetId: string, query: string, supabase: any): Promise<{ success: boolean; results?: any[]; error?: string }> {
+  try {
+    const { data: connection } = await supabase
+      .from('powerbi_connections')
+      .select('*')
+      .eq('id', connectionId)
+      .single();
+
+    if (!connection) {
+      return { success: false, error: 'Conexão não encontrada' };
+    }
+
+    const tokenUrl = `https://login.microsoftonline.com/${connection.tenant_id}/oauth2/v2.0/token`;
+    const tokenResponse = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: connection.client_id,
+        client_secret: connection.client_secret,
+        scope: 'https://analysis.windows.net/powerbi/api/.default',
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      return { success: false, error: 'Erro na autenticação' };
+    }
+
+    const tokenData = await tokenResponse.json();
+
+    const daxRes = await fetch(
+      `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/datasets/${datasetId}/executeQueries`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${tokenData.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          queries: [{ query }],
+          serializerSettings: { includeNulls: true }
+        })
+      }
+    );
+
+    if (!daxRes.ok) {
+      const errorText = await daxRes.text();
+      return { success: false, error: `Erro DAX: ${errorText}` };
+    }
+
+    const daxData = await daxRes.json();
+    const results = daxData.results?.[0]?.tables?.[0]?.rows || [];
+
+    return { success: true, results };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
+// Função para enviar mensagem via WhatsApp
+async function sendWhatsAppMessage(instance: any, phone: string, message: string) {
+  try {
+    const response = await fetch(`${instance.api_url}/message/sendText/${instance.instance_name}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': instance.api_key
+      },
+      body: JSON.stringify({
+        number: phone.replace(/\D/g, ''),
+        text: message
+      })
+    });
+    return response.ok;
+  } catch (error) {
+    console.error('Erro ao enviar mensagem:', error);
+    return false;
+  }
+}
+
+// POST - Webhook do Evolution API
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    console.log('Webhook recebido:', JSON.stringify(body).substring(0, 500));
+
+    const supabase = createAdminClient();
+
+    // Extrair dados da mensagem (formato Evolution API v2)
+    const event = body.event || body.type;
+    const messageData = body.data || body;
+    
+    // Só processa mensagens recebidas
+    if (event !== 'messages.upsert' && event !== 'message') {
+      return NextResponse.json({ status: 'ignored', reason: 'not a message event' });
+    }
+
+    const message = messageData.message || messageData;
+    const remoteJid = message.key?.remoteJid || messageData.remoteJid;
+    const fromMe = message.key?.fromMe || false;
+    const messageText = message.message?.conversation || 
+                        message.message?.extendedTextMessage?.text ||
+                        message.body ||
+                        '';
+
+    // Ignora mensagens enviadas por mim ou vazias
+    if (fromMe || !messageText.trim()) {
+      return NextResponse.json({ status: 'ignored', reason: 'fromMe or empty' });
+    }
+
+    // Extrair número do telefone
+    const phone = remoteJid?.replace('@s.whatsapp.net', '').replace('@g.us', '') || '';
+    
+    console.log('Mensagem recebida de:', phone);
+    console.log('Texto:', messageText);
+
+    // Verificar se o número é autorizado
+    const { data: authorizedNumber } = await supabase
+      .from('whatsapp_authorized_numbers')
+      .select('*, company_group_id')
+      .eq('phone_number', phone)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (!authorizedNumber) {
+      console.log('Número não autorizado:', phone);
+      return NextResponse.json({ status: 'ignored', reason: 'unauthorized number' });
+    }
+
+    // Salvar mensagem recebida
+    await supabase.from('whatsapp_messages').insert({
+      company_group_id: authorizedNumber.company_group_id,
+      phone_number: phone,
+      message_content: messageText,
+      direction: 'incoming',
+      sender_name: authorizedNumber.name || phone
+    });
+
+    // Buscar instância WhatsApp ativa
+    const { data: instance } = await supabase
+      .from('whatsapp_instances')
+      .select('*')
+      .eq('is_connected', true)
+      .limit(1)
+      .maybeSingle();
+
+    if (!instance) {
+      console.log('Nenhuma instância conectada');
+      return NextResponse.json({ status: 'error', reason: 'no instance' });
+    }
+
+    // Buscar último alerta disparado para este número (últimas 24h)
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentAlert } = await supabase
+      .from('ai_alerts')
+      .select('*')
+      .contains('whatsapp_number', [phone])
+      .gte('last_triggered_at', oneDayAgo)
+      .order('last_triggered_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // Buscar contexto do modelo (se houver alerta com conexão)
+    let modelContext = '';
+    if (recentAlert?.connection_id) {
+      const { data: context } = await supabase
+        .from('ai_model_contexts')
+        .select('context_content')
+        .eq('connection_id', recentAlert.connection_id)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+      
+      if (context?.context_content) {
+        modelContext = context.context_content.slice(0, 6000);
+      }
+    }
+
+    // Construir prompt para a IA
+    const systemPrompt = `Você é um assistente de BI via WhatsApp. Responda de forma concisa e direta.
+
+${modelContext ? `## CONTEXTO DO MODELO DE DADOS\n${modelContext}\n` : ''}
+
+## REGRAS
+- Respostas curtas e objetivas (máximo 500 caracteres)
+- Use emojis moderadamente
+- Formate valores: R$ 1.234,56
+- Se precisar de dados, use a função execute_dax
+- Não mencione nomes técnicos de medidas ou tabelas
+- Sempre formate a resposta para WhatsApp (use *negrito* e _itálico_)
+
+## CONTEXTO DO ALERTA
+${recentAlert ? `
+Último alerta: ${recentAlert.name}
+Query DAX: ${recentAlert.dax_query}
+Dataset: ${recentAlert.dataset_id}
+Conexão: ${recentAlert.connection_id}
+` : 'Nenhum alerta recente encontrado.'}
+
+## DATA ATUAL
+${new Date().toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+`;
+
+    // Definir tools para o Claude
+    const tools: Anthropic.Tool[] = recentAlert?.connection_id && recentAlert?.dataset_id ? [
+      {
+        name: 'execute_dax',
+        description: 'Executa uma query DAX no Power BI para buscar dados.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            query: {
+              type: 'string',
+              description: 'A query DAX a ser executada'
+            }
+          },
+          required: ['query']
+        }
+      }
+    ] : [];
+
+    // Chamar Claude
+    let response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 500,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: messageText }],
+      tools: tools.length > 0 ? tools : undefined
+    });
+
+    // Processar tool calls
+    let iterations = 0;
+    const maxIterations = 2;
+    const messages: any[] = [{ role: 'user', content: messageText }];
+
+    while (response.stop_reason === 'tool_use' && iterations < maxIterations) {
+      iterations++;
+      
+      const toolUseBlocks = response.content.filter((block: any) => block.type === 'tool_use');
+      const toolResults: any[] = [];
+
+      for (const toolUse of toolUseBlocks) {
+        if (toolUse.type === 'tool_use' && toolUse.name === 'execute_dax' && recentAlert) {
+          const toolInput = toolUse.input as { query?: string };
+          if (!toolInput.query) continue;
+
+          console.log('Executando DAX via WhatsApp:', toolInput.query);
+
+          const daxResult = await executeDaxQuery(
+            recentAlert.connection_id,
+            recentAlert.dataset_id,
+            toolInput.query,
+            supabase
+          );
+
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: toolUse.id,
+            content: daxResult.success
+              ? JSON.stringify(daxResult.results, null, 2)
+              : `Erro: ${daxResult.error}`
+          });
+        }
+      }
+
+      if (toolResults.length === 0) break;
+
+      messages.push({ role: 'assistant', content: response.content });
+      messages.push({ role: 'user', content: toolResults });
+
+      response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 500,
+        system: systemPrompt,
+        messages,
+        tools: tools.length > 0 ? tools : undefined
+      });
+    }
+
+    // Extrair resposta final
+    let assistantMessage = '';
+    for (const block of response.content) {
+      if (block.type === 'text') {
+        assistantMessage += block.text;
+      }
+    }
+
+    if (!assistantMessage.trim()) {
+      assistantMessage = 'Desculpe, não consegui processar sua pergunta. Tente novamente!';
+    }
+
+    // Limitar tamanho da mensagem
+    if (assistantMessage.length > 1000) {
+      assistantMessage = assistantMessage.substring(0, 997) + '...';
+    }
+
+    console.log('Resposta IA:', assistantMessage);
+
+    // Enviar resposta
+    const sent = await sendWhatsAppMessage(instance, phone, assistantMessage);
+
+    // Salvar mensagem enviada
+    if (sent) {
+      await supabase.from('whatsapp_messages').insert({
+        company_group_id: authorizedNumber.company_group_id,
+        phone_number: phone,
+        message_content: assistantMessage,
+        direction: 'outgoing',
+        sender_name: 'Assistente IA'
+      });
+    }
+
+    return NextResponse.json({ 
+      status: 'success', 
+      sent,
+      response: assistantMessage.substring(0, 100) + '...'
+    });
+
+  } catch (error: any) {
+    console.error('Erro no webhook:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+// GET - Verificação do webhook
+export async function GET(request: Request) {
+  return NextResponse.json({ 
+    status: 'ok', 
+    message: 'Webhook WhatsApp ativo',
+    timestamp: new Date().toISOString()
+  });
+}
+

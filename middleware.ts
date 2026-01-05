@@ -23,7 +23,15 @@ function getJwtSecret(): Uint8Array {
 
 export async function middleware(request: NextRequest) {
   // Rotas públicas que não requerem autenticação
-  const publicRoutes = ['/login', '/api/auth/login', '/api/auth/logout'];
+  const publicRoutes = [
+    '/login', 
+    '/api/auth/login', 
+    '/api/auth/logout',
+    '/api/whatsapp/webhook',
+    '/api/whatsapp/webhook/messages-upsert',
+    '/api/whatsapp/webhook/contacts-update',
+    '/api/whatsapp/webhook/chats-update',
+  ];
   
   // Obtém o pathname da requisição
   const pathname = request.nextUrl.pathname;
