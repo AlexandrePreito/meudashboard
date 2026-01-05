@@ -1,6 +1,15 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
+const CONDITIONS_MAP: Record<string, string> = {
+  'greater_than': 'Maior que',
+  'less_than': 'Menor que',
+  'equals': 'Igual a',
+  'not_equals': 'Diferente de',
+  'greater_or_equal': 'Maior ou igual',
+  'less_or_equal': 'Menor ou igual',
+};
+
 // Função para executar DAX
 async function executeDaxQuery(connectionId: string, datasetId: string, query: string, supabase: any) {
   try {
@@ -135,27 +144,53 @@ export async function GET(request: Request) {
 
       console.log(`[CRON] Disparando alerta: ${alert.name}`);
 
-      // Executar DAX
-      let valorReal = 'Valor não disponível';
+      // Executar DAX e extrair todas as variáveis
+      let variables: Record<string, string> = {
+        '{{nome_alerta}}': alert.name,
+        '{{data}}': now.toLocaleDateString('pt-BR'),
+        '{{hora}}': now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        '{{condicao}}': CONDITIONS_MAP[alert.condition] || alert.condition,
+        '{{threshold}}': alert.threshold?.toLocaleString('pt-BR') || '0',
+      };
+
       if (alert.connection_id && alert.dataset_id && alert.dax_query) {
         const daxResult = await executeDaxQuery(alert.connection_id, alert.dataset_id, alert.dax_query, supabase);
+        
         if (daxResult.success && daxResult.results?.length > 0) {
-          const firstValue = Object.values(daxResult.results[0])[0];
-          if (typeof firstValue === 'number') {
-            valorReal = firstValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-          } else {
-            valorReal = String(firstValue);
+          const row = daxResult.results[0];
+          
+          // Extrair todas as colunas do resultado DAX como variáveis
+          for (const [key, value] of Object.entries(row)) {
+            // Remove colchetes do nome da coluna: [Valor] -> Valor
+            const cleanKey = key.replace(/^\[|\]$/g, '').toLowerCase().replace(/\s+/g, '_');
+            
+            // Formata o valor
+            let formattedValue: string;
+            if (typeof value === 'number') {
+              // Se parece ser valor monetário (maior que 100), formata como moeda
+              if (Math.abs(value) >= 100) {
+                formattedValue = value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+              } else {
+                formattedValue = value.toLocaleString('pt-BR');
+              }
+            } else {
+              formattedValue = String(value || '');
+            }
+            
+            // Adiciona como variável (várias formas de acessar)
+            variables[`{{${cleanKey}}}`] = formattedValue;
+            variables[`{{${key}}}`] = formattedValue;
+          }
+          
+          // Garantir que {{valor}} pegue o primeiro valor numérico
+          const firstNumericValue = Object.values(row).find(v => typeof v === 'number');
+          if (firstNumericValue !== undefined) {
+            variables['{{valor}}'] = (firstNumericValue as number).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
           }
         }
       }
 
-      // Preparar mensagem
-      const variables: Record<string, string> = {
-        '{{nome_alerta}}': alert.name,
-        '{{valor}}': valorReal,
-        '{{data}}': now.toLocaleDateString('pt-BR'),
-        '{{hora}}': now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-      };
+      console.log('[CRON] Variáveis disponíveis:', Object.keys(variables));
 
       let message = alert.message_template || '🔔 {{nome_alerta}}\n📊 Valor: {{valor}}\n📅 {{data}} às {{hora}}';
       for (const [key, value] of Object.entries(variables)) {
@@ -190,12 +225,12 @@ export async function GET(request: Request) {
         alert_id: alert.id,
         triggered_at: now.toISOString(),
         trigger_type: 'scheduled',
-        value_at_trigger: valorReal,
+        value_at_trigger: variables['{{valor}}'] || 'N/A',
         notification_sent: true,
         notification_details: JSON.stringify({ sent })
       });
 
-      results.push({ alert: alert.name, sent, valor: valorReal });
+      results.push({ alert: alert.name, sent, valor: variables['{{valor}}'] || 'N/A' });
     }
 
     return NextResponse.json({

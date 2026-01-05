@@ -841,11 +841,17 @@ export default function EditarAlertaPage() {
                       <div className="flex flex-wrap gap-2">
                         {[
                           { key: '{{nome_alerta}}', label: 'Nome do Alerta' },
-                          { key: '{{valor}}', label: 'Valor' },
+                          { key: '{{valor}}', label: 'Valor (1º numérico)' },
                           { key: '{{data}}', label: 'Data' },
                           { key: '{{hora}}', label: 'Hora' },
                           { key: '{{condicao}}', label: 'Condição' },
                           { key: '{{threshold}}', label: 'Limite' },
+                          { key: '{{filial}}', label: 'Filial' },
+                          { key: '{{vendedor}}', label: 'Vendedor' },
+                          { key: '{{produto}}', label: 'Produto' },
+                          { key: '{{quantidade}}', label: 'Quantidade' },
+                          { key: '{{meta}}', label: 'Meta' },
+                          { key: '{{percentual}}', label: 'Percentual' },
                         ].map((variable) => (
                           <button
                             key={variable.key}
