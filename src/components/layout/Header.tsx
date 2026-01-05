@@ -27,7 +27,7 @@ const mainNavItems = [
   { href: '/', label: 'Dashboards' },
   { href: '/powerbi', label: 'Power BI' },
   { href: '/whatsapp', label: 'WhatsApp' },
-  { href: '/config', label: 'Configurações' },
+  { href: '/configuracoes', label: 'Configurações' },
 ];
 
 export default function Header({ user }: HeaderProps) {
