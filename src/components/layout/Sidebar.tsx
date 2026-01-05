@@ -26,7 +26,8 @@ import {
   Webhook,
   LayoutDashboard,
   Bell,
-  Plus
+  Plus,
+  History
 } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
 
@@ -82,6 +83,7 @@ export default function Sidebar() {
     { href: '/whatsapp/grupos', icon: UsersRound, label: 'Grupos Autorizados' },
     { href: '/whatsapp/mensagens', icon: MessageSquare, label: 'Mensagens' },
     { href: '/alertas', icon: Bell, label: 'Alertas' },
+    { href: '/alertas/historico', icon: History, label: 'Histórico' },
     { href: '/whatsapp/webhook', icon: Webhook, label: 'Webhook' },
   ];
 
@@ -166,9 +168,7 @@ export default function Sidebar() {
               <nav className="px-2 pb-4 border-b border-gray-100 mb-2">
                 {configMenuItems.map((item) => {
                   const Icon = item.icon;
-                  const isActive = item.href === '/configuracoes' 
-                    ? pathname === '/configuracoes'
-                    : pathname.startsWith(item.href);
+                  const isActive = pathname === item.href;
                   return (
                     <Link
                       key={item.href}
@@ -201,9 +201,7 @@ export default function Sidebar() {
               <nav className="px-2 pb-4 border-b border-gray-100 mb-2">
                 {whatsappMenuItems.map((item) => {
                   const Icon = item.icon;
-                  const isActive = item.href === '/whatsapp' 
-                    ? pathname === '/whatsapp'
-                    : pathname.startsWith(item.href);
+                  const isActive = pathname === item.href;
                   return (
                     <Link
                       key={item.href}
@@ -236,9 +234,7 @@ export default function Sidebar() {
               <nav className="px-2 pb-4 border-b border-gray-100 mb-2">
                   {powerBIMenuItems.map((item) => {
                     const Icon = item.icon;
-                    const isActive = item.href === '/powerbi' 
-                      ? pathname === '/powerbi'
-                      : pathname.startsWith(item.href);
+                    const isActive = pathname === item.href;
                     return (
                       <Link
                         key={item.href}
