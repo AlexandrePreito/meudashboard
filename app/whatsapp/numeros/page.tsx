@@ -39,6 +39,7 @@ export default function NumerosAutorizadosPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterInstance, setFilterInstance] = useState('');
 
   const [showModal, setShowModal] = useState(false);
   const [editingNumber, setEditingNumber] = useState<AuthorizedNumber | null>(null);
@@ -207,12 +208,22 @@ export default function NumerosAutorizadosPage() {
   }
 
   const filteredNumbers = numbers.filter(num => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    return (
-      num.name.toLowerCase().includes(term) ||
-      num.phone_number.includes(term)
-    );
+    // Filtro de busca
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      const matchesSearch = num.name.toLowerCase().includes(term) || num.phone_number.includes(term);
+      if (!matchesSearch) return false;
+    }
+    
+    // Filtro de instância
+    if (filterInstance) {
+      if (filterInstance === 'sem-instancia') {
+        return !num.instance;
+      }
+      return num.instance?.id === filterInstance;
+    }
+    
+    return true;
   });
 
   return (
@@ -226,23 +237,36 @@ export default function NumerosAutorizadosPage() {
           </div>
           <button
             onClick={openNew}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
           >
             <Plus size={20} />
             Novo Número
           </button>
         </div>
 
-        {/* Busca */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-          <input
-            type="text"
-            placeholder="Buscar por nome ou telefone..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-          />
+        {/* Busca e Filtros */}
+        <div className="flex gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+            <input
+              type="text"
+              placeholder="Buscar por nome ou telefone..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <select
+            value={filterInstance}
+            onChange={(e) => setFilterInstance(e.target.value)}
+            className="px-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 min-w-[200px]"
+          >
+            <option value="">Todas as instâncias</option>
+            <option value="sem-instancia">Sem instância</option>
+            {instances.map(inst => (
+              <option key={inst.id} value={inst.id}>{inst.name}</option>
+            ))}
+          </select>
         </div>
 
         {/* Lista */}
@@ -436,7 +460,7 @@ export default function NumerosAutorizadosPage() {
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
                 >
                   {saving && <Loader2 size={16} className="animate-spin" />}
                   {editingNumber ? 'Salvar' : 'Autorizar'}

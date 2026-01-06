@@ -42,7 +42,7 @@ interface MenuProviderProps {
 }
 
 export function MenuProvider({ children }: MenuProviderProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const [activeGroup, setActiveGroup] = useState<CompanyGroup | null>(null);
 
   return (

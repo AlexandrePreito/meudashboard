@@ -12,7 +12,22 @@ import {
   Star,
   StarOff,
   Eye,
-  EyeOff
+  EyeOff,
+  Copy,
+  Search,
+  Filter,
+  Monitor,
+  BarChart3,
+  PieChart,
+  TrendingUp,
+  Activity,
+  DollarSign,
+  Users,
+  ShoppingCart,
+  Package,
+  Truck,
+  Factory,
+  LucideIcon
 } from 'lucide-react';
 
 interface Report {
@@ -39,6 +54,28 @@ const ICONS = [
   'DollarSign', 'Users', 'ShoppingCart', 'Package', 'Truck', 'Factory'
 ];
 
+// Mapeamento de nomes de ícones para componentes
+const ICON_MAP: Record<string, LucideIcon> = {
+  Monitor,
+  BarChart3,
+  FileText,
+  PieChart,
+  TrendingUp,
+  Activity,
+  DollarSign,
+  Users,
+  ShoppingCart,
+  Package,
+  Truck,
+  Factory
+};
+
+// Função para renderizar o ícone
+function renderIcon(iconName: string, size: number = 20, className?: string) {
+  const IconComponent = ICON_MAP[iconName] || Monitor;
+  return <IconComponent size={size} className={className} />;
+}
+
 export default function TelasPage() {
   const [screens, setScreens] = useState<Screen[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
@@ -46,6 +83,8 @@ export default function TelasPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingScreen, setEditingScreen] = useState<Screen | null>(null);
   const [saving, setSaving] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterGroup, setFilterGroup] = useState('');
   
   const [form, setForm] = useState({
     report_id: '',
@@ -102,6 +141,18 @@ export default function TelasPage() {
         is_active: true
       });
     }
+    setShowModal(true);
+  }
+
+  function handleCopy(screen: Screen) {
+    setEditingScreen(null); // Não está editando, está criando novo
+    setForm({
+      report_id: screen.report?.id || '',
+      title: `${screen.title} (Cópia)`,
+      icon: screen.icon,
+      is_first: false,
+      is_active: screen.is_active
+    });
     setShowModal(true);
   }
 
@@ -227,6 +278,38 @@ export default function TelasPage() {
           </div>
         )}
 
+        {/* Campos de Busca e Filtro */}
+        {screens.length > 0 && (
+          <div className="flex gap-4">
+            {/* Campo de Busca */}
+            <div className="flex-1 relative">
+              <Search size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar por título ou relatório..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+
+            {/* Filtro por Grupo */}
+            <div className="relative min-w-[250px]">
+              <Filter size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <select
+                value={filterGroup}
+                onChange={(e) => setFilterGroup(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none"
+              >
+                <option value="">Todos os grupos</option>
+                {Array.from(new Set(screens.map(s => s.company_group?.name).filter(Boolean))).map((groupName) => (
+                  <option key={groupName} value={groupName}>{groupName}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
         {screens.length === 0 ? (
           <div className="bg-white rounded-2xl p-12 text-center border border-gray-100">
             <Layers size={48} className="mx-auto text-gray-300 mb-4" />
@@ -255,12 +338,30 @@ export default function TelasPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {screens.map((screen) => (
+                {screens
+                  .filter(screen => {
+                    // Filtro de busca
+                    if (searchTerm) {
+                      const term = searchTerm.toLowerCase();
+                      const matchesSearch = 
+                        screen.title.toLowerCase().includes(term) ||
+                        screen.report?.name.toLowerCase().includes(term);
+                      if (!matchesSearch) return false;
+                    }
+                    
+                    // Filtro de grupo
+                    if (filterGroup && screen.company_group?.name !== filterGroup) {
+                      return false;
+                    }
+                    
+                    return true;
+                  })
+                  .map((screen) => (
                   <tr key={screen.id} className={`hover:bg-gray-50 ${!screen.is_active ? 'opacity-50' : ''}`}>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-blue-100 rounded-lg">
-                          <Layers size={18} className="text-blue-600" />
+                          {renderIcon(screen.icon, 18, 'text-blue-600')}
                         </div>
                         <div className="font-medium text-gray-900">{screen.title}</div>
                       </div>
@@ -297,12 +398,21 @@ export default function TelasPage() {
                       <button
                         onClick={() => openModal(screen)}
                         className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg mr-1"
+                        title="Editar"
                       >
                         <Pencil size={16} />
                       </button>
                       <button
+                        onClick={() => handleCopy(screen)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg mr-1"
+                        title="Copiar"
+                      >
+                        <Copy size={16} />
+                      </button>
+                      <button
                         onClick={() => handleDelete(screen.id)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                        title="Excluir"
                       >
                         <Trash2 size={16} />
                       </button>
@@ -366,7 +476,7 @@ export default function TelasPage() {
                       }`}
                       title={icon}
                     >
-                      <Layers size={20} className={form.icon === icon ? 'text-blue-600' : 'text-gray-600'} />
+                      {renderIcon(icon, 20, form.icon === icon ? 'text-blue-600' : 'text-gray-600')}
                     </button>
                   ))}
                 </div>
@@ -378,7 +488,7 @@ export default function TelasPage() {
                     type="checkbox"
                     checked={form.is_active}
                     onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded"
+                    className="w-4 h-4 text-blue-600 bg-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2 accent-blue-600"
                   />
                   <span className="text-sm text-gray-700">Ativa</span>
                 </label>
@@ -388,26 +498,26 @@ export default function TelasPage() {
                     type="checkbox"
                     checked={form.is_first}
                     onChange={(e) => setForm({ ...form, is_first: e.target.checked })}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded"
+                    className="w-4 h-4 text-blue-600 bg-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2 accent-blue-600"
                   />
                   <span className="text-sm text-gray-700">Tela principal</span>
                 </label>
               </div>
 
-              <div className="flex gap-3 pt-4">
+              <div className="flex gap-2 pt-4 justify-end">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {saving && <Loader2 size={18} className="animate-spin" />}
+                  {saving && <Loader2 size={16} className="animate-spin" />}
                   {saving ? 'Salvando...' : 'Salvar'}
                 </button>
               </div>

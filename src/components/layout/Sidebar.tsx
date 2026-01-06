@@ -18,6 +18,7 @@ import {
   Server,
   Brain,
   Settings,
+  User,
   Users,
   Building2,
   Smartphone,
@@ -27,7 +28,10 @@ import {
   LayoutDashboard,
   Bell,
   Plus,
-  History
+  History,
+  ArrowUpDown,
+  Crown,
+  Package
 } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
 
@@ -69,17 +73,20 @@ export default function Sidebar() {
     { href: '/powerbi/telas', icon: Layers, label: 'Telas' },
     { href: '/powerbi/gateways', icon: Server, label: 'Gateways' },
     { href: '/powerbi/contextos', icon: Brain, label: 'Contextos IA' },
+    { href: '/powerbi/ordem-atualizacao', icon: ArrowUpDown, label: 'Ordem Atualização' },
   ];
 
   const configMenuItems = [
     { href: '/configuracoes', icon: Users, label: 'Usuários' },
     { href: '/configuracoes/grupos', icon: Building2, label: 'Grupos' },
+    { href: '/configuracoes/planos', icon: Crown, label: 'Planos' },
+    { href: '/configuracoes/modulos', icon: Package, label: 'Módulos' },
   ];
 
   const whatsappMenuItems = [
     { href: '/whatsapp', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/whatsapp/instancias', icon: Smartphone, label: 'Instâncias' },
-    { href: '/whatsapp/numeros', icon: Users, label: 'Números Autorizados' },
+    { href: '/whatsapp/numeros', icon: User, label: 'Números Autorizados' },
     { href: '/whatsapp/grupos', icon: UsersRound, label: 'Grupos Autorizados' },
     { href: '/whatsapp/mensagens', icon: MessageSquare, label: 'Mensagens' },
     { href: '/alertas', icon: Bell, label: 'Alertas' },
@@ -201,7 +208,14 @@ export default function Sidebar() {
               <nav className="px-2 pb-4 border-b border-gray-100 mb-2">
                 {whatsappMenuItems.map((item) => {
                   const Icon = item.icon;
-                  const isActive = pathname === item.href;
+                  let isActive = pathname === item.href;
+                  
+                  // Lógica especial para /alertas: marca como ativo em /alertas/novo, /alertas/[id], etc.
+                  // Mas não marca quando estiver em /alertas/historico (que tem seu próprio item)
+                  if (item.href === '/alertas' && pathname.startsWith('/alertas/') && !pathname.startsWith('/alertas/historico')) {
+                    isActive = true;
+                  }
+                  
                   return (
                     <Link
                       key={item.href}

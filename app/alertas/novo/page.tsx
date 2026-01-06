@@ -10,7 +10,6 @@ import {
   GitBranch,
   Clock,
   FileCode,
-  ArrowLeft,
   Play,
   RefreshCw,
   Send,
@@ -19,7 +18,8 @@ import {
   Loader2,
   Check,
   Plus,
-  Trash2
+  Trash2,
+  Sparkles
 } from 'lucide-react';
 
 interface Connection {
@@ -103,6 +103,7 @@ export default function NovoAlertaPage() {
   const [selectedGroupToAdd, setSelectedGroupToAdd] = useState('');
   const [testingDax, setTestingDax] = useState(false);
   const [daxTestResult, setDaxTestResult] = useState<{ success: boolean; message: string; value?: any } | null>(null);
+  const [generatingTemplate, setGeneratingTemplate] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -222,6 +223,43 @@ export default function NovoAlertaPage() {
     }
   }
 
+  async function handleGenerateTemplate() {
+    if (!formData.name) {
+      alert('Preencha o nome do alerta primeiro');
+      return;
+    }
+
+    setGeneratingTemplate(true);
+    try {
+      const res = await fetch('/api/ai/generate-alert-template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          alert_name: formData.name,
+          alert_type: formData.alert_type,
+          description: formData.description,
+          condition: formData.condition,
+          threshold: formData.threshold
+        })
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.template) {
+        setFormData(prev => ({
+          ...prev,
+          message_template: data.template
+        }));
+      } else {
+        alert(data.error || 'Erro ao gerar template');
+      }
+    } catch (err) {
+      alert('Erro ao gerar template com IA');
+    } finally {
+      setGeneratingTemplate(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     
@@ -294,19 +332,11 @@ export default function NovoAlertaPage() {
 
   return (
     <MainLayout>
-      <div className="max-w-4xl mx-auto">
+      <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <button
-            onClick={() => router.back()}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Novo Alerta</h1>
-            <p className="text-gray-500 text-sm">Configure um alerta automático baseado em dados</p>
-          </div>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Novo Alerta</h1>
+          <p className="text-gray-500 text-sm mt-1">Configure um alerta automático baseado em dados</p>
         </div>
 
         {/* Tabs */}
@@ -341,19 +371,43 @@ export default function NovoAlertaPage() {
             <div className="p-6">
               {/* Tab: Geral */}
               {activeTab === 'geral' && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Nome do Alerta *
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder="Ex: Vendas abaixo da meta"
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                      required
-                    />
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Nome do Alerta *
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        placeholder="Ex: Vendas abaixo da meta"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Tipo do Alerta
+                      </label>
+                      <div className="flex gap-2">
+                        {ALERT_TYPES.map(type => (
+                          <button
+                            key={type.value}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, alert_type: type.value })}
+                            className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                              formData.alert_type === type.value
+                                ? type.color + ' ring-2 ring-offset-2 ring-blue-500'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            }`}
+                          >
+                            {type.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
                   <div>
@@ -368,67 +422,47 @@ export default function NovoAlertaPage() {
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 resize-none"
                     />
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Tipo do Alerta
-                    </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {ALERT_TYPES.map(type => (
-                        <button
-                          key={type.value}
-                          type="button"
-                          onClick={() => setFormData({ ...formData, alert_type: type.value })}
-                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                            formData.alert_type === type.value
-                              ? type.color + ' ring-2 ring-offset-2 ring-blue-500'
-                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                          }`}
-                        >
-                          {type.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
                 </div>
               )}
 
               {/* Tab: Dados */}
               {activeTab === 'dados' && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Conexão Power BI *
-                    </label>
-                    <select
-                      value={formData.connection_id}
-                      onChange={(e) => setFormData({ ...formData, connection_id: e.target.value, dataset_id: '' })}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                    >
-                      <option value="">Selecione uma conexão</option>
-                      {connections.map(conn => (
-                        <option key={conn.id} value={conn.id}>{conn.name}</option>
-                      ))}
-                    </select>
-                  </div>
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Conexão Power BI *
+                      </label>
+                      <select
+                        value={formData.connection_id}
+                        onChange={(e) => setFormData({ ...formData, connection_id: e.target.value, dataset_id: '' })}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
+                      >
+                        <option value="">Selecione uma conexão</option>
+                        {connections.map(conn => (
+                          <option key={conn.id} value={conn.id}>{conn.name}</option>
+                        ))}
+                      </select>
+                    </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Dataset *
-                    </label>
-                    <select
-                      value={formData.dataset_id}
-                      onChange={(e) => setFormData({ ...formData, dataset_id: e.target.value })}
-                      disabled={!formData.connection_id || loadingDatasets}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 disabled:bg-gray-100"
-                    >
-                      <option value="">
-                        {loadingDatasets ? 'Carregando...' : 'Selecione um dataset'}
-                      </option>
-                      {datasets.map(ds => (
-                        <option key={ds.id} value={ds.id}>{ds.name}</option>
-                      ))}
-                    </select>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Dataset *
+                      </label>
+                      <select
+                        value={formData.dataset_id}
+                        onChange={(e) => setFormData({ ...formData, dataset_id: e.target.value })}
+                        disabled={!formData.connection_id || loadingDatasets}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 disabled:bg-gray-100"
+                      >
+                        <option value="">
+                          {loadingDatasets ? 'Carregando...' : 'Selecione um dataset'}
+                        </option>
+                        {datasets.map(ds => (
+                          <option key={ds.id} value={ds.id}>{ds.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   <div>
@@ -519,12 +553,12 @@ export default function NovoAlertaPage() {
 
               {/* Tab: Agendamento */}
               {activeTab === 'agendamento' && (
-                <div className="space-y-4">
+                <div className="space-y-6">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Frequência
                     </label>
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-3 gap-3">
                       {CHECK_FREQUENCIES.map(freq => (
                         <button
                           key={freq.value}
@@ -570,14 +604,14 @@ export default function NovoAlertaPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Horários de Verificação
                     </label>
-                    <div className="space-y-2">
+                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                       {formData.check_times.map((time, index) => (
                         <div key={index} className="flex items-center gap-2">
                           <input
                             type="time"
                             value={time}
                             onChange={(e) => updateCheckTime(index, e.target.value)}
-                            className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
+                            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
                           />
                           {formData.check_times.length > 1 && (
                             <button
@@ -590,15 +624,15 @@ export default function NovoAlertaPage() {
                           )}
                         </div>
                       ))}
-                      <button
-                        type="button"
-                        onClick={addCheckTime}
-                        className="flex items-center gap-2 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg text-sm"
-                      >
-                        <Plus size={16} />
-                        Adicionar horário
-                      </button>
                     </div>
+                    <button
+                      type="button"
+                      onClick={addCheckTime}
+                      className="flex items-center gap-2 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg text-sm mt-3"
+                    >
+                      <Plus size={16} />
+                      Adicionar horário
+                    </button>
                   </div>
 
                   {/* WhatsApp */}
@@ -759,6 +793,27 @@ export default function NovoAlertaPage() {
               {/* Tab: Template */}
               {activeTab === 'notificacoes' && (
                 <div className="space-y-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-700">Template da Mensagem</h3>
+                      <p className="text-xs text-gray-500 mt-0.5">Configure a mensagem que será enviada quando o alerta for disparado</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleGenerateTemplate}
+                      disabled={generatingTemplate || !formData.name}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                      title="Gerar template com IA"
+                    >
+                      {generatingTemplate ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Sparkles size={16} />
+                      )}
+                      {generatingTemplate ? 'Gerando...' : 'IA'}
+                    </button>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Campos Disponíveis
@@ -852,7 +907,7 @@ export default function NovoAlertaPage() {
                   <button
                     type="submit"
                     disabled={saving}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 flex items-center gap-2"
+                    className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 flex items-center gap-2"
                   >
                     {saving && <Loader2 size={16} className="animate-spin" />}
                     Criar Alerta

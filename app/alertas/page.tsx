@@ -184,7 +184,7 @@ export default function AlertasPage() {
           </div>
           <Link
             href="/alertas/novo"
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
           >
             <Plus size={20} />
             Novo Alerta
@@ -263,7 +263,7 @@ export default function AlertasPage() {
             <p className="text-gray-500 mb-4">Crie alertas para monitorar seus dados automaticamente</p>
             <Link
               href="/alertas/novo"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
             >
               <Plus size={18} />
               Criar Alerta

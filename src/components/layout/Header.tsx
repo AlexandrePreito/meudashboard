@@ -87,6 +87,9 @@ export default function Header({ user }: HeaderProps) {
     if (href === '/') {
       return pathname === '/' || pathname.startsWith('/tela');
     }
+    if (href === '/whatsapp') {
+      return pathname.startsWith('/whatsapp') || pathname.startsWith('/alertas');
+    }
     return pathname.startsWith(href);
   }
 

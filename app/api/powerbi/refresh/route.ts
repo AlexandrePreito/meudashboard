@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser } from '@/lib/auth';
 
-// POST - Disparar atualização de dados
+// POST - Disparar atualização de dados (dataset ou dataflow)
 export async function POST(request: Request) {
   try {
     const user = await getAuthUser();
@@ -11,11 +11,12 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { screen_id, dataset_id, connection_id } = body;
+    const { screen_id, dataset_id, dataflow_id, connection_id } = body;
 
     const supabase = createAdminClient();
     let connection: any = null;
     let datasetId = dataset_id;
+    let dataflowId = dataflow_id;
 
     // Se passou screen_id, busca a conexão pela tela
     if (screen_id) {
@@ -38,15 +39,14 @@ export async function POST(request: Request) {
 
       connection = screen.report?.connection;
       datasetId = screen.report?.dataset_id;
-    } 
+    }
     // Se passou connection_id diretamente
-    else if (connection_id && dataset_id) {
+    else if (connection_id) {
       const { data: conn } = await supabase
         .from('powerbi_connections')
         .select('*')
         .eq('id', connection_id)
         .single();
-      
       connection = conn;
     }
 
@@ -54,13 +54,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Conexão Power BI não encontrada' }, { status: 400 });
     }
 
-    if (!datasetId) {
-      return NextResponse.json({ error: 'Dataset ID não encontrado' }, { status: 400 });
+    if (!datasetId && !dataflowId) {
+      return NextResponse.json({ error: 'Dataset ID ou Dataflow ID não encontrado' }, { status: 400 });
     }
 
     // Obter token do Azure AD
     const tokenUrl = `https://login.microsoftonline.com/${connection.tenant_id}/oauth2/v2.0/token`;
-
     const tokenResponse = await fetch(tokenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -79,38 +78,145 @@ export async function POST(request: Request) {
     const tokenData = await tokenResponse.json();
     const accessToken = tokenData.access_token;
 
-    // Disparar refresh do dataset
-    const refreshUrl = `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/datasets/${datasetId}/refreshes`;
+    // Se é um DATAFLOW
+    if (dataflowId) {
+      // Primeiro verificar se já tem refresh em andamento
+      const statusUrl = `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/dataflows/${dataflowId}/transactions?$top=1`;
+      const statusRes = await fetch(statusUrl, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        const lastTransaction = statusData.value?.[0];
+        if (lastTransaction?.status === 'InProgress') {
+          // Já tem refresh em andamento, retorna sucesso (o polling vai esperar terminar)
+          return NextResponse.json({ 
+            success: true, 
+            message: 'Atualização já em andamento',
+            type: 'dataflow',
+            dataflow_id: dataflowId,
+            alreadyInProgress: true
+          });
+        }
+      }
 
-    const refreshResponse = await fetch(refreshUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        notifyOption: 'NoNotification'
-      })
-    });
+      const refreshUrl = `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/dataflows/${dataflowId}/refreshes`;
+      
+      const refreshResponse = await fetch(refreshUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          notifyOption: 'NoNotification'
+        })
+      });
 
-    if (!refreshResponse.ok) {
-      const errorData = await refreshResponse.json().catch(() => ({}));
-      const errorMessage = errorData.error?.message || 'Falha ao iniciar atualização';
-      return NextResponse.json({ error: errorMessage }, { status: 400 });
+      if (!refreshResponse.ok) {
+        const errorText = await refreshResponse.text();
+        console.error('Erro ao atualizar dataflow:', errorText);
+        
+        // Se o erro é "já está atualizando", retorna sucesso
+        if (errorText.includes('AlreadyRefreshing') || errorText.includes('InProgress')) {
+          return NextResponse.json({ 
+            success: true, 
+            message: 'Atualização já em andamento',
+            type: 'dataflow',
+            dataflow_id: dataflowId,
+            alreadyInProgress: true
+          });
+        }
+        
+        return NextResponse.json({ 
+          error: 'Falha ao disparar atualização do dataflow',
+          details: errorText 
+        }, { status: refreshResponse.status });
+      }
+
+      return NextResponse.json({ 
+        success: true, 
+        message: 'Atualização do dataflow iniciada',
+        type: 'dataflow',
+        dataflow_id: dataflowId
+      });
     }
 
-    return NextResponse.json({
-      success: true,
-      message: 'Atualização iniciada com sucesso'
-    });
+    // Se é um DATASET
+    if (datasetId) {
+      // Primeiro verificar se já tem refresh em andamento
+      const statusUrl = `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/datasets/${datasetId}/refreshes?$top=1`;
+      const statusRes = await fetch(statusUrl, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        const lastRefresh = statusData.value?.[0];
+        if (lastRefresh?.status === 'Unknown') {
+          // Unknown geralmente significa em andamento para datasets
+          return NextResponse.json({ 
+            success: true, 
+            message: 'Atualização já em andamento',
+            type: 'dataset',
+            dataset_id: datasetId,
+            alreadyInProgress: true
+          });
+        }
+      }
+
+      const refreshUrl = `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/datasets/${datasetId}/refreshes`;
+      
+      const refreshResponse = await fetch(refreshUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          notifyOption: 'NoNotification'
+        })
+      });
+
+      if (!refreshResponse.ok) {
+        const errorText = await refreshResponse.text();
+        console.error('Erro ao atualizar dataset:', errorText);
+        
+        // Se o erro é "já está atualizando", retorna sucesso
+        if (errorText.includes('RefreshInProgress') || errorText.includes('already executing')) {
+          return NextResponse.json({ 
+            success: true, 
+            message: 'Atualização já em andamento',
+            type: 'dataset',
+            dataset_id: datasetId,
+            alreadyInProgress: true
+          });
+        }
+        
+        return NextResponse.json({ 
+          error: 'Falha ao disparar atualização do dataset',
+          details: errorText 
+        }, { status: refreshResponse.status });
+      }
+
+      return NextResponse.json({ 
+        success: true, 
+        message: 'Atualização do dataset iniciada',
+        type: 'dataset',
+        dataset_id: datasetId
+      });
+    }
+
+    return NextResponse.json({ error: 'Nenhum item para atualizar' }, { status: 400 });
 
   } catch (error: any) {
-    console.error('Erro ao disparar refresh:', error);
+    console.error('Erro ao disparar atualização:', error);
     return NextResponse.json({ error: error.message || 'Erro interno' }, { status: 500 });
   }
 }
 
-// GET - Verificar status de refresh
+// GET - Verificar status da atualização
 export async function GET(request: Request) {
   try {
     const user = await getAuthUser();
@@ -120,10 +226,15 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const datasetId = searchParams.get('dataset_id');
+    const dataflowId = searchParams.get('dataflow_id');
     const connectionId = searchParams.get('connection_id');
 
-    if (!datasetId || !connectionId) {
-      return NextResponse.json({ error: 'dataset_id e connection_id são obrigatórios' }, { status: 400 });
+    if (!connectionId) {
+      return NextResponse.json({ error: 'connection_id é obrigatório' }, { status: 400 });
+    }
+
+    if (!datasetId && !dataflowId) {
+      return NextResponse.json({ error: 'dataset_id ou dataflow_id é obrigatório' }, { status: 400 });
     }
 
     const supabase = createAdminClient();
@@ -140,7 +251,6 @@ export async function GET(request: Request) {
 
     // Obter token
     const tokenUrl = `https://login.microsoftonline.com/${connection.tenant_id}/oauth2/v2.0/token`;
-
     const tokenResponse = await fetch(tokenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -159,44 +269,69 @@ export async function GET(request: Request) {
     const tokenData = await tokenResponse.json();
     const accessToken = tokenData.access_token;
 
-    // Buscar histórico de refresh
-    const refreshUrl = `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/datasets/${datasetId}/refreshes?$top=5`;
+    // Se é um DATAFLOW
+    if (dataflowId) {
+      const statusUrl = `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/dataflows/${dataflowId}/transactions?$top=1`;
+      
+      const statusResponse = await fetch(statusUrl, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
 
-    const refreshResponse = await fetch(refreshUrl, {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
+      if (!statusResponse.ok) {
+        return NextResponse.json({ error: 'Falha ao verificar status' }, { status: statusResponse.status });
+      }
 
-    if (!refreshResponse.ok) {
-      return NextResponse.json({ error: 'Erro ao buscar histórico' }, { status: 400 });
+      const statusData = await statusResponse.json();
+      const lastTransaction = statusData.value?.[0];
+
+      // Mapear status do dataflow para padrão
+      let status = lastTransaction?.status || 'Unknown';
+      if (status === 'Success') status = 'Completed';
+
+      return NextResponse.json({
+        type: 'dataflow',
+        dataflow_id: dataflowId,
+        status: status,
+        startTime: lastTransaction?.startTime,
+        endTime: lastTransaction?.endTime,
+        refreshType: lastTransaction?.refreshType
+      });
     }
 
-    const refreshData = await refreshResponse.json();
-    const refreshes = refreshData.value || [];
+    // Se é um DATASET
+    if (datasetId) {
+      const statusUrl = `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/datasets/${datasetId}/refreshes?$top=1`;
+      
+      const statusResponse = await fetch(statusUrl, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
 
-    // Formatar resposta
-    const history = refreshes.map((r: any) => ({
-      id: r.requestId,
-      status: r.status,
-      startTime: r.startTime,
-      endTime: r.endTime,
-      refreshType: r.refreshType
-    }));
+      if (!statusResponse.ok) {
+        return NextResponse.json({ error: 'Falha ao verificar status' }, { status: statusResponse.status });
+      }
 
-    const lastRefresh = history[0];
-    const isRefreshing = lastRefresh?.status === 'Unknown' || lastRefresh?.status === 'InProgress';
+      const statusData = await statusResponse.json();
+      const lastRefresh = statusData.value?.[0];
 
-    return NextResponse.json({
-      isRefreshing,
-      lastRefresh,
-      history
-    });
+      // Mapear status do dataset
+      let status = lastRefresh?.status || 'Unknown';
+      // "Unknown" no dataset geralmente significa em andamento
+      if (status === 'Unknown') status = 'InProgress';
+
+      return NextResponse.json({
+        type: 'dataset',
+        dataset_id: datasetId,
+        status: status,
+        startTime: lastRefresh?.startTime,
+        endTime: lastRefresh?.endTime,
+        serviceExceptionJson: lastRefresh?.serviceExceptionJson
+      });
+    }
+
+    return NextResponse.json({ error: 'Nenhum item para verificar' }, { status: 400 });
 
   } catch (error: any) {
-    console.error('Erro:', error);
+    console.error('Erro ao verificar status:', error);
     return NextResponse.json({ error: error.message || 'Erro interno' }, { status: 500 });
   }
 }
-
-
-
-

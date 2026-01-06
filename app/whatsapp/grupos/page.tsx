@@ -212,7 +212,7 @@ export default function GruposAutorizadosPage() {
           </div>
           <button
             onClick={openNew}
-            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
           >
             <Plus size={20} />
             Novo Grupo
@@ -243,7 +243,7 @@ export default function GruposAutorizadosPage() {
             <p className="text-gray-500 mb-4">Autorize grupos do WhatsApp para interagir com o sistema</p>
             <button
               onClick={openNew}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
             >
               Autorizar Grupo
             </button>
@@ -407,7 +407,7 @@ export default function GruposAutorizadosPage() {
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2"
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
                 >
                   {saving && <Loader2 size={16} className="animate-spin" />}
                   {editingGroup ? 'Salvar' : 'Autorizar'}

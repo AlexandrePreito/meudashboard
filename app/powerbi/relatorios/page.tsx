@@ -8,7 +8,9 @@ import {
   Trash2, 
   Loader2, 
   FileText,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Search,
+  Copy
 } from 'lucide-react';
 
 interface Connection {
@@ -33,6 +35,7 @@ export default function RelatoriosPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingReport, setEditingReport] = useState<Report | null>(null);
   const [saving, setSaving] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   
   const [form, setForm] = useState({
     connection_id: '',
@@ -89,6 +92,18 @@ export default function RelatoriosPage() {
         default_page: ''
       });
     }
+    setShowModal(true);
+  }
+
+  function handleCopy(report: Report) {
+    setEditingReport(null); // Não está editando, está criando novo
+    setForm({
+      connection_id: report.connection.id,
+      name: `${report.name} (Cópia)`,
+      report_id: report.report_id,
+      dataset_id: report.dataset_id,
+      default_page: report.default_page || ''
+    });
     setShowModal(true);
   }
 
@@ -181,6 +196,20 @@ export default function RelatoriosPage() {
           </div>
         )}
 
+        {/* Campo de Busca */}
+        {reports.length > 0 && (
+          <div className="relative">
+            <Search size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar por nome, Report ID, Dataset ID ou conexão..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+        )}
+
         {reports.length === 0 ? (
           <div className="bg-white rounded-2xl p-12 text-center border border-gray-100">
             <FileText size={48} className="mx-auto text-gray-300 mb-4" />
@@ -208,7 +237,18 @@ export default function RelatoriosPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {reports.map((report) => (
+                {reports
+                  .filter(report => {
+                    if (!searchTerm) return true;
+                    const term = searchTerm.toLowerCase();
+                    return (
+                      report.name.toLowerCase().includes(term) ||
+                      report.report_id.toLowerCase().includes(term) ||
+                      report.dataset_id.toLowerCase().includes(term) ||
+                      report.connection?.name.toLowerCase().includes(term)
+                    );
+                  })
+                  .map((report) => (
                   <tr key={report.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="font-medium text-gray-900">{report.name}</div>
@@ -223,12 +263,21 @@ export default function RelatoriosPage() {
                       <button
                         onClick={() => openModal(report)}
                         className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg mr-1"
+                        title="Editar"
                       >
                         <Pencil size={16} />
                       </button>
                       <button
+                        onClick={() => handleCopy(report)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg mr-1"
+                        title="Copiar"
+                      >
+                        <Copy size={16} />
+                      </button>
+                      <button
                         onClick={() => handleDelete(report.id)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                        title="Excluir"
                       >
                         <Trash2 size={16} />
                       </button>
@@ -243,60 +292,66 @@ export default function RelatoriosPage() {
 
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-2xl w-full max-w-lg mx-4 p-6">
+          <div className="bg-white rounded-2xl w-full max-w-3xl mx-4 p-6">
             <h2 className="text-xl font-bold text-gray-900 mb-4">
               {editingReport ? 'Editar Relatório' : 'Novo Relatório'}
             </h2>
             
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Conexão</label>
-                <select
-                  value={form.connection_id}
-                  onChange={(e) => setForm({ ...form, connection_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  required
-                >
-                  <option value="">Selecione uma conexão</option>
-                  {connections.map((conn) => (
-                    <option key={conn.id} value={conn.id}>
-                      {conn.name}
-                    </option>
-                  ))}
-                </select>
+              {/* Conexão e Nome na mesma linha */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Conexão</label>
+                  <select
+                    value={form.connection_id}
+                    onChange={(e) => setForm({ ...form, connection_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
+                  >
+                    <option value="">Selecione uma conexão</option>
+                    {connections.map((conn) => (
+                      <option key={conn.id} value={conn.id}>
+                        {conn.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
+                  <input
+                    type="text"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  required
-                />
-              </div>
+              {/* Report ID e Dataset ID na mesma linha */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Report ID</label>
+                  <input
+                    type="text"
+                    value={form.report_id}
+                    onChange={(e) => setForm({ ...form, report_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                    required
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Report ID</label>
-                <input
-                  type="text"
-                  value={form.report_id}
-                  onChange={(e) => setForm({ ...form, report_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Dataset ID</label>
-                <input
-                  type="text"
-                  value={form.dataset_id}
-                  onChange={(e) => setForm({ ...form, dataset_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-                  required
-                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Dataset ID</label>
+                  <input
+                    type="text"
+                    value={form.dataset_id}
+                    onChange={(e) => setForm({ ...form, dataset_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                    required
+                  />
+                </div>
               </div>
 
               <div>
@@ -310,20 +365,21 @@ export default function RelatoriosPage() {
                 />
               </div>
 
-              <div className="flex gap-3 pt-4">
+              {/* Botões menores e alinhados à direita */}
+              <div className="flex gap-2 pt-4 justify-end">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {saving && <Loader2 size={18} className="animate-spin" />}
+                  {saving && <Loader2 size={16} className="animate-spin" />}
                   {saving ? 'Salvando...' : 'Salvar'}
                 </button>
               </div>

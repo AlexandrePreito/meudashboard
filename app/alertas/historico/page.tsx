@@ -9,9 +9,7 @@ import {
   XCircle, 
   Clock,
   Filter,
-  RefreshCw,
-  ChevronLeft,
-  ChevronRight
+  RefreshCw
 } from 'lucide-react';
 
 interface HistoryItem {
@@ -102,7 +100,7 @@ export default function HistoricoAlertasPage() {
           <button
             onClick={() => fetchHistory()}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             Atualizar
@@ -248,27 +246,51 @@ export default function HistoricoAlertasPage() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
-              <p className="text-sm text-gray-600">
-                Mostrando {page * limit + 1} - {Math.min((page + 1) * limit, total)} de {total}
-              </p>
+            <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between bg-gray-50">
+              <div className="text-sm text-gray-600">
+                Mostrando {page * limit + 1} a {Math.min((page + 1) * limit, total)} de {total} alertas
+              </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPage(p => Math.max(0, p - 1))}
                   disabled={page === 0}
-                  className="p-2 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <ChevronLeft size={20} />
+                  Anterior
                 </button>
-                <span className="text-sm text-gray-600">
-                  Página {page + 1} de {totalPages}
-                </span>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i).map(pageNum => {
+                    // Mostrar apenas algumas páginas ao redor da atual
+                    if (
+                      pageNum === 0 ||
+                      pageNum === totalPages - 1 ||
+                      (pageNum >= page - 1 && pageNum <= page + 1)
+                    ) {
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setPage(pageNum)}
+                          className={`px-3 py-1 text-sm rounded-lg ${
+                            page === pageNum
+                              ? 'bg-green-600 text-white'
+                              : 'border border-gray-300 hover:bg-gray-100'
+                          }`}
+                        >
+                          {pageNum + 1}
+                        </button>
+                      );
+                    } else if (pageNum === page - 2 || pageNum === page + 2) {
+                      return <span key={pageNum} className="px-1 text-gray-400">...</span>;
+                    }
+                    return null;
+                  })}
+                </div>
                 <button
                   onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
                   disabled={page >= totalPages - 1}
-                  className="p-2 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <ChevronRight size={20} />
+                  Próxima
                 </button>
               </div>
             </div>

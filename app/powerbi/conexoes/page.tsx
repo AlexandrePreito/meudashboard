@@ -11,7 +11,9 @@ import {
   CheckCircle,
   XCircle,
   Eye,
-  EyeOff
+  EyeOff,
+  Copy,
+  Search
 } from 'lucide-react';
 
 interface Connection {
@@ -34,6 +36,7 @@ export default function ConexoesPage() {
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null);
   const [saving, setSaving] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   
   const [form, setForm] = useState({
     name: '',
@@ -84,6 +87,19 @@ export default function ConexoesPage() {
         show_page_navigation: true
       });
     }
+    setShowModal(true);
+  }
+
+  function handleCopy(connection: Connection) {
+    setEditingConnection(null);
+    setForm({
+      name: `${connection.name} (Cópia)`,
+      tenant_id: connection.tenant_id,
+      client_id: connection.client_id,
+      client_secret: '',
+      workspace_id: connection.workspace_id,
+      show_page_navigation: connection.show_page_navigation
+    });
     setShowModal(true);
   }
 
@@ -140,6 +156,14 @@ export default function ConexoesPage() {
     }
   }
 
+  // Filtrar conexões baseado no termo de busca
+  const filteredConnections = connections.filter(conn => 
+    conn.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    conn.tenant_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    conn.workspace_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    conn.company_group?.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   if (loading) {
     return (
       <MainLayout>
@@ -167,6 +191,20 @@ export default function ConexoesPage() {
           </button>
         </div>
 
+        {/* Campo de Busca */}
+        {connections.length > 0 && (
+          <div className="relative">
+            <Search size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar por nome, tenant, workspace ou grupo..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+        )}
+
         {connections.length === 0 ? (
           <div className="bg-white rounded-2xl p-12 text-center border border-gray-100">
             <LinkIcon size={48} className="mx-auto text-gray-300 mb-4" />
@@ -192,7 +230,14 @@ export default function ConexoesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {connections.map((conn) => (
+                {filteredConnections.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                      Nenhuma conexão encontrada para "{searchTerm}"
+                    </td>
+                  </tr>
+                ) : (
+                  filteredConnections.map((conn) => (
                   <tr key={conn.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="font-medium text-gray-900">{conn.name}</div>
@@ -209,20 +254,30 @@ export default function ConexoesPage() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button
+                        onClick={() => handleCopy(conn)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg mr-1"
+                        title="Copiar conexão"
+                      >
+                        <Copy size={16} />
+                      </button>
+                      <button
                         onClick={() => openModal(conn)}
                         className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg mr-1"
+                        title="Editar"
                       >
                         <Pencil size={16} />
                       </button>
                       <button
                         onClick={() => handleDelete(conn.id)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                        title="Excluir"
                       >
                         <Trash2 size={16} />
                       </button>
                     </td>
                   </tr>
-                ))}
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -231,67 +286,74 @@ export default function ConexoesPage() {
 
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-2xl w-full max-w-lg mx-4 p-6">
+          <div className="bg-white rounded-2xl w-full max-w-3xl mx-4 p-6">
             <h2 className="text-xl font-bold text-gray-900 mb-4">
               {editingConnection ? 'Editar Conexão' : 'Nova Conexão'}
             </h2>
             
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tenant ID</label>
-                <input
-                  type="text"
-                  value={form.tenant_id}
-                  onChange={(e) => setForm({ ...form, tenant_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Client ID</label>
-                <input
-                  type="text"
-                  value={form.client_id}
-                  onChange={(e) => setForm({ ...form, client_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Client Secret {editingConnection && '(deixe vazio para manter)'}
-                </label>
-                <div className="relative">
+              {/* Linha 1: Nome e Tenant ID */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
                   <input
-                    type={showSecret ? 'text' : 'password'}
-                    value={form.client_secret}
-                    onChange={(e) => setForm({ ...form, client_secret: e.target.value })}
-                    className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-                    required={!editingConnection}
+                    type="text"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowSecret(!showSecret)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500"
-                  >
-                    {showSecret ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tenant ID</label>
+                  <input
+                    type="text"
+                    value={form.tenant_id}
+                    onChange={(e) => setForm({ ...form, tenant_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                    required
+                  />
                 </div>
               </div>
 
+              {/* Linha 2: Client ID e Client Secret */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Client ID</label>
+                  <input
+                    type="text"
+                    value={form.client_id}
+                    onChange={(e) => setForm({ ...form, client_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Client Secret {editingConnection && '(deixe vazio para manter)'}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showSecret ? 'text' : 'password'}
+                      value={form.client_secret}
+                      onChange={(e) => setForm({ ...form, client_secret: e.target.value })}
+                      className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                      required={!editingConnection}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowSecret(!showSecret)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500"
+                    >
+                      {showSecret ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Workspace ID */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Workspace ID</label>
                 <input
@@ -303,33 +365,34 @@ export default function ConexoesPage() {
                 />
               </div>
 
+              {/* Checkbox com cor azul */}
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
                   id="show_page_navigation"
                   checked={form.show_page_navigation}
                   onChange={(e) => setForm({ ...form, show_page_navigation: e.target.checked })}
-                  className="w-4 h-4 text-blue-600 border-gray-300 rounded"
+                  className="w-4 h-4 text-blue-600 bg-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2 accent-blue-600"
                 />
                 <label htmlFor="show_page_navigation" className="text-sm text-gray-700">
                   Mostrar navegação de páginas nos relatórios
                 </label>
               </div>
 
-              <div className="flex gap-3 pt-4">
+              <div className="flex gap-2 pt-4 justify-end">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
                 >
-                  {saving && <Loader2 size={18} className="animate-spin" />}
+                  {saving && <Loader2 size={16} className="animate-spin" />}
                   {saving ? 'Salvando...' : 'Salvar'}
                 </button>
               </div>
