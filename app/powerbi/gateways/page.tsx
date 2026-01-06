@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
+import Button from '@/components/ui/Button';
 import {
   Server,
   RefreshCw,
@@ -143,14 +144,14 @@ export default function GatewaysPage() {
             <h1 className="text-2xl font-bold text-gray-900">Gateways</h1>
             <p className="text-gray-500 text-sm">Monitoramento dos gateways do Power BI</p>
           </div>
-          <button
+          <Button
             onClick={loadData}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            loading={loading}
+            icon={<RefreshCw size={16} />}
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             Atualizar
-          </button>
+          </Button>
         </div>
 
         {/* Cards de Resumo */}
@@ -213,12 +214,9 @@ export default function GatewaysPage() {
           <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
             <XCircle className="w-12 h-12 text-red-300 mx-auto mb-4" />
             <p className="text-gray-500">{error}</p>
-            <button
-              onClick={loadData}
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
+            <Button onClick={loadData}>
               Tentar novamente
-            </button>
+            </Button>
           </div>
         ) : gateways.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">

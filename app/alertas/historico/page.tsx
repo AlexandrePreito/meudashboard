@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
+import Button from '@/components/ui/Button';
 import { 
   History, 
   Bell, 
@@ -97,14 +98,14 @@ export default function HistoricoAlertasPage() {
             </div>
           </div>
 
-          <button
+          <Button
             onClick={() => fetchHistory()}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+            loading={loading}
+            icon={<RefreshCw size={16} />}
           >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             Atualizar
-          </button>
+          </Button>
         </div>
 
         {/* Stats Cards */}
@@ -267,17 +268,15 @@ export default function HistoricoAlertasPage() {
                       (pageNum >= page - 1 && pageNum <= page + 1)
                     ) {
                       return (
-                        <button
+                        <Button
                           key={pageNum}
                           onClick={() => setPage(pageNum)}
-                          className={`px-3 py-1 text-sm rounded-lg ${
-                            page === pageNum
-                              ? 'bg-green-600 text-white'
-                              : 'border border-gray-300 hover:bg-gray-100'
-                          }`}
+                          variant={page === pageNum ? 'primary' : 'secondary'}
+                          size="sm"
+                          className={page === pageNum ? '' : 'border border-gray-300'}
                         >
                           {pageNum + 1}
-                        </button>
+                        </Button>
                       );
                     } else if (pageNum === page - 2 || pageNum === page + 2) {
                       return <span key={pageNum} className="px-1 text-gray-400">...</span>;

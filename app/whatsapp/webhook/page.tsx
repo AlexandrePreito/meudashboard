@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
+import Button from '@/components/ui/Button';
 import { 
   Copy,
   Check,
@@ -42,13 +43,9 @@ export default function WebhookPage() {
               <h1 className="text-2xl font-bold text-gray-900">Webhook</h1>
               <p className="text-gray-500 text-sm mt-1">Configure a Evolution API para enviar mensagens ao sistema</p>
             </div>
-            <button
-              onClick={() => setShowInstructions(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-            >
-              <FileText size={18} />
+            <Button onClick={() => setShowInstructions(true)} icon={<FileText size={18} />}>
               Ver Instruções
-            </button>
+            </Button>
           </div>
 
           {/* Barra de Busca */}
@@ -80,17 +77,14 @@ export default function WebhookPage() {
             <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg p-4">
               <code className="text-sm text-gray-800 break-all">{webhookUrl}</code>
             </div>
-            <button
+            <Button
               onClick={copyToClipboard}
-              className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-                copied 
-                  ? 'bg-green-100 text-green-700' 
-                  : 'bg-green-600 text-white hover:bg-green-700'
-              }`}
+              variant={copied ? 'secondary' : 'primary'}
+              icon={copied ? <Check size={18} /> : <Copy size={18} />}
+              className={copied ? 'bg-green-100 text-green-700 hover:bg-green-200' : ''}
             >
-              {copied ? <Check size={18} /> : <Copy size={18} />}
               {copied ? 'Copiado!' : 'Copiar'}
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -208,12 +202,9 @@ export default function WebhookPage() {
               </div>
 
               <div className="flex justify-end p-4 border-t border-gray-200 sticky bottom-0 bg-white">
-                <button
-                  onClick={() => setShowInstructions(false)}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                >
+                <Button onClick={() => setShowInstructions(false)}>
                   Entendi
-                </button>
+                </Button>
               </div>
             </div>
           </div>

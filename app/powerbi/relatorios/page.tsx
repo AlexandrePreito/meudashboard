@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
+import Button from '@/components/ui/Button';
 import { 
   Plus, 
   Pencil, 
@@ -177,14 +178,13 @@ export default function RelatoriosPage() {
             <h1 className="text-2xl font-bold text-gray-900">Relatórios Power BI</h1>
             <p className="text-gray-500">Gerencie os relatórios disponíveis</p>
           </div>
-          <button
+          <Button
             onClick={() => openModal()}
             disabled={connections.length === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            icon={<Plus size={20} />}
           >
-            <Plus size={20} />
             Novo Relatório
-          </button>
+          </Button>
         </div>
 
         {connections.length === 0 && (
@@ -216,12 +216,9 @@ export default function RelatoriosPage() {
             <h2 className="text-lg font-medium text-gray-900 mb-2">Nenhum relatório</h2>
             <p className="text-gray-500 mb-4">Cadastre seu primeiro relatório do Power BI</p>
             {connections.length > 0 && (
-              <button
-                onClick={() => openModal()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
+              <Button onClick={() => openModal()}>
                 Cadastrar Relatório
-              </button>
+              </Button>
             )}
           </div>
         ) : (
@@ -374,14 +371,12 @@ export default function RelatoriosPage() {
                 >
                   Cancelar
                 </button>
-                <button
+                <Button
                   type="submit"
-                  disabled={saving}
-                  className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  loading={saving}
                 >
-                  {saving && <Loader2 size={16} className="animate-spin" />}
                   {saving ? 'Salvando...' : 'Salvar'}
-                </button>
+                </Button>
               </div>
             </form>
           </div>

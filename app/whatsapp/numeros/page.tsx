@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
+import Button from '@/components/ui/Button';
 import {
   Users,
   Plus,
@@ -235,13 +236,9 @@ export default function NumerosAutorizadosPage() {
             <h1 className="text-2xl font-bold text-gray-900">Números Autorizados</h1>
             <p className="text-gray-500 text-sm mt-1">Gerencie os números que podem interagir com o sistema</p>
           </div>
-          <button
-            onClick={openNew}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-          >
-            <Plus size={20} />
+          <Button onClick={openNew} icon={<Plus size={20} />}>
             Novo Número
-          </button>
+          </Button>
         </div>
 
         {/* Busca e Filtros */}
@@ -457,14 +454,12 @@ export default function NumerosAutorizadosPage() {
                 >
                   Cancelar
                 </button>
-                <button
+                <Button
                   onClick={handleSave}
-                  disabled={saving}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                  loading={saving}
                 >
-                  {saving && <Loader2 size={16} className="animate-spin" />}
                   {editingNumber ? 'Salvar' : 'Autorizar'}
-                </button>
+                </Button>
               </div>
             </div>
           </div>

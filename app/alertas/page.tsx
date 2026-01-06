@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
+import Button from '@/components/ui/Button';
 import Link from 'next/link';
 import {
   Bell,
@@ -182,12 +183,10 @@ export default function AlertasPage() {
             <h1 className="text-2xl font-bold text-gray-900">Alertas</h1>
             <p className="text-gray-500 text-sm mt-1">Gerencie alertas automáticos baseados em dados</p>
           </div>
-          <Link
-            href="/alertas/novo"
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-          >
-            <Plus size={20} />
-            Novo Alerta
+          <Link href="/alertas/novo">
+            <Button icon={<Plus size={20} />}>
+              Novo Alerta
+            </Button>
           </Link>
         </div>
 
@@ -261,12 +260,10 @@ export default function AlertasPage() {
             <Bell className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum alerta</h3>
             <p className="text-gray-500 mb-4">Crie alertas para monitorar seus dados automaticamente</p>
-            <Link
-              href="/alertas/novo"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-            >
-              <Plus size={18} />
-              Criar Alerta
+            <Link href="/alertas/novo">
+              <Button icon={<Plus size={18} />}>
+                Criar Alerta
+              </Button>
             </Link>
           </div>
         ) : (

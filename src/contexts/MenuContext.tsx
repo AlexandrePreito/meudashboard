@@ -1,20 +1,10 @@
-/**
- * Contexto de Menu Global
- * 
- * Gerencia o estado global do menu lateral do sistema MeuDashboard.
- * 
- * Funcionalidades:
- * - Controle de colapso/expansão do menu (isCollapsed)
- * - Gerenciamento do grupo de empresas ativo (activeGroup)
- * - Hook useMenu para acesso ao contexto
- */
-
 'use client';
 
 import {
   createContext,
   useContext,
   useState,
+  useEffect,
   type ReactNode,
 } from 'react';
 
@@ -23,6 +13,8 @@ export interface CompanyGroup {
   id: string;
   name: string;
   slug: string;
+  logo_url?: string | null;
+  primary_color?: string | null;
 }
 
 // Tipo do contexto de menu
@@ -43,7 +35,32 @@ interface MenuProviderProps {
 
 export function MenuProvider({ children }: MenuProviderProps) {
   const [isCollapsed, setIsCollapsed] = useState(true);
-  const [activeGroup, setActiveGroup] = useState<CompanyGroup | null>(null);
+  const [activeGroup, setActiveGroupState] = useState<CompanyGroup | null>(() => {
+    // Tenta ler do localStorage no primeiro render
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('active-group');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return null;
+        }
+      }
+    }
+    return null;
+  });
+
+  // Função para setar grupo e salvar no localStorage
+  function setActiveGroup(group: CompanyGroup | null) {
+    setActiveGroupState(group);
+    if (typeof window !== 'undefined') {
+      if (group) {
+        localStorage.setItem('active-group', JSON.stringify(group));
+      } else {
+        localStorage.removeItem('active-group');
+      }
+    }
+  }
 
   return (
     <MenuContext.Provider

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
+import Button from '@/components/ui/Button';
 import MessageEditor from '@/components/whatsapp/MessageEditor';
 import { 
   FileText,
@@ -685,7 +686,7 @@ export default function NovoAlertaPage() {
                                     <option key={n.id} value={n.phone_number}>{n.name}</option>
                                   ))}
                               </select>
-                              <button
+                              <Button
                                 type="button"
                                 onClick={() => {
                                   if (selectedNumberToAdd) {
@@ -697,10 +698,10 @@ export default function NovoAlertaPage() {
                                   }
                                 }}
                                 disabled={!selectedNumberToAdd}
-                                className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:bg-gray-300"
+                                size="sm"
                               >
                                 Adicionar
-                              </button>
+                              </Button>
                             </div>
                             {formData.whatsapp_numbers.length > 0 && (
                               <div className="flex flex-wrap gap-2 mt-2">
@@ -743,7 +744,7 @@ export default function NovoAlertaPage() {
                                     <option key={g.id} value={g.group_id}>{g.group_name}</option>
                                   ))}
                               </select>
-                              <button
+                              <Button
                                 type="button"
                                 onClick={() => {
                                   if (selectedGroupToAdd) {
@@ -755,10 +756,10 @@ export default function NovoAlertaPage() {
                                   }
                                 }}
                                 disabled={!selectedGroupToAdd}
-                                className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:bg-gray-300"
+                                size="sm"
                               >
                                 Adicionar
-                              </button>
+                              </Button>
                             </div>
                             {formData.whatsapp_group_ids.length > 0 && (
                               <div className="flex flex-wrap gap-2 mt-2">
@@ -798,20 +799,16 @@ export default function NovoAlertaPage() {
                       <h3 className="text-sm font-medium text-gray-700">Template da Mensagem</h3>
                       <p className="text-xs text-gray-500 mt-0.5">Configure a mensagem que será enviada quando o alerta for disparado</p>
                     </div>
-                    <button
+                    <Button
                       type="button"
                       onClick={handleGenerateTemplate}
                       disabled={generatingTemplate || !formData.name}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                      loading={generatingTemplate}
+                      icon={!generatingTemplate ? <Sparkles size={16} /> : undefined}
                       title="Gerar template com IA"
                     >
-                      {generatingTemplate ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <Sparkles size={16} />
-                      )}
                       {generatingTemplate ? 'Gerando...' : 'IA'}
-                    </button>
+                    </Button>
                   </div>
 
                   <div>
@@ -893,25 +890,22 @@ export default function NovoAlertaPage() {
                 )}
 
                 {activeTab !== 'notificacoes' ? (
-                  <button
+                  <Button
                     type="button"
                     onClick={() => {
                       const idx = FORM_TABS.findIndex(t => t.id === activeTab);
                       if (idx < FORM_TABS.length - 1) setActiveTab(FORM_TABS[idx + 1].id);
                     }}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                   >
                     Próximo →
-                  </button>
+                  </Button>
                 ) : (
-                  <button
+                  <Button
                     type="submit"
-                    disabled={saving}
-                    className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 flex items-center gap-2"
+                    loading={saving}
                   >
-                    {saving && <Loader2 size={16} className="animate-spin" />}
                     Criar Alerta
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>

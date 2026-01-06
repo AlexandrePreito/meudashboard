@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useNotification } from '@/hooks/useNotification';
 import Notifications from '@/components/ui/Notifications';
 import MainLayout from '@/components/layout/MainLayout';
+import Button from '@/components/ui/Button';
 import { 
   Plus, 
   Pencil, 
@@ -218,13 +219,9 @@ export default function PlanosPage() {
             <h1 className="text-2xl font-bold text-gray-900">Planos</h1>
             <p className="text-gray-500 text-sm mt-1">Gerencie os planos de assinatura do sistema</p>
           </div>
-          <button
-            onClick={handleNew}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-          >
-            <Plus size={20} />
+          <Button onClick={handleNew} icon={<Plus size={20} />}>
             Novo Plano
-          </button>
+          </Button>
         </div>
 
         {/* Lista de Planos */}
@@ -233,13 +230,9 @@ export default function PlanosPage() {
             <Crown className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum plano cadastrado</h3>
             <p className="text-gray-500 mb-4">Crie o primeiro plano para começar</p>
-            <button
-              onClick={handleNew}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-            >
-              <Plus size={18} />
+            <Button onClick={handleNew} icon={<Plus size={18} />}>
               Criar Primeiro Plano
-            </button>
+            </Button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -498,15 +491,9 @@ export default function PlanosPage() {
               >
                 Cancelar
               </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400"
-              >
-                {saving && <Loader2 size={16} className="animate-spin" />}
-                <Check size={16} />
+              <Button onClick={handleSave} loading={saving} icon={<Check size={16} />}>
                 Salvar
-              </button>
+              </Button>
             </div>
           </div>
         </div>

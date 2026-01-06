@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
+import Button from '@/components/ui/Button';
 import {
   MessageSquare,
   Loader2,
@@ -186,14 +187,14 @@ export default function MensagensPage() {
             <h1 className="text-2xl font-bold text-gray-900">Mensagens</h1>
             <p className="text-gray-500 text-sm mt-1">Histórico de mensagens do WhatsApp</p>
           </div>
-          <button
+          <Button
             onClick={loadData}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+            loading={loading}
+            icon={<RefreshCw size={18} />}
           >
-            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
             Atualizar
-          </button>
+          </Button>
         </div>
 
         {/* Cards de Estatísticas */}

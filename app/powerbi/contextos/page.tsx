@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
+import Button from '@/components/ui/Button';
 import { 
   Plus, 
   Edit, 
@@ -259,13 +260,9 @@ export default function ContextosPage() {
             <h1 className="text-2xl font-bold text-gray-900">Contextos de Modelos</h1>
             <p className="text-gray-500 text-sm mt-1">Configure o contexto dos modelos para a IA entender seus dados</p>
           </div>
-          <button
-            onClick={openNewContext}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus size={20} />
+          <Button onClick={openNewContext} icon={<Plus size={20} />}>
             Novo Contexto
-          </button>
+          </Button>
         </div>
 
         {/* Filtro */}
@@ -295,12 +292,9 @@ export default function ContextosPage() {
               {searchTerm ? 'Tente buscar por outro termo' : 'Comece criando seu primeiro contexto para a IA'}
             </p>
             {!searchTerm && (
-              <button
-                onClick={openNewContext}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
+              <Button onClick={openNewContext}>
                 Criar Contexto
-              </button>
+              </Button>
             )}
           </div>
         ) : (
@@ -470,14 +464,12 @@ export default function ContextosPage() {
                 >
                   Cancelar
                 </button>
-                <button
+                <Button
                   onClick={handleSave}
-                  disabled={saving}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                  loading={saving}
                 >
-                  {saving && <Loader2 size={16} className="animate-spin" />}
                   {editingContext ? 'Salvar' : 'Criar Contexto'}
-                </button>
+                </Button>
               </div>
             </div>
           </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
+import Button from '@/components/ui/Button';
 import { 
   GripVertical,
   Play,
@@ -487,41 +488,23 @@ export default function OrdemAtualizacaoPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <button
+          <Button
             onClick={refreshAllInOrder}
             disabled={refreshingAll || items.length === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            loading={refreshingAll}
+            icon={!refreshingAll ? <PlayCircle size={18} /> : undefined}
           >
-            {refreshingAll ? (
-              <>
-                <Loader2 size={18} className="animate-spin" />
-                Atualizando...
-              </>
-            ) : (
-              <>
-                <PlayCircle size={18} />
-                Atualizar Todos
-              </>
-            )}
-          </button>
+            {refreshingAll ? 'Atualizando...' : 'Atualizar Todos'}
+          </Button>
 
-          <button
+          <Button
             onClick={saveOrder}
             disabled={saving || !hasChanges}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            loading={saving}
+            icon={!saving ? <Save size={18} /> : undefined}
           >
-            {saving ? (
-              <>
-                <Loader2 size={18} className="animate-spin" />
-                Salvando...
-              </>
-            ) : (
-              <>
-                <Save size={18} />
-                Salvar Ordem
-              </>
-            )}
-          </button>
+            {saving ? 'Salvando...' : 'Salvar Ordem'}
+          </Button>
         </div>
       </div>
 
@@ -759,12 +742,9 @@ export default function OrdemAtualizacaoPage() {
               >
                 Cancelar
               </button>
-              <button
-                onClick={saveItemSchedule}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
+              <Button onClick={saveItemSchedule}>
                 Salvar Agendamento
-              </button>
+              </Button>
             </div>
           </div>
         </div>

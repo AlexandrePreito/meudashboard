@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
+import Button from '@/components/ui/Button';
 import {
   UsersRound,
   Plus,
@@ -210,13 +211,9 @@ export default function GruposAutorizadosPage() {
             <h1 className="text-2xl font-bold text-gray-900">Grupos Autorizados</h1>
             <p className="text-gray-500 text-sm mt-1">Gerencie os grupos do WhatsApp que podem interagir com o sistema</p>
           </div>
-          <button
-            onClick={openNew}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-          >
-            <Plus size={20} />
+          <Button onClick={openNew} icon={<Plus size={20} />}>
             Novo Grupo
-          </button>
+          </Button>
         </div>
 
         {/* Busca */}
@@ -241,12 +238,9 @@ export default function GruposAutorizadosPage() {
             <UsersRound className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum grupo autorizado</h3>
             <p className="text-gray-500 mb-4">Autorize grupos do WhatsApp para interagir com o sistema</p>
-            <button
-              onClick={openNew}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-            >
+            <Button onClick={openNew}>
               Autorizar Grupo
-            </button>
+            </Button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -404,14 +398,12 @@ export default function GruposAutorizadosPage() {
                 >
                   Cancelar
                 </button>
-                <button
+                <Button
                   onClick={handleSave}
-                  disabled={saving}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                  loading={saving}
                 >
-                  {saving && <Loader2 size={16} className="animate-spin" />}
                   {editingGroup ? 'Salvar' : 'Autorizar'}
-                </button>
+                </Button>
               </div>
             </div>
           </div>

@@ -12,19 +12,51 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [primaryColor, setPrimaryColor] = useState('blue');
-  const [colors, setColors] = useState(brandColors.blue);
+  const [primaryColor, setPrimaryColorState] = useState(() => {
+    // Tenta ler do localStorage no primeiro render (client-side)
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('theme-color') || 'blue';
+    }
+    return 'blue';
+  });
+  const [colors, setColors] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('theme-color');
+      if (saved) return getColorConfig(saved);
+    }
+    return brandColors.blue;
+  });
+  const [mounted, setMounted] = useState(false);
 
+  // Aplicar tema salvo imediatamente ao montar
   useEffect(() => {
-    const colorConfig = getColorConfig(primaryColor);
+    const saved = localStorage.getItem('theme-color');
+    if (saved) {
+      const colorConfig = getColorConfig(saved);
+      setColors(colorConfig);
+      setPrimaryColorState(saved);
+      document.documentElement.style.setProperty('--color-primary', colorConfig.primary);
+      document.documentElement.style.setProperty('--color-primary-hover', colorConfig.hover);
+      document.documentElement.style.setProperty('--color-primary-light', colorConfig.light);
+      document.documentElement.style.setProperty('--color-primary-text', colorConfig.text);
+    }
+    setMounted(true);
+  }, []);
+
+  function setPrimaryColor(color: string) {
+    const colorConfig = getColorConfig(color);
     setColors(colorConfig);
+    setPrimaryColorState(color);
+    
+    // Salvar no localStorage
+    localStorage.setItem('theme-color', color);
     
     // Aplicar CSS variables
     document.documentElement.style.setProperty('--color-primary', colorConfig.primary);
     document.documentElement.style.setProperty('--color-primary-hover', colorConfig.hover);
     document.documentElement.style.setProperty('--color-primary-light', colorConfig.light);
     document.documentElement.style.setProperty('--color-primary-text', colorConfig.text);
-  }, [primaryColor]);
+  }
 
   return (
     <ThemeContext.Provider value={{ primaryColor, setPrimaryColor, colors }}>

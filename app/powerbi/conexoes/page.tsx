@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
+import Button from '@/components/ui/Button';
 import { 
   Plus, 
   Pencil, 
@@ -182,13 +183,9 @@ export default function ConexoesPage() {
             <h1 className="text-2xl font-bold text-gray-900">Conexões Power BI</h1>
             <p className="text-gray-500">Gerencie as conexões com workspaces do Power BI</p>
           </div>
-          <button
-            onClick={() => openModal()}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus size={20} />
+          <Button onClick={() => openModal()} icon={<Plus size={20} />}>
             Nova Conexão
-          </button>
+          </Button>
         </div>
 
         {/* Campo de Busca */}
@@ -210,12 +207,9 @@ export default function ConexoesPage() {
             <LinkIcon size={48} className="mx-auto text-gray-300 mb-4" />
             <h2 className="text-lg font-medium text-gray-900 mb-2">Nenhuma conexão</h2>
             <p className="text-gray-500 mb-4">Crie sua primeira conexão com o Power BI</p>
-            <button
-              onClick={() => openModal()}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
+            <Button onClick={() => openModal()}>
               Criar Conexão
-            </button>
+            </Button>
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
@@ -387,14 +381,12 @@ export default function ConexoesPage() {
                 >
                   Cancelar
                 </button>
-                <button
+                <Button
                   type="submit"
-                  disabled={saving}
-                  className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                  loading={saving}
                 >
-                  {saving && <Loader2 size={16} className="animate-spin" />}
                   {saving ? 'Salvando...' : 'Salvar'}
-                </button>
+                </Button>
               </div>
             </form>
           </div>
