@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MenuProvider, useMenu } from '@/contexts/MenuContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import { Loader2 } from 'lucide-react';
@@ -74,12 +75,14 @@ export default function MainLayout({ children }: MainLayoutProps) {
   }
 
   return (
-    <MenuProvider>
-      <div className="min-h-screen bg-gray-50">
-        <Header user={user} />
-        <Sidebar />
-        <MainContent>{children}</MainContent>
-      </div>
-    </MenuProvider>
+    <ThemeProvider>
+      <MenuProvider>
+        <div className="min-h-screen bg-gray-50">
+          <Header user={user} />
+          <Sidebar />
+          <MainContent>{children}</MainContent>
+        </div>
+      </MenuProvider>
+    </ThemeProvider>
   );
 }

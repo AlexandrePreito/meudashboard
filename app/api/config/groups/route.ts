@@ -29,6 +29,7 @@ export async function GET() {
         max_companies,
         max_powerbi_screens,
         plan_id,
+        primary_color,
         created_at,
         updated_at
       `)
@@ -75,7 +76,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { name, description, max_users, max_companies, max_powerbi_screens } = body;
+    const { name, description, max_users, max_companies, max_powerbi_screens, logo_url, plan_id, primary_color } = body;
 
     if (!name) {
       return NextResponse.json({ error: 'Nome é obrigatório' }, { status: 400 });
@@ -112,9 +113,12 @@ export async function POST(request: Request) {
         name,
         slug,
         description: description || null,
+        logo_url: logo_url || null,
         max_users: max_users || 10,
         max_companies: max_companies || 5,
         max_powerbi_screens: max_powerbi_screens || 10,
+        plan_id: plan_id || null,
+        primary_color: primary_color || 'blue',
         status: 'active'
       })
       .select()
@@ -145,7 +149,7 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json();
-    const { id, name, description, status, max_users, max_companies, max_powerbi_screens } = body;
+    const { id, name, description, status, max_users, max_companies, max_powerbi_screens, logo_url, plan_id, primary_color } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID é obrigatório' }, { status: 400 });
@@ -158,10 +162,13 @@ export async function PUT(request: Request) {
       .update({
         name,
         description: description || null,
+        logo_url: logo_url || null,
         status: status || 'active',
         max_users: max_users || 10,
         max_companies: max_companies || 5,
         max_powerbi_screens: max_powerbi_screens || 10,
+        plan_id: plan_id || null,
+        primary_color: primary_color || 'blue',
         updated_at: new Date().toISOString()
       })
       .eq('id', id)

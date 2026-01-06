@@ -14,7 +14,8 @@ import {
   XCircle,
   Loader2,
   TrendingUp,
-  Clock
+  Clock,
+  X
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -29,6 +30,9 @@ export default function WhatsAppDashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [recentMessages, setRecentMessages] = useState<any[]>([]);
+  const [usageInfo, setUsageInfo] = useState<{ used: number; limit: number } | null>(null);
+  const [selectedMessage, setSelectedMessage] = useState<any | null>(null);
+  const [showDetailsPanel, setShowDetailsPanel] = useState(false);
 
   useEffect(() => {
     loadDashboard();
@@ -38,11 +42,12 @@ export default function WhatsAppDashboardPage() {
     setLoading(true);
     try {
       // Carregar estatísticas
-      const [instancesRes, numbersRes, groupsRes, messagesRes] = await Promise.all([
+      const [instancesRes, numbersRes, groupsRes, messagesRes, usageRes] = await Promise.all([
         fetch('/api/whatsapp/instances'),
         fetch('/api/whatsapp/authorized-numbers'),
         fetch('/api/whatsapp/groups'),
-        fetch('/api/whatsapp/messages?limit=10')
+        fetch('/api/whatsapp/messages?limit=10'),
+        fetch('/api/whatsapp/usage')
       ]);
 
       const instancesData = instancesRes.ok ? await instancesRes.json() : { instances: [] };
@@ -78,6 +83,11 @@ export default function WhatsAppDashboardPage() {
       });
 
       setRecentMessages(messages.slice(0, 5));
+
+      if (usageRes.ok) {
+        const usageData = await usageRes.json();
+        setUsageInfo({ used: usageData.used_this_month || 0, limit: usageData.monthly_limit || 100 });
+      }
     } catch (err) {
       console.error('Erro ao carregar dashboard:', err);
     } finally {
@@ -108,6 +118,24 @@ export default function WhatsAppDashboardPage() {
     return date.toLocaleDateString('pt-BR');
   }
 
+  function openDetailsPanel(message: any) {
+    setSelectedMessage(message);
+    setShowDetailsPanel(true);
+  }
+
+  function closeDetailsPanel() {
+    setShowDetailsPanel(false);
+    setSelectedMessage(null);
+  }
+
+  function formatFullDate(dateString: string) {
+    const date = new Date(dateString);
+    return date.toLocaleString('pt-BR', { 
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+  }
+
   if (loading) {
     return (
       <MainLayout>
@@ -126,6 +154,50 @@ export default function WhatsAppDashboardPage() {
           <h1 className="text-2xl font-bold text-gray-900">WhatsApp</h1>
           <p className="text-gray-500 text-sm mt-1">Visão geral das integrações e mensagens</p>
         </div>
+
+        {/* Card de Uso do Plano */}
+        {usageInfo && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+                  <Send className="text-green-600" size={20} />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Mensagens este mês</p>
+                  <p className="text-xl font-bold text-gray-900">
+                    {usageInfo.used}
+                    <span className="text-sm font-normal text-gray-400">
+                      /{usageInfo.limit === 999999 ? '∞' : usageInfo.limit}
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className={`text-2xl font-bold ${
+                  usageInfo.limit === 999999 ? 'text-gray-400' :
+                  (usageInfo.used / usageInfo.limit) > 0.8 ? 'text-red-600' :
+                  (usageInfo.used / usageInfo.limit) > 0.5 ? 'text-yellow-600' :
+                  'text-green-600'
+                }`}>
+                  {usageInfo.limit === 999999 ? '∞' : Math.round((usageInfo.used / usageInfo.limit) * 100)}%
+                </span>
+              </div>
+            </div>
+            {usageInfo.limit !== 999999 && (
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full rounded-full transition-all ${
+                    (usageInfo.used / usageInfo.limit) > 0.8 ? 'bg-red-500' :
+                    (usageInfo.used / usageInfo.limit) > 0.5 ? 'bg-yellow-500' :
+                    'bg-green-500'
+                  }`}
+                  style={{ width: `${Math.min((usageInfo.used / usageInfo.limit) * 100, 100)}%` }}
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Cards de Resumo */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -229,7 +301,7 @@ export default function WhatsAppDashboardPage() {
                 </div>
               ) : (
                 recentMessages.map((msg) => (
-                  <div key={msg.id} className="p-4 hover:bg-gray-50">
+                  <div key={msg.id} className="p-4 hover:bg-gray-50 cursor-pointer" onClick={() => openDetailsPanel(msg)}>
                     <div className="flex items-start gap-3">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
                         msg.direction === 'incoming' 
@@ -312,6 +384,41 @@ export default function WhatsAppDashboardPage() {
           </div>
         </div>
       </div>
+
+      {showDetailsPanel && selectedMessage && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm" onClick={closeDetailsPanel} />
+          <div className="fixed inset-y-0 right-0 w-[400px] bg-white shadow-2xl z-50 flex flex-col animate-slide-in">
+            <div className={`px-4 py-3 flex items-center justify-between ${
+              selectedMessage.direction === 'incoming' ? 'bg-blue-600' : 'bg-green-600'
+            } text-white`}>
+              <div className="flex items-center gap-2">
+                {selectedMessage.direction === 'incoming' ? <ArrowDownLeft size={20} /> : <ArrowUpRight size={20} />}
+                <span className="font-semibold">
+                  {selectedMessage.direction === 'incoming' ? 'Mensagem Recebida' : 'Mensagem Enviada'}
+                </span>
+              </div>
+              <button onClick={closeDetailsPanel} className="p-2 hover:bg-white/20 rounded-lg transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <div className="bg-gray-50 rounded-lg p-3">
+                <span className="text-xs text-gray-500">Contato</span>
+                <p className="font-medium text-gray-900">{selectedMessage.sender_name || formatPhone(selectedMessage.phone_number)}</p>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <span className="text-xs text-gray-500">Data/Hora</span>
+                <p className="font-medium text-gray-900">{formatFullDate(selectedMessage.created_at)}</p>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <span className="text-xs text-gray-500 block mb-2">Mensagem</span>
+                <p className="text-sm text-gray-900 whitespace-pre-wrap">{selectedMessage.message_content || '[Mídia]'}</p>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </MainLayout>
   );
 }

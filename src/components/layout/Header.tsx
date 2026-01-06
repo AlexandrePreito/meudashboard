@@ -7,11 +7,14 @@ import {
   Bell, LogOut, ChevronDown, Building2, User, Zap, Menu, X, Key
 } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface CompanyGroup {
   id: string;
   name: string;
   slug: string;
+  logo_url: string | null;
+  primary_color: string | null;
 }
 
 interface HeaderProps {
@@ -39,6 +42,7 @@ export default function Header({ user }: HeaderProps) {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const groupDropdownRef = useRef<HTMLDivElement>(null);
+  const { setPrimaryColor } = useTheme();
 
   useEffect(() => {
     loadGroups();
@@ -53,6 +57,13 @@ export default function Header({ user }: HeaderProps) {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    console.log('DEBUG - activeGroup color:', activeGroup?.primary_color);
+    if (activeGroup?.primary_color) {
+      setPrimaryColor(activeGroup.primary_color);
+    }
+  }, [activeGroup, setPrimaryColor]);
 
   async function loadGroups() {
     try {
@@ -114,12 +125,27 @@ export default function Header({ user }: HeaderProps) {
           </button>
 
           <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg">
-              <Zap size={20} className="text-white" />
-            </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">
-              MeuDashboard
-            </span>
+            {activeGroup?.logo_url ? (
+              <>
+                <img 
+                  src={activeGroup.logo_url} 
+                  alt={activeGroup.name} 
+                  className="h-9 w-auto max-w-[40px] object-contain"
+                />
+                <span className="text-xl font-bold text-gray-800 hidden sm:inline">
+                  {activeGroup.name}
+                </span>
+              </>
+            ) : (
+              <>
+                <div className="p-1.5 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg">
+                  <Zap size={20} className="text-white" />
+                </div>
+                <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">
+                  MeuDashboard
+                </span>
+              </>
+            )}
           </div>
         </div>
 
@@ -133,7 +159,7 @@ export default function Header({ user }: HeaderProps) {
                 href={item.href}
                 className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
                   isActive
-                    ? 'bg-blue-50 text-blue-600'
+                    ? 'nav-active'
                     : 'text-gray-600 hover:bg-gray-50'
                 }`}
               >
@@ -243,7 +269,7 @@ export default function Header({ user }: HeaderProps) {
                   onClick={handleMobileNavClick}
                   className={`px-4 py-3 rounded-lg transition-colors text-sm font-medium ${
                     isActive
-                      ? 'bg-blue-50 text-blue-600'
+                      ? 'nav-active'
                       : 'text-gray-600 hover:bg-gray-50'
                   }`}
                 >

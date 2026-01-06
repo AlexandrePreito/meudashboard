@@ -10,8 +10,19 @@ import {
   Loader2,
   X,
   Search,
-  Users
+  Users,
+  Upload,
+  Image
 } from 'lucide-react';
+import { brandColors } from '@/lib/colors';
+
+interface Plan {
+  id: string;
+  name: string;
+  max_users: number;
+  max_companies: number;
+  max_powerbi_screens: number;
+}
 
 interface Group {
   id: string;
@@ -24,6 +35,10 @@ interface Group {
   max_powerbi_screens: number;
   users_count: number;
   created_at: string;
+  logo_url: string | null;
+  plan_id: string | null;
+  plan?: Plan;
+  primary_color: string | null;
 }
 
 export default function GruposPage() {
@@ -34,17 +49,21 @@ export default function GruposPage() {
 
   const [showModal, setShowModal] = useState(false);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [plans, setPlans] = useState<Plan[]>([]);
 
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    max_users: 10,
-    max_companies: 5,
-    max_powerbi_screens: 10
+    logo_url: '',
+    plan_id: '',
+    primary_color: 'blue'
   });
 
   useEffect(() => {
     loadGroups();
+    loadPlans();
   }, []);
 
   async function loadGroups() {
@@ -61,15 +80,28 @@ export default function GruposPage() {
     }
   }
 
+  async function loadPlans() {
+    try {
+      const res = await fetch('/api/plans');
+      if (res.ok) {
+        const data = await res.json();
+        setPlans(data.plans || []);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar planos:', err);
+    }
+  }
+
   function resetForm() {
     setFormData({
       name: '',
       description: '',
-      max_users: 10,
-      max_companies: 5,
-      max_powerbi_screens: 10
+      logo_url: '',
+      plan_id: '',
+      primary_color: 'blue'
     });
     setEditingGroup(null);
+    setLogoPreview(null);
   }
 
   function openNewGroup() {
@@ -82,11 +114,42 @@ export default function GruposPage() {
     setFormData({
       name: group.name,
       description: group.description || '',
-      max_users: group.max_users,
-      max_companies: group.max_companies,
-      max_powerbi_screens: group.max_powerbi_screens
+      logo_url: group.logo_url || '',
+      plan_id: group.plan_id || '',
+      primary_color: group.primary_color || 'blue'
     });
+    setLogoPreview(group.logo_url || null);
     setShowModal(true);
+  }
+
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const formDataUpload = new FormData();
+      formDataUpload.append('file', file);
+      formDataUpload.append('group_id', editingGroup?.id || 'new');
+
+      const res = await fetch('/api/upload/logo', {
+        method: 'POST',
+        body: formDataUpload
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setFormData({ ...formData, logo_url: data.url });
+        setLogoPreview(data.url);
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Erro no upload');
+      }
+    } catch (err) {
+      alert('Erro ao fazer upload');
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function handleSave() {
@@ -100,9 +163,9 @@ export default function GruposPage() {
       const payload: any = {
         name: formData.name,
         description: formData.description || null,
-        max_users: formData.max_users,
-        max_companies: formData.max_companies,
-        max_powerbi_screens: formData.max_powerbi_screens
+        logo_url: formData.logo_url || null,
+        plan_id: formData.plan_id || null,
+        primary_color: formData.primary_color || 'blue'
       };
 
       if (editingGroup) {
@@ -206,8 +269,12 @@ export default function GruposPage() {
               <div key={group.id} className="bg-white rounded-xl border border-gray-200 p-5">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                      <Building2 className="text-blue-600" size={24} />
+                    <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center overflow-hidden">
+                      {group.logo_url ? (
+                        <img src={group.logo_url} alt={group.name} className="w-full h-full object-contain" />
+                      ) : (
+                        <Building2 className="text-blue-600" size={24} />
+                      )}
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900">{group.name}</h3>
@@ -232,19 +299,13 @@ export default function GruposPage() {
                 {group.description && (
                   <p className="text-sm text-gray-600 mb-4">{group.description}</p>
                 )}
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="bg-gray-50 rounded-lg p-2">
-                    <p className="text-lg font-bold text-gray-900">{group.users_count}</p>
-                    <p className="text-xs text-gray-500">Usuários</p>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-2">
-                    <p className="text-lg font-bold text-gray-900">{group.max_users}</p>
-                    <p className="text-xs text-gray-500">Máx. Users</p>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-2">
-                    <p className="text-lg font-bold text-gray-900">{group.max_powerbi_screens}</p>
-                    <p className="text-xs text-gray-500">Telas BI</p>
-                  </div>
+                <div className="mt-4 pt-3 border-t border-gray-100">
+                  <p className="text-xs text-gray-500">
+                    Plano: <span className="font-medium text-gray-700">{plans.find(p => p.id === group.plan_id)?.name || 'Nenhum'}</span>
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {group.users_count} usuários ativos
+                  </p>
                 </div>
               </div>
             ))}
@@ -288,33 +349,90 @@ export default function GruposPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Máx. Usuários</label>
-                    <input
-                      type="number"
-                      value={formData.max_users}
-                      onChange={(e) => setFormData({ ...formData, max_users: parseInt(e.target.value) || 10 })}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                    />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Logo</label>
+                  <div className="flex items-center gap-4">
+                    <div className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden bg-gray-50">
+                      {logoPreview ? (
+                        <img src={logoPreview} alt="Logo" className="w-full h-full object-contain" />
+                      ) : (
+                        <Image size={24} className="text-gray-400" />
+                      )}
+                    </div>
+                    <div>
+                      <label className="cursor-pointer">
+                        <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+                          {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                          {uploading ? 'Enviando...' : 'Escolher imagem'}
+                        </div>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/svg+xml"
+                          onChange={handleLogoUpload}
+                          disabled={uploading}
+                          className="hidden"
+                        />
+                      </label>
+                      <p className="text-xs text-gray-500 mt-1">JPG, PNG, WebP ou SVG. Máx 2MB.</p>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Máx. Empresas</label>
-                    <input
-                      type="number"
-                      value={formData.max_companies}
-                      onChange={(e) => setFormData({ ...formData, max_companies: parseInt(e.target.value) || 5 })}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                    />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Plano</label>
+                  <select
+                    value={formData.plan_id}
+                    onChange={(e) => setFormData({ ...formData, plan_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">Selecione um plano</option>
+                    {plans.map(plan => (
+                      <option key={plan.id} value={plan.id}>{plan.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {formData.plan_id && (
+                  <div className="bg-gray-50 rounded-lg p-3 mt-2">
+                    <p className="text-xs text-gray-500 mb-2">Limites do plano:</p>
+                    <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                      <div>
+                        <p className="font-semibold text-gray-900">{plans.find(p => p.id === formData.plan_id)?.max_users || '-'}</p>
+                        <p className="text-xs text-gray-500">Usuários</p>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-900">{plans.find(p => p.id === formData.plan_id)?.max_companies || '-'}</p>
+                        <p className="text-xs text-gray-500">Empresas</p>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-900">{plans.find(p => p.id === formData.plan_id)?.max_powerbi_screens || '-'}</p>
+                        <p className="text-xs text-gray-500">Telas BI</p>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Telas BI</label>
-                    <input
-                      type="number"
-                      value={formData.max_powerbi_screens}
-                      onChange={(e) => setFormData({ ...formData, max_powerbi_screens: parseInt(e.target.value) || 10 })}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                    />
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Cor do Tema</label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {Object.entries(brandColors).map(([key, color]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, primary_color: key })}
+                        className={`flex items-center gap-2 p-2 rounded-lg border-2 transition-all ${
+                          formData.primary_color === key 
+                            ? 'border-gray-900 bg-gray-50' 
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div 
+                          className="w-6 h-6 rounded-full" 
+                          style={{ backgroundColor: color.primary }}
+                        />
+                        <span className="text-xs font-medium text-gray-700">{color.name}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>

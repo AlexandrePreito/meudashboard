@@ -19,6 +19,43 @@
   }
 }
 
+/* Botões com cor do tema */
+.btn-primary {
+  background-color: var(--color-primary);
+  color: white;
+  transition: background-color 0.2s;
+}
+.btn-primary:hover {
+  background-color: var(--color-primary-hover);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+}
+
+/* Texto com cor do tema */
+.text-primary {
+  color: var(--color-primary);
+}
+.text-primary-dark {
+  color: var(--color-primary-text);
+}
+
+/* Background claro com cor do tema */
+.bg-primary-light {
+  background-color: var(--color-primary-light);
+}
+
+/* Borda com cor do tema */
+.border-primary {
+  border-color: var(--color-primary);
+}
+
+/* Menu ativo */
+.nav-active {
+  background-color: var(--color-primary-light);
+  color: var(--color-primary-text);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

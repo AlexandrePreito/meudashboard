@@ -27,13 +27,13 @@ export async function GET() {
       );
     }
 
-    let groups: Array<{ id: string; name: string; slug: string }> = [];
+    let groups: Array<{ id: string; name: string; slug: string; logo_url: string | null; primary_color: string | null }> = [];
 
     // Se o usuário for master, busca TODOS os grupos ativos
     if (user.is_master) {
       const { data, error } = await supabase
         .from('company_groups')
-        .select('id, name, slug')
+        .select('id, name, slug, logo_url, primary_color')
         .eq('status', 'active')
         .order('name');
 
@@ -54,7 +54,9 @@ export async function GET() {
           company_group:company_groups (
             id,
             name,
-            slug
+            slug,
+            logo_url,
+            primary_color
           )
         `)
         .eq('user_id', user.id)
