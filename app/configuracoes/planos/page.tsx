@@ -16,7 +16,10 @@ import {
   Monitor,
   Users,
   Building2,
-  AlertCircle
+  AlertCircle,
+  MessageCircle,
+  Bot,
+  Bell
 } from 'lucide-react';
 
 interface Plan {
@@ -29,6 +32,10 @@ interface Plan {
   max_companies: number;
   is_active: boolean;
   display_order: number;
+  max_ai_questions_per_day: number;
+  max_ai_alerts_per_month: number;
+  max_whatsapp_messages_per_month: number;
+  ai_enabled: boolean;
 }
 
 export default function PlanosPage() {
@@ -39,6 +46,21 @@ export default function PlanosPage() {
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [saving, setSaving] = useState(false);
   const { notifications, success, error, removeNotification } = useNotification();
+
+  // Função para determinar a cor do plano baseado no nome
+  function getPlanColor(planName: string): string {
+    const name = planName.toLowerCase();
+    if (name.includes('básico') || name.includes('basico')) return 'border-l-blue-500';
+    if (name.includes('standard') || name.includes('padrão') || name.includes('padrao')) return 'border-l-green-500';
+    if (name.includes('premium') || name.includes('pro')) return 'border-l-purple-500';
+    if (name.includes('enterprise') || name.includes('empresarial')) return 'border-l-amber-500';
+    return 'border-l-gray-500';
+  }
+
+  // Função para formatar valores (mostrar "Ilimitado" para valores altos)
+  function formatLimit(value: number): string {
+    return value >= 999999 ? 'Ilimitado' : value.toString();
+  }
   
   const [form, setForm] = useState({
     name: '',
@@ -47,7 +69,11 @@ export default function PlanosPage() {
     max_powerbi_screens: 3,
     max_users: 10,
     max_companies: 2,
-    display_order: 0
+    display_order: 0,
+    max_ai_questions_per_day: 50,
+    max_ai_alerts_per_month: 10,
+    max_whatsapp_messages_per_month: 100,
+    ai_enabled: true
   });
 
   useEffect(() => {
@@ -85,7 +111,11 @@ export default function PlanosPage() {
       max_powerbi_screens: 3,
       max_users: 10,
       max_companies: 2,
-      display_order: plans.length + 1
+      display_order: plans.length + 1,
+      max_ai_questions_per_day: 50,
+      max_ai_alerts_per_month: 10,
+      max_whatsapp_messages_per_month: 100,
+      ai_enabled: true
     });
     setShowModal(true);
   }
@@ -99,7 +129,11 @@ export default function PlanosPage() {
       max_powerbi_screens: plan.max_powerbi_screens,
       max_users: plan.max_users,
       max_companies: plan.max_companies,
-      display_order: plan.display_order
+      display_order: plan.display_order,
+      max_ai_questions_per_day: plan.max_ai_questions_per_day,
+      max_ai_alerts_per_month: plan.max_ai_alerts_per_month,
+      max_whatsapp_messages_per_month: plan.max_whatsapp_messages_per_month,
+      ai_enabled: plan.ai_enabled
     });
     setShowModal(true);
   }
@@ -212,50 +246,65 @@ export default function PlanosPage() {
             {plans.map(plan => (
               <div 
                 key={plan.id} 
-                className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow"
+                className={`bg-white rounded-lg border border-gray-200 ${getPlanColor(plan.name)} border-l-4 shadow-sm hover:shadow-md transition-shadow`}
               >
                 {/* Header do Card */}
-                <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-4 text-white">
-                  <div className="flex items-center justify-between mb-2">
-                    <Crown size={24} />
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${
-                      plan.is_active ? 'bg-green-500' : 'bg-gray-500'
-                    }`}>
-                      {plan.is_active ? 'Ativo' : 'Inativo'}
-                    </span>
+                <div className="p-4 pb-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Crown size={18} className="text-gray-600" />
+                    <h3 className="text-lg font-semibold text-gray-900">{plan.name}</h3>
                   </div>
-                  <h3 className="text-xl font-bold">{plan.name}</h3>
                   {plan.description && (
-                    <p className="text-sm text-blue-100 mt-1">{plan.description}</p>
+                    <p className="text-sm text-gray-500 mt-1">{plan.description}</p>
                   )}
                 </div>
 
+                {/* Divisor */}
+                <div className="border-t border-gray-100"></div>
+
                 {/* Limites */}
-                <div className="p-4 space-y-3">
-                  <div className="flex items-center gap-3 text-sm">
-                    <RefreshCw size={16} className="text-blue-600" />
-                    <span className="text-gray-600">Atualizações/dia:</span>
-                    <span className="ml-auto font-semibold text-gray-900">{plan.max_daily_refreshes}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm">
-                    <Monitor size={16} className="text-green-600" />
-                    <span className="text-gray-600">Telas Power BI:</span>
-                    <span className="ml-auto font-semibold text-gray-900">{plan.max_powerbi_screens}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm">
-                    <Users size={16} className="text-purple-600" />
-                    <span className="text-gray-600">Usuários:</span>
-                    <span className="ml-auto font-semibold text-gray-900">{plan.max_users}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm">
-                    <Building2 size={16} className="text-orange-600" />
-                    <span className="text-gray-600">Empresas:</span>
-                    <span className="ml-auto font-semibold text-gray-900">{plan.max_companies}</span>
+                <div className="p-4">
+                  <div className="grid grid-cols-2 md:grid-cols-1 gap-2.5">
+                    <div className="flex items-center gap-2 text-sm">
+                      <RefreshCw size={14} className="text-gray-400 flex-shrink-0" />
+                      <span className="text-gray-600">Atualizações/dia:</span>
+                      <span className="ml-auto font-medium text-gray-900">{formatLimit(plan.max_daily_refreshes)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <Monitor size={14} className="text-gray-400 flex-shrink-0" />
+                      <span className="text-gray-600">Telas Power BI:</span>
+                      <span className="ml-auto font-medium text-gray-900">{formatLimit(plan.max_powerbi_screens)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <Users size={14} className="text-gray-400 flex-shrink-0" />
+                      <span className="text-gray-600">Usuários:</span>
+                      <span className="ml-auto font-medium text-gray-900">{formatLimit(plan.max_users)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <Building2 size={14} className="text-gray-400 flex-shrink-0" />
+                      <span className="text-gray-600">Empresas:</span>
+                      <span className="ml-auto font-medium text-gray-900">{formatLimit(plan.max_companies)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <Bot size={14} className="text-gray-400 flex-shrink-0" />
+                      <span className="text-gray-600">Perguntas IA/dia:</span>
+                      <span className="ml-auto font-medium text-gray-900">{formatLimit(plan.max_ai_questions_per_day)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <Bell size={14} className="text-gray-400 flex-shrink-0" />
+                      <span className="text-gray-600">Alertas IA:</span>
+                      <span className="ml-auto font-medium text-gray-900">{formatLimit(plan.max_ai_alerts_per_month)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <MessageCircle size={14} className="text-gray-400 flex-shrink-0" />
+                      <span className="text-gray-600">Mensagens WhatsApp:</span>
+                      <span className="ml-auto font-medium text-gray-900">{formatLimit(plan.max_whatsapp_messages_per_month)}</span>
+                    </div>
                   </div>
                 </div>
 
-                {/* Ações */}
-                <div className="border-t border-gray-200 p-3 bg-gray-50 flex items-center justify-end gap-2">
+                {/* Footer com Ações */}
+                <div className="border-t border-gray-100 p-3 flex items-center justify-end gap-2">
                   <button
                     onClick={() => handleEdit(plan)}
                     className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -383,6 +432,57 @@ export default function PlanosPage() {
                     type="number"
                     value={form.display_order}
                     onChange={(e) => setForm({ ...form, display_order: parseInt(e.target.value) || 0 })}
+                    min="0"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.ai_enabled}
+                      onChange={(e) => setForm({ ...form, ai_enabled: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 bg-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2 accent-blue-600"
+                    />
+                    <span className="text-sm font-medium text-gray-700">IA Habilitada</span>
+                  </label>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Perguntas IA/dia
+                  </label>
+                  <input
+                    type="number"
+                    value={form.max_ai_questions_per_day}
+                    onChange={(e) => setForm({ ...form, max_ai_questions_per_day: parseInt(e.target.value) || 0 })}
+                    min="0"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Alertas IA
+                  </label>
+                  <input
+                    type="number"
+                    value={form.max_ai_alerts_per_month}
+                    onChange={(e) => setForm({ ...form, max_ai_alerts_per_month: parseInt(e.target.value) || 0 })}
+                    min="0"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Mensagens WhatsApp
+                  </label>
+                  <input
+                    type="number"
+                    value={form.max_whatsapp_messages_per_month}
+                    onChange={(e) => setForm({ ...form, max_whatsapp_messages_per_month: parseInt(e.target.value) || 0 })}
                     min="0"
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
                   />

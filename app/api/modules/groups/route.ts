@@ -13,7 +13,7 @@ export async function GET() {
     const supabase = createAdminClient();
     
     const { data: associations, error } = await supabase
-      .from('module_groups')
+      .from('group_modules')
       .select('module_id, company_group_id');
 
     if (error) throw error;
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     
     // Verificar se já existe
     const { data: existing } = await supabase
-      .from('module_groups')
+      .from('group_modules')
       .select('*')
       .eq('module_id', module_id)
       .eq('company_group_id', company_group_id)
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     }
 
     const { data, error } = await supabase
-      .from('module_groups')
+      .from('group_modules')
       .insert({ module_id, company_group_id })
       .select()
       .single();
@@ -108,7 +108,7 @@ export async function DELETE(request: Request) {
     }
 
     const { error } = await supabase
-      .from('module_groups')
+      .from('group_modules')
       .delete()
       .eq('module_id', module_id)
       .eq('company_group_id', group_id);

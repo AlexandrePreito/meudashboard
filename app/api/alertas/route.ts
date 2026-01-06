@@ -92,6 +92,48 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Grupo não encontrado' }, { status: 400 });
     }
 
+    // Verificar limite de alertas do mês
+    const now = new Date();
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+
+    // Buscar plano do grupo
+    const { data: groupData } = await supabase
+      .from('company_groups')
+      .select('plan_id')
+      .eq('id', companyGroupId)
+      .single();
+
+    let maxAlertsPerMonth = 10; // default
+
+    if (groupData?.plan_id) {
+      const { data: plan } = await supabase
+        .from('powerbi_plans')
+        .select('max_ai_alerts_per_month')
+        .eq('id', groupData.plan_id)
+        .single();
+      
+      if (plan?.max_ai_alerts_per_month) {
+        maxAlertsPerMonth = plan.max_ai_alerts_per_month;
+      }
+    }
+
+    // Contar alertas criados no mês
+    const { count: alertsThisMonth } = await supabase
+      .from('ai_alerts')
+      .select('*', { count: 'exact', head: true })
+      .eq('company_group_id', companyGroupId)
+      .gte('created_at', firstDayOfMonth)
+      .lte('created_at', lastDayOfMonth + 'T23:59:59');
+
+    // Verificar se excedeu (999999 = ilimitado)
+    if (maxAlertsPerMonth < 999999 && (alertsThisMonth || 0) >= maxAlertsPerMonth) {
+      return NextResponse.json({ 
+        error: `Limite mensal de ${maxAlertsPerMonth} alertas atingido. Aguarde o próximo mês.`,
+        limit_reached: true 
+      }, { status: 429 });
+    }
+
     const { data: alert, error } = await supabase
       .from('ai_alerts')
       .insert({

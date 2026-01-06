@@ -64,6 +64,7 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
   const [processingStatus, setProcessingStatus] = useState<string>('');
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [usageInfo, setUsageInfo] = useState<{ used: number; limit: number } | null>(null);
 
   const renderReport = useCallback(() => {
     if (!embedConfig || !embedContainerRef.current || !window.powerbi) {
@@ -179,6 +180,26 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
+
+  // Função para buscar uso
+  async function fetchUsageInfo() {
+    try {
+      const res = await fetch('/api/ai/usage');
+      if (res.ok) {
+        const data = await res.json();
+        setUsageInfo({ used: data.used_today || 0, limit: data.daily_limit || 50 });
+      }
+    } catch (error) {
+      console.error('Erro ao buscar uso:', error);
+    }
+  }
+
+  // Buscar uso quando chat abrir
+  useEffect(() => {
+    if (chatOpen) {
+      fetchUsageInfo();
+    }
+  }, [chatOpen]);
 
   function handleRefresh() {
     setRefreshing(true);
@@ -371,6 +392,9 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
       setMessages(prev => [...prev, assistantMessage]);
       setSuggestions(newSuggestions);
 
+      // Atualizar uso após enviar mensagem
+      fetchUsageInfo();
+
     } catch (err: any) {
       clearInterval(statusInterval);
       console.error('Erro no chat:', err);
@@ -549,6 +573,11 @@ ${'='.repeat(50)}
               <div className="flex items-center gap-2">
                 <Sparkles size={20} />
                 <span className="font-semibold">Assistente IA</span>
+                {usageInfo && (
+                  <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
+                    {usageInfo.used}/{usageInfo.limit === 999999 ? '∞' : usageInfo.limit}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-1">
                 <button

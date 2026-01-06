@@ -145,6 +145,48 @@ export async function POST(request: Request) {
       sender_name: authorizedNumber.name || phone
     });
 
+    // Verificar limite de mensagens WhatsApp do mês
+    const now = new Date();
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+
+    // Buscar plano do grupo
+    const { data: groupData } = await supabase
+      .from('company_groups')
+      .select('plan_id')
+      .eq('id', authorizedNumber.company_group_id)
+      .single();
+
+    let maxWhatsappPerMonth = 100; // default
+
+    if (groupData?.plan_id) {
+      const { data: plan } = await supabase
+        .from('powerbi_plans')
+        .select('max_whatsapp_messages_per_month')
+        .eq('id', groupData.plan_id)
+        .single();
+      
+      if (plan?.max_whatsapp_messages_per_month) {
+        maxWhatsappPerMonth = plan.max_whatsapp_messages_per_month;
+      }
+    }
+
+    // Contar mensagens enviadas (outgoing) no mês
+    const { count: messagesThisMonth } = await supabase
+      .from('whatsapp_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('company_group_id', authorizedNumber.company_group_id)
+      .eq('direction', 'outgoing')
+      .gte('created_at', firstDayOfMonth);
+
+    // Verificar se excedeu (999999 = ilimitado)
+    if (maxWhatsappPerMonth < 999999 && (messagesThisMonth || 0) >= maxWhatsappPerMonth) {
+      console.log('Limite de mensagens WhatsApp atingido para o grupo');
+      return NextResponse.json({ 
+        status: 'limit_reached',
+        reason: 'monthly whatsapp limit reached'
+      });
+    }
+
     // Buscar instância WhatsApp ativa
     const { data: instance } = await supabase
       .from('whatsapp_instances')

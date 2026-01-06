@@ -194,6 +194,48 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Grupo não encontrado' }, { status: 400 });
     }
 
+    // Verificar limite de perguntas do dia
+    const today = new Date().toISOString().split('T')[0];
+
+    // Buscar plano do grupo
+    const { data: groupData } = await supabase
+      .from('company_groups')
+      .select('plan_id')
+      .eq('id', companyGroupId)
+      .single();
+
+    let maxQuestionsPerDay = 50; // default
+
+    if (groupData?.plan_id) {
+      const { data: plan } = await supabase
+        .from('powerbi_plans')
+        .select('max_ai_questions_per_day')
+        .eq('id', groupData.plan_id)
+        .single();
+      
+      if (plan?.max_ai_questions_per_day) {
+        maxQuestionsPerDay = plan.max_ai_questions_per_day;
+      }
+    }
+
+    // Buscar uso do dia
+    const { data: usage } = await supabase
+      .from('ai_usage')
+      .select('questions_count')
+      .eq('company_group_id', companyGroupId)
+      .eq('usage_date', today)
+      .single();
+
+    const usedToday = usage?.questions_count || 0;
+
+    // Verificar se excedeu (999999 = ilimitado)
+    if (maxQuestionsPerDay < 999999 && usedToday >= maxQuestionsPerDay) {
+      return NextResponse.json({ 
+        error: `Limite diário de ${maxQuestionsPerDay} perguntas atingido. Tente novamente amanhã.`,
+        limit_reached: true 
+      }, { status: 429 });
+    }
+
     // Buscar ou criar conversa
     let conversationId = conversation_id;
     if (!conversationId) {
@@ -439,6 +481,33 @@ Este valor representa um crescimento em relação ao período anterior.
         content: assistantMessage
       }
     ]);
+
+    // Atualizar contador de uso
+    const { data: existingUsage } = await supabase
+      .from('ai_usage')
+      .select('id, questions_count')
+      .eq('company_group_id', companyGroupId)
+      .eq('usage_date', today)
+      .single();
+
+    if (existingUsage) {
+      await supabase
+        .from('ai_usage')
+        .update({ 
+          questions_count: existingUsage.questions_count + 1,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingUsage.id);
+    } else {
+      await supabase
+        .from('ai_usage')
+        .insert({
+          company_group_id: companyGroupId,
+          user_id: user.id,
+          usage_date: today,
+          questions_count: 1
+        });
+    }
 
     return NextResponse.json({
       message: assistantMessage,
