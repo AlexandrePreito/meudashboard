@@ -121,6 +121,7 @@ export async function POST(request: Request) {
     // Extrair dados da mensagem (formato Evolution API v2)
     const event = body.event || body.type;
     const messageData = body.data || body;
+    const instanceName = body.instance || ''; // Nome da instância que recebeu a mensagem
     
     // Só processa mensagens recebidas
     if (event !== 'messages.upsert' && event !== 'message') {
@@ -241,13 +242,47 @@ export async function POST(request: Request) {
       });
     }
 
-    // Buscar instância WhatsApp ativa
-    const { data: instance } = await supabase
-      .from('whatsapp_instances')
-      .select('*')
-      .eq('is_connected', true)
-      .limit(1)
-      .maybeSingle();
+    // Buscar instância WhatsApp pela que recebeu a mensagem
+    let instance = null;
+
+    // Primeiro tenta buscar pela instância que enviou o webhook
+    if (instanceName) {
+      const { data: instanceByName } = await supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .eq('instance_name', instanceName)
+        .eq('is_connected', true)
+        .maybeSingle();
+      
+      instance = instanceByName;
+      console.log('Instância encontrada pelo nome:', instanceName, instance ? 'SIM' : 'NÃO');
+    }
+
+    // Se não encontrou pelo nome, tenta pelo instance_id do número autorizado
+    if (!instance && authorizedNumber?.instance_id) {
+      const { data: instanceById } = await supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .eq('id', authorizedNumber.instance_id)
+        .eq('is_connected', true)
+        .maybeSingle();
+      
+      instance = instanceById;
+      console.log('Instância encontrada pelo ID:', authorizedNumber.instance_id, instance ? 'SIM' : 'NÃO');
+    }
+
+    // Fallback: qualquer instância conectada
+    if (!instance) {
+      const { data: anyInstance } = await supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .eq('is_connected', true)
+        .limit(1)
+        .maybeSingle();
+      
+      instance = anyInstance;
+      console.log('Usando instância fallback:', instance?.instance_name);
+    }
 
     if (!instance) {
       console.log('Nenhuma instância conectada');
