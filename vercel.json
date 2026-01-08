@@ -2,7 +2,23 @@
   "crons": [
     {
       "path": "/api/alertas/cron?key=${CRON_SECRET}",
-      "schedule": "0 8 * * *"
+      "schedule": "* * * * *"
     }
   ]
 }
+```
+
+> `* * * * *` = a cada minuto
+
+---
+
+## 2. Testar manualmente
+
+Para testar agora, use a URL com a chave correta. Verifique qual é sua `CRON_SECRET` no Vercel (Settings → Environment Variables) e acesse:
+```
+https://www.meudashboard.org/api/alertas/cron?key=SUA_CRON_SECRET_AQUI
+```
+
+Ou para teste rápido (o código já permite):
+```
+https://www.meudashboard.org/api/alertas/cron?key=manual-trigger
