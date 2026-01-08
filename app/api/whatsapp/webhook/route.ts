@@ -314,6 +314,41 @@ export async function POST(request: Request) {
     console.log('Connection ID:', recentAlert?.connection_id);
     console.log('Dataset ID:', recentAlert?.dataset_id);
 
+    // Se não tem conexão configurada, enviar mensagem de suporte
+    if (!recentAlert?.connection_id || !recentAlert?.dataset_id) {
+      console.log('Sem conexão/dataset configurado - enviando mensagem de suporte');
+      
+      const supportMessage = `Olá ${authorizedNumber.name || ''}! 👋
+
+Sou o assistente IA da sua empresa, mas ainda não tenho acesso aos seus dados configurado.
+
+📞 *Entre em contato com o suporte* para configurar:
+- Conexão com seus dados
+- Alertas personalizados
+- Consultas via WhatsApp
+
+Assim que estiver configurado, poderei te ajudar com análises e consultas em tempo real! 🚀`;
+
+      // Enviar mensagem de suporte
+      const sent = await sendWhatsAppMessage(instance, phone, supportMessage);
+      
+      if (sent) {
+        await supabase.from('whatsapp_messages').insert({
+          company_group_id: authorizedNumber.company_group_id,
+          phone_number: phone,
+          message_content: supportMessage,
+          direction: 'outgoing',
+          sender_name: 'Assistente IA'
+        });
+      }
+
+      return NextResponse.json({ 
+        status: 'success', 
+        sent,
+        reason: 'no_connection_configured'
+      });
+    }
+
     // Buscar contexto do modelo (se houver alerta com conexão)
     let modelContext = '';
     if (recentAlert?.connection_id) {
@@ -331,7 +366,7 @@ export async function POST(request: Request) {
     }
 
     // Construir prompt para a IA
-    const systemPrompt = `Você é um assistente de BI via WhatsApp. Responda de forma concisa e direta.
+    const systemPrompt = `Você é o assistente IA da empresa do usuário, integrado via WhatsApp. Responda de forma concisa e direta.
 
 ${modelContext ? `## CONTEXTO DO MODELO DE DADOS\n${modelContext}\n` : ''}
 
