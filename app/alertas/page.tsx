@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
+import { useToast } from '@/contexts/ToastContext';
 import {
   Bell,
   Plus,
@@ -68,10 +69,24 @@ const frequencyLabels: Record<string, string> = {
 };
 
 export default function AlertasPage() {
+  const { showToast } = useToast();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [triggeringId, setTriggeringId] = useState<string | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    show: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type?: 'danger' | 'warning' | 'info';
+  }>({
+    show: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    type: 'warning'
+  });
 
   useEffect(() => {
     loadAlerts();
@@ -110,42 +125,58 @@ export default function AlertasPage() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Excluir este alerta?')) return;
-
-    try {
-      const res = await fetch(`/api/alertas?id=${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        alert('Alerta excluído!');
-        loadAlerts();
+  function handleDelete(id: string, alertName: string) {
+    setConfirmModal({
+      show: true,
+      title: 'Excluir Alerta',
+      message: `Tem certeza que deseja excluir o alerta "${alertName}"? Esta ação não pode ser desfeita.`,
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`/api/alertas?id=${id}`, { method: 'DELETE' });
+          if (res.ok) {
+            showToast('Alerta excluído com sucesso!', 'success');
+            loadAlerts();
+          } else {
+            showToast('Erro ao excluir alerta', 'error');
+          }
+        } catch (err) {
+          showToast('Erro ao excluir alerta', 'error');
+        }
+        setConfirmModal({ ...confirmModal, show: false });
       }
-    } catch (err) {
-      alert('Erro ao excluir');
-    }
+    });
   }
 
-  async function triggerAlert(alertItem: Alert) {
-    if (!confirm(`Disparar o alerta "${alertItem.name}" agora?`)) return;
-    
-    setTriggeringId(alertItem.id);
-    try {
-      const res = await fetch(`/api/alertas/${alertItem.id}/trigger`, {
-        method: 'POST'
-      });
-      
-      if (res.ok) {
-        const data = await res.json();
-        alert(data.message || 'Alerta disparado com sucesso!');
-        loadAlerts();
-      } else {
-        const data = await res.json();
-        alert(data.error || 'Erro ao disparar alerta');
+  function triggerAlert(alertItem: Alert) {
+    setConfirmModal({
+      show: true,
+      title: 'Disparar Alerta',
+      message: `Deseja disparar o alerta "${alertItem.name}" agora? ${alertItem.notify_whatsapp ? 'Notificações WhatsApp serão enviadas.' : ''}`,
+      type: 'info',
+      onConfirm: async () => {
+        setConfirmModal({ ...confirmModal, show: false });
+        setTriggeringId(alertItem.id);
+        try {
+          const res = await fetch(`/api/alertas/${alertItem.id}/trigger`, {
+            method: 'POST'
+          });
+          
+          if (res.ok) {
+            const data = await res.json();
+            showToast(data.message || 'Alerta disparado com sucesso!', 'success');
+            loadAlerts();
+          } else {
+            const data = await res.json();
+            showToast(data.error || 'Erro ao disparar alerta', 'error');
+          }
+        } catch (err) {
+          showToast('Erro ao disparar alerta', 'error');
+        } finally {
+          setTriggeringId(null);
+        }
       }
-    } catch (err) {
-      alert('Erro ao disparar alerta');
-    } finally {
-      setTriggeringId(null);
-    }
+    });
   }
 
   function formatDate(dateString: string | null) {
@@ -360,7 +391,7 @@ export default function AlertasPage() {
                           <Edit size={16} />
                         </Link>
                         <button
-                          onClick={() => handleDelete(alertItem.id)}
+                          onClick={() => handleDelete(alertItem.id, alertItem.name)}
                           className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           title="Excluir"
                         >
@@ -375,6 +406,61 @@ export default function AlertasPage() {
           </div>
         )}
       </div>
+
+      {/* Modal de Confirmação */}
+      {confirmModal.show && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full animate-in fade-in zoom-in duration-200">
+            <div className="p-6">
+              <div className="flex items-start gap-4">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  confirmModal.type === 'danger' 
+                    ? 'bg-red-100' 
+                    : confirmModal.type === 'warning'
+                    ? 'bg-yellow-100'
+                    : 'bg-blue-100'
+                }`}>
+                  {confirmModal.type === 'danger' ? (
+                    <Trash2 className={`w-6 h-6 ${confirmModal.type === 'danger' ? 'text-red-600' : ''}`} />
+                  ) : confirmModal.type === 'warning' ? (
+                    <AlertTriangle className="w-6 h-6 text-yellow-600" />
+                  ) : (
+                    <Send className="w-6 h-6 text-blue-600" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    {confirmModal.title}
+                  </h3>
+                  <p className="text-gray-600 text-sm leading-relaxed">
+                    {confirmModal.message}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-50 px-6 py-4 rounded-b-2xl flex gap-3 justify-end">
+              <button
+                onClick={() => setConfirmModal({ ...confirmModal, show: false })}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmModal.onConfirm}
+                className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors ${
+                  confirmModal.type === 'danger'
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : confirmModal.type === 'warning'
+                    ? 'bg-yellow-600 hover:bg-yellow-700'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                {confirmModal.type === 'danger' ? 'Excluir' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </MainLayout>
   );
 }
