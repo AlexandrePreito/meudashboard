@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
 import { 
@@ -9,19 +10,53 @@ import {
   Webhook,
   X,
   FileText,
-  Search
+  Search,
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 
 export default function WebhookPage() {
+  const router = useRouter();
+  const [userRole, setUserRole] = useState<string>('loading');
+  
   const [copied, setCopied] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   
   useEffect(() => {
+    checkAccess();
+  }, []);
+
+  useEffect(() => {
     const baseUrl = window.location.origin;
     setWebhookUrl(`${baseUrl}/api/whatsapp/webhook`);
   }, []);
+
+  async function checkAccess() {
+    try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      
+      if (!data.user) {
+        router.push('/login');
+        return;
+      }
+      
+      if (data.user.is_master) {
+        setUserRole('master');
+      } else if (data.user.role === 'admin') {
+        setUserRole('admin'); // Só leitura
+      } else {
+        // User sem acesso - redirecionar
+        router.push('/');
+        return;
+      }
+    } catch (error) {
+      console.error('Erro ao verificar acesso:', error);
+      router.push('/login');
+    }
+  }
 
   async function copyToClipboard() {
     try {
@@ -33,9 +68,18 @@ export default function WebhookPage() {
     }
   }
 
+  // Loading state
+  if (userRole === 'loading') {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-12 h-12 animate-spin text-green-600" />
+      </div>
+    );
+  }
+
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 -mt-12">
         {/* Header */}
         <div>
           <div className="flex justify-between items-center mb-4">
@@ -48,6 +92,20 @@ export default function WebhookPage() {
             </Button>
           </div>
 
+          {/* Aviso para Admin (Só Leitura) */}
+          {userRole === 'admin' && (
+            <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-yellow-800 text-sm font-medium">Modo somente leitura</p>
+                <p className="text-yellow-700 text-sm mt-1">
+                  Apenas o administrador do sistema pode alterar configurações de webhook.
+                  Você pode visualizar e copiar a URL.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Barra de Busca */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
@@ -57,6 +115,7 @@ export default function WebhookPage() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              disabled={userRole === 'admin'}
             />
           </div>
         </div>
@@ -77,14 +136,17 @@ export default function WebhookPage() {
             <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg p-4">
               <code className="text-sm text-gray-800 break-all">{webhookUrl}</code>
             </div>
-            <Button
+            <button
               onClick={copyToClipboard}
-              variant={copied ? 'secondary' : 'primary'}
-              icon={copied ? <Check size={18} /> : <Copy size={18} />}
-              className={copied ? 'bg-green-100 text-green-700 hover:bg-green-200' : ''}
+              className={`p-3 rounded-lg transition-colors ${
+                copied 
+                  ? 'text-green-600 hover:bg-green-50' 
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+              title={copied ? 'Copiado!' : 'Copiar URL'}
             >
-              {copied ? 'Copiado!' : 'Copiar'}
-            </Button>
+              {copied ? <Check size={20} /> : <Copy size={20} />}
+            </button>
           </div>
         </div>
 
@@ -213,4 +275,3 @@ export default function WebhookPage() {
     </MainLayout>
   );
 }
-

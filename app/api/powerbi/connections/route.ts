@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const groupId = searchParams.get('group_id');
+    const filterGroupId = searchParams.get('company_group_id') || searchParams.get('group_id');
 
     const supabase = createAdminClient();
 
@@ -23,18 +23,25 @@ export async function GET(request: Request) {
       `)
       .order('name');
 
-    if (!user.is_master) {
+    // Se passou company_group_id como parâmetro, filtrar por ele
+    if (filterGroupId) {
+      query = query.eq('company_group_id', filterGroupId);
+    }
+    // Se não é master e não passou filtro, filtrar pelos grupos do usuário
+    else if (!user.is_master) {
       const { data: memberships } = await supabase
         .from('user_group_membership')
         .select('company_group_id')
-        .eq('user_id', user.id);
-      
-      const groupIds = memberships?.map(m => m.company_group_id) || [];
-      query = query.in('company_group_id', groupIds.length > 0 ? groupIds : ['00000000-0000-0000-0000-000000000000']);
-    }
+        .eq('user_id', user.id)
+        .eq('is_active', true);
 
-    if (groupId) {
-      query = query.eq('company_group_id', groupId);
+      const groupIds = memberships?.map(m => m.company_group_id) || [];
+      
+      if (groupIds.length === 0) {
+        return NextResponse.json({ connections: [] });
+      }
+      
+      query = query.in('company_group_id', groupIds);
     }
 
     const { data, error } = await query;

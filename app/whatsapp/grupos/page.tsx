@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
+import DatasetSelector from '@/components/whatsapp/DatasetSelector';
 import {
   UsersRound,
   Plus,
@@ -25,6 +27,12 @@ interface AuthorizedGroup {
   is_active: boolean;
   created_at: string;
   instance: { id: string; name: string } | null;
+  datasets?: Array<{
+    id: string;
+    connection_id: string;
+    dataset_id: string;
+    dataset_name: string;
+  }>;
 }
 
 interface Instance {
@@ -33,6 +41,11 @@ interface Instance {
 }
 
 export default function GruposAutorizadosPage() {
+  const router = useRouter();
+  const [user, setUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string>('loading');
+  const [userGroupIds, setUserGroupIds] = useState<string[]>([]);
+  
   const [groups, setGroups] = useState<AuthorizedGroup[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,12 +60,43 @@ export default function GruposAutorizadosPage() {
     group_name: '',
     purpose: '',
     instance_id: '',
-    can_receive_alerts: true
+    can_receive_alerts: true,
+    datasets: [] as Array<{connection_id: string, dataset_id: string, dataset_name: string}>
   });
 
   useEffect(() => {
-    loadData();
+    checkAccessAndLoad();
   }, []);
+
+  async function checkAccessAndLoad() {
+    try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      
+      if (!data.user) {
+        router.push('/login');
+        return;
+      }
+      
+      setUser(data.user);
+      
+      if (data.user.is_master) {
+        setUserRole('master');
+      } else if (data.user.role === 'admin') {
+        setUserRole('admin');
+        setUserGroupIds(data.groupIds || []);
+      } else {
+        // User sem acesso - redirecionar
+        router.push('/');
+        return;
+      }
+      
+      loadData();
+    } catch (error) {
+      console.error('Erro ao verificar acesso:', error);
+      router.push('/login');
+    }
+  }
 
   async function loadData() {
     setLoading(true);
@@ -90,7 +134,8 @@ export default function GruposAutorizadosPage() {
       group_name: '',
       purpose: '',
       instance_id: '',
-      can_receive_alerts: true
+      can_receive_alerts: true,
+      datasets: []
     });
     setEditingGroup(null);
   }
@@ -107,7 +152,12 @@ export default function GruposAutorizadosPage() {
       group_name: group.group_name,
       purpose: group.purpose || '',
       instance_id: group.instance?.id || '',
-      can_receive_alerts: group.can_receive_alerts
+      can_receive_alerts: group.can_receive_alerts,
+      datasets: group.datasets?.map(d => ({
+        connection_id: d.connection_id,
+        dataset_id: d.dataset_id,
+        dataset_name: d.dataset_name
+      })) || []
     });
     setShowModal(true);
   }
@@ -125,8 +175,14 @@ export default function GruposAutorizadosPage() {
         group_name: formData.group_name,
         purpose: formData.purpose || null,
         instance_id: formData.instance_id || null,
-        can_receive_alerts: formData.can_receive_alerts
+        can_receive_alerts: formData.can_receive_alerts,
+        datasets: formData.datasets
       };
+
+      // Se admin, forçar company_group_id
+      if (userRole === 'admin' && userGroupIds.length > 0) {
+        payload.company_group_id = userGroupIds[0];
+      }
 
       if (editingGroup) {
         payload.id = editingGroup.id;
@@ -202,9 +258,18 @@ export default function GruposAutorizadosPage() {
     );
   });
 
+  // Loading state
+  if (userRole === 'loading') {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+      </div>
+    );
+  }
+
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 -mt-12">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -253,7 +318,7 @@ export default function GruposAutorizadosPage() {
                     }`}>
                       <UsersRound className={group.is_active ? 'text-purple-600' : 'text-gray-400'} size={24} />
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <h3 className="font-semibold text-gray-900 truncate">{group.group_name}</h3>
                       <p className="text-xs text-gray-500 truncate">{group.group_id}</p>
                     </div>
@@ -261,7 +326,7 @@ export default function GruposAutorizadosPage() {
                 </div>
 
                 {group.purpose && (
-                  <p className="text-sm text-gray-600 mb-3">{group.purpose}</p>
+                  <p className="text-sm text-gray-600 mb-3 line-clamp-2">{group.purpose}</p>
                 )}
 
                 <div className="space-y-2 mb-4">
@@ -275,6 +340,23 @@ export default function GruposAutorizadosPage() {
                       {group.can_receive_alerts ? 'Habilitado' : 'Desabilitado'}
                     </span>
                   </div>
+                  
+                  {/* Datasets */}
+                  {group.datasets && group.datasets.length > 0 && (
+                    <div className="pt-2 border-t border-gray-100">
+                      <span className="text-xs text-gray-500 block mb-1">Datasets:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {group.datasets.map((d: any) => (
+                          <span 
+                            key={`${d.connection_id}-${d.dataset_id}`}
+                            className="px-2 py-0.5 text-xs bg-green-100 text-green-800 rounded-full"
+                          >
+                            {d.dataset_name || d.dataset_id}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between pt-4 border-t border-gray-100">
@@ -314,8 +396,8 @@ export default function GruposAutorizadosPage() {
         {/* Modal */}
         {showModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl w-full max-w-lg">
-              <div className="flex items-center justify-between p-4 border-b border-gray-200">
+            <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between p-4 border-b border-gray-200 sticky top-0 bg-white">
                 <h2 className="text-lg font-bold text-gray-900">
                   {editingGroup ? 'Editar Grupo' : 'Autorizar Grupo'}
                 </h2>
@@ -340,15 +422,19 @@ export default function GruposAutorizadosPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ID do Grupo *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    ID do Grupo WhatsApp *
+                  </label>
                   <input
                     type="text"
                     value={formData.group_id}
                     onChange={(e) => setFormData({ ...formData, group_id: e.target.value })}
-                    placeholder="Ex: 120363123456789012@g.us"
+                    placeholder="120363123456789012@g.us"
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-purple-500"
                   />
-                  <p className="text-xs text-gray-500 mt-1">O ID do grupo pode ser obtido no webhook da Evolution API</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Formato: 120363...@g.us (obtido via webhook)
+                  </p>
                 </div>
 
                 <div>
@@ -376,6 +462,13 @@ export default function GruposAutorizadosPage() {
                   </select>
                 </div>
 
+                {/* DatasetSelector */}
+                <DatasetSelector
+                  companyGroupId={userRole === 'admin' ? userGroupIds[0] : undefined}
+                  selectedDatasets={formData.datasets}
+                  onChange={(datasets) => setFormData({...formData, datasets})}
+                />
+
                 <div className="flex items-center gap-3">
                   <input
                     type="checkbox"
@@ -391,7 +484,7 @@ export default function GruposAutorizadosPage() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+              <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl sticky bottom-0">
                 <button
                   onClick={() => { setShowModal(false); resetForm(); }}
                   className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
@@ -412,4 +505,3 @@ export default function GruposAutorizadosPage() {
     </MainLayout>
   );
 }
-

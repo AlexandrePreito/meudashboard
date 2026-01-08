@@ -34,7 +34,7 @@ function getJwtSecret(): Uint8Array {
 export async function createToken(payload: JWTPayload): Promise<string> {
   try {
     const secret = getJwtSecret();
-    const token = await new SignJWT(payload)
+    const token = await new SignJWT(payload as any)
       .setProtectedHeader({ alg: 'HS256' })
       .setExpirationTime('7d')
       .sign(secret);
@@ -54,7 +54,7 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
     const secret = getJwtSecret();
     const { payload } = await jwtVerify(token, secret);
-    return payload as JWTPayload;
+    return payload as unknown as JWTPayload;
   } catch (error) {
     return null;
   }

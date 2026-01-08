@@ -2,6 +2,18 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser } from '@/lib/auth';
 
+// Função auxiliar para verificar grupos que usuário é admin
+async function getUserAdminGroups(supabase: any, userId: string): Promise<string[]> {
+  const { data: memberships } = await supabase
+    .from('user_group_membership')
+    .select('company_group_id')
+    .eq('user_id', userId)
+    .eq('role', 'admin')
+    .eq('is_active', true);
+
+  return memberships?.map((m: any) => m.company_group_id) || [];
+}
+
 // GET - Listar grupos
 export async function GET() {
   try {
@@ -10,13 +22,19 @@ export async function GET() {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    if (!user.is_master) {
-      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
-    }
-
     const supabase = createAdminClient();
 
-    const { data: groups, error } = await supabase
+    // Se não for master, verificar se é admin de algum grupo
+    let adminGroupIds: string[] = [];
+    if (!user.is_master) {
+      adminGroupIds = await getUserAdminGroups(supabase, user.id);
+      
+      if (adminGroupIds.length === 0) {
+        return NextResponse.json({ groups: [] });
+      }
+    }
+
+    let query = supabase
       .from('company_groups')
       .select(`
         id,
@@ -34,6 +52,13 @@ export async function GET() {
         updated_at
       `)
       .order('name', { ascending: true });
+
+    // Se não for master, filtrar apenas grupos que é admin
+    if (!user.is_master) {
+      query = query.in('id', adminGroupIds);
+    }
+
+    const { data: groups, error } = await query;
 
     if (error) {
       console.error('Erro ao buscar grupos:', error);
@@ -63,7 +88,7 @@ export async function GET() {
   }
 }
 
-// POST - Criar grupo
+// POST - Criar grupo (apenas master)
 export async function POST(request: Request) {
   try {
     const user = await getAuthUser();
@@ -144,9 +169,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    if (!user.is_master) {
-      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
-    }
+    const supabase = createAdminClient();
 
     const body = await request.json();
     const { id, name, description, status, max_users, max_companies, max_powerbi_screens, logo_url, plan_id, primary_color } = body;
@@ -155,11 +178,25 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'ID é obrigatório' }, { status: 400 });
     }
 
-    const supabase = createAdminClient();
+    // Verificar permissões
+    if (!user.is_master) {
+      const adminGroupIds = await getUserAdminGroups(supabase, user.id);
+      
+      if (!adminGroupIds.includes(id)) {
+        return NextResponse.json({ error: 'Sem permissão para editar este grupo' }, { status: 403 });
+      }
+    }
 
-    const { data: updatedGroup, error } = await supabase
-      .from('company_groups')
-      .update({
+    // Se for master, pode atualizar tudo
+    // Se for admin do grupo, só pode atualizar tema (logo_url e primary_color)
+    let updateData: any = {
+      updated_at: new Date().toISOString()
+    };
+
+    if (user.is_master) {
+      // Master pode atualizar tudo
+      updateData = {
+        ...updateData,
         name,
         description: description || null,
         logo_url: logo_url || null,
@@ -168,9 +205,17 @@ export async function PUT(request: Request) {
         max_companies: max_companies || 5,
         max_powerbi_screens: max_powerbi_screens || 10,
         plan_id: plan_id || null,
-        primary_color: primary_color || 'blue',
-        updated_at: new Date().toISOString()
-      })
+        primary_color: primary_color || 'blue'
+      };
+    } else {
+      // Admin só pode atualizar tema
+      if (logo_url !== undefined) updateData.logo_url = logo_url || null;
+      if (primary_color !== undefined) updateData.primary_color = primary_color || 'blue';
+    }
+
+    const { data: updatedGroup, error } = await supabase
+      .from('company_groups')
+      .update(updateData)
       .eq('id', id)
       .select()
       .single();
@@ -187,7 +232,7 @@ export async function PUT(request: Request) {
   }
 }
 
-// DELETE - Excluir grupo
+// DELETE - Excluir grupo (apenas master)
 export async function DELETE(request: Request) {
   try {
     const user = await getAuthUser();
@@ -235,4 +280,3 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
-

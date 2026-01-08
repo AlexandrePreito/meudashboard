@@ -12,32 +12,48 @@ export async function GET() {
 
     const supabase = createAdminClient();
 
+    // Buscar role e grupos do usuário
+    let userRole = 'user';
+    let userGroupIds: string[] = [];
+
+    if (user.is_master) {
+      userRole = 'master';
+    } else {
+      const { data: memberships } = await supabase
+        .from('user_group_membership')
+        .select('company_group_id, role')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+      
+      userGroupIds = memberships?.map(m => m.company_group_id) || [];
+      if (memberships?.some(m => m.role === 'admin')) {
+        userRole = 'admin';
+      }
+    }
+
+    // User não tem acesso
+    if (userRole === 'user') {
+      return NextResponse.json({ error: 'Sem permissão para acessar este módulo' }, { status: 403 });
+    }
+
+    // Buscar números com datasets vinculados
     let query = supabase
       .from('whatsapp_authorized_numbers')
       .select(`
-        id,
-        phone_number,
-        name,
-        can_receive_alerts,
-        can_use_chat,
-        is_active,
-        created_at,
-        instance:whatsapp_instances(id, name)
+        *,
+        instance:whatsapp_instances(id, name),
+        datasets:whatsapp_number_datasets(
+          id,
+          connection_id,
+          dataset_id,
+          dataset_name
+        )
       `)
       .order('name', { ascending: true });
 
-    // Se não for master, filtra por grupo
-    if (!user.is_master) {
-      const { data: membership } = await supabase
-        .from('user_group_membership')
-        .select('company_group_id')
-        .eq('user_id', user.id)
-        .limit(1)
-        .maybeSingle();
-
-      if (membership?.company_group_id) {
-        query = query.eq('company_group_id', membership.company_group_id);
-      }
+    // Admin: filtrar por grupos
+    if (userRole === 'admin') {
+      query = query.in('company_group_id', userGroupIds);
     }
 
     const { data: numbers, error } = await query;
@@ -63,32 +79,67 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { phone_number, name, instance_id, can_receive_alerts, can_use_chat, company_group_id } = body;
+    
+    // ━━━━━━━━━ DEBUG LOGS ━━━━━━━━━
+    console.log('━━━━━━━━━ POST /authorized-numbers ━━━━━━━━━');
+    console.log('Body recebido:', JSON.stringify(body, null, 2));
+    console.log('User ID:', user.id);
+    console.log('User is_master:', user.is_master);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    const { phone_number, name, instance_id, can_receive_alerts, can_use_chat, company_group_id, datasets } = body;
 
     if (!phone_number || !name) {
+      console.log('❌ Erro: Campos obrigatórios faltando - phone_number:', phone_number, 'name:', name);
       return NextResponse.json({ error: 'Telefone e nome são obrigatórios' }, { status: 400 });
     }
 
     const supabase = createAdminClient();
 
-    // Buscar grupo
-    let groupId = company_group_id;
-    if (!groupId) {
-      const { data: membership } = await supabase
+    // Buscar role e grupos do usuário
+    let userRole = 'user';
+    let userGroupIds: string[] = [];
+
+    if (user.is_master) {
+      userRole = 'master';
+    } else {
+      const { data: memberships } = await supabase
         .from('user_group_membership')
-        .select('company_group_id')
+        .select('company_group_id, role')
         .eq('user_id', user.id)
-        .limit(1)
-        .maybeSingle();
+        .eq('is_active', true);
       
-      groupId = membership?.company_group_id;
+      userGroupIds = memberships?.map(m => m.company_group_id) || [];
+      if (memberships?.some(m => m.role === 'admin')) {
+        userRole = 'admin';
+      }
     }
 
+    if (userRole === 'user') {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+    }
+
+    // Determinar company_group_id
+    let groupId = company_group_id;
+
+    if (userRole === 'admin') {
+      // Admin: forçar para ser do seu grupo (primeiro grupo)
+      groupId = userGroupIds[0] || null;
+    }
+
+    console.log('GroupId determinado:', groupId);
+
     if (!groupId) {
+      console.log('❌ Erro: Grupo não encontrado');
+      console.log('userRole:', userRole);
+      console.log('userGroupIds:', userGroupIds);
+      console.log('company_group_id recebido:', company_group_id);
       return NextResponse.json({ error: 'Grupo não encontrado' }, { status: 400 });
     }
 
-    const { data: newNumber, error } = await supabase
+    // Criar número
+    const { data: newNumber, error: numberError } = await supabase
       .from('whatsapp_authorized_numbers')
       .insert({
         company_group_id: groupId,
@@ -102,12 +153,47 @@ export async function POST(request: Request) {
       .select()
       .single();
 
-    if (error) {
-      console.error('Erro ao criar número:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (numberError) {
+      console.error('Erro ao criar número:', numberError);
+      return NextResponse.json({ error: numberError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ number: newNumber });
+    // Criar vínculos de datasets
+    if (datasets && Array.isArray(datasets) && datasets.length > 0) {
+      const datasetInserts = datasets.map((d: any) => ({
+        authorized_number_id: newNumber.id,
+        connection_id: d.connection_id,
+        dataset_id: d.dataset_id,
+        dataset_name: d.dataset_name || null
+      }));
+
+      const { error: datasetError } = await supabase
+        .from('whatsapp_number_datasets')
+        .insert(datasetInserts);
+
+      if (datasetError) {
+        console.error('Erro ao vincular datasets:', datasetError);
+        // Não retornar erro, apenas log
+      }
+    }
+
+    // Buscar número completo com datasets
+    const { data: completeNumber } = await supabase
+      .from('whatsapp_authorized_numbers')
+      .select(`
+        *,
+        instance:whatsapp_instances(id, name),
+        datasets:whatsapp_number_datasets(
+          id,
+          connection_id,
+          dataset_id,
+          dataset_name
+        )
+      `)
+      .eq('id', newNumber.id)
+      .single();
+
+    return NextResponse.json({ number: completeNumber });
   } catch (error: any) {
     console.error('Erro:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -123,7 +209,7 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json();
-    const { id, phone_number, name, instance_id, can_receive_alerts, can_use_chat, is_active } = body;
+    const { id, phone_number, name, instance_id, can_receive_alerts, can_use_chat, is_active, datasets } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID é obrigatório' }, { status: 400 });
@@ -131,7 +217,44 @@ export async function PUT(request: Request) {
 
     const supabase = createAdminClient();
 
-    const { data: updatedNumber, error } = await supabase
+    // Buscar role e grupos do usuário
+    let userRole = 'user';
+    let userGroupIds: string[] = [];
+
+    if (user.is_master) {
+      userRole = 'master';
+    } else {
+      const { data: memberships } = await supabase
+        .from('user_group_membership')
+        .select('company_group_id, role')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+      
+      userGroupIds = memberships?.map(m => m.company_group_id) || [];
+      if (memberships?.some(m => m.role === 'admin')) {
+        userRole = 'admin';
+      }
+    }
+
+    if (userRole === 'user') {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+    }
+
+    // Admin: verificar se número pertence ao seu grupo
+    if (userRole === 'admin') {
+      const { data: number } = await supabase
+        .from('whatsapp_authorized_numbers')
+        .select('company_group_id')
+        .eq('id', id)
+        .single();
+
+      if (!number || !userGroupIds.includes(number.company_group_id)) {
+        return NextResponse.json({ error: 'Sem permissão para editar este número' }, { status: 403 });
+      }
+    }
+
+    // Atualizar número
+    const { data: updatedNumber, error: updateError } = await supabase
       .from('whatsapp_authorized_numbers')
       .update({
         phone_number: phone_number?.replace(/\D/g, ''),
@@ -146,12 +269,51 @@ export async function PUT(request: Request) {
       .select()
       .single();
 
-    if (error) {
-      console.error('Erro ao atualizar número:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (updateError) {
+      console.error('Erro ao atualizar número:', updateError);
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ number: updatedNumber });
+    // Atualizar datasets vinculados
+    if (datasets !== undefined) {
+      // Deletar vínculos antigos
+      await supabase
+        .from('whatsapp_number_datasets')
+        .delete()
+        .eq('authorized_number_id', id);
+
+      // Inserir novos vínculos
+      if (Array.isArray(datasets) && datasets.length > 0) {
+        const datasetInserts = datasets.map((d: any) => ({
+          authorized_number_id: id,
+          connection_id: d.connection_id,
+          dataset_id: d.dataset_id,
+          dataset_name: d.dataset_name || null
+        }));
+
+        await supabase
+          .from('whatsapp_number_datasets')
+          .insert(datasetInserts);
+      }
+    }
+
+    // Buscar número completo com datasets
+    const { data: completeNumber } = await supabase
+      .from('whatsapp_authorized_numbers')
+      .select(`
+        *,
+        instance:whatsapp_instances(id, name),
+        datasets:whatsapp_number_datasets(
+          id,
+          connection_id,
+          dataset_id,
+          dataset_name
+        )
+      `)
+      .eq('id', id)
+      .single();
+
+    return NextResponse.json({ number: completeNumber });
   } catch (error: any) {
     console.error('Erro:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -175,6 +337,43 @@ export async function DELETE(request: Request) {
 
     const supabase = createAdminClient();
 
+    // Buscar role e grupos do usuário
+    let userRole = 'user';
+    let userGroupIds: string[] = [];
+
+    if (user.is_master) {
+      userRole = 'master';
+    } else {
+      const { data: memberships } = await supabase
+        .from('user_group_membership')
+        .select('company_group_id, role')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+      
+      userGroupIds = memberships?.map(m => m.company_group_id) || [];
+      if (memberships?.some(m => m.role === 'admin')) {
+        userRole = 'admin';
+      }
+    }
+
+    if (userRole === 'user') {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+    }
+
+    // Admin: verificar se número pertence ao seu grupo
+    if (userRole === 'admin') {
+      const { data: number } = await supabase
+        .from('whatsapp_authorized_numbers')
+        .select('company_group_id')
+        .eq('id', id)
+        .single();
+
+      if (!number || !userGroupIds.includes(number.company_group_id)) {
+        return NextResponse.json({ error: 'Sem permissão para excluir este número' }, { status: 403 });
+      }
+    }
+
+    // Excluir número (CASCADE já remove vínculos de datasets)
     const { error } = await supabase
       .from('whatsapp_authorized_numbers')
       .delete()
@@ -191,4 +390,3 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
-

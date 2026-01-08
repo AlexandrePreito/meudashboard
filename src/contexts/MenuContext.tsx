@@ -17,12 +17,20 @@ export interface CompanyGroup {
   primary_color?: string | null;
 }
 
+interface UserData {
+  id: string;
+  is_master?: boolean;
+  role?: string;
+}
+
 // Tipo do contexto de menu
 interface MenuContextType {
   isCollapsed: boolean;
   setIsCollapsed: (value: boolean) => void;
   activeGroup: CompanyGroup | null;
   setActiveGroup: (group: CompanyGroup | null) => void;
+  user: UserData | null;
+  setUser: (user: UserData | null) => void;
 }
 
 // Cria o contexto
@@ -49,6 +57,7 @@ export function MenuProvider({ children }: MenuProviderProps) {
     }
     return null;
   });
+  const [user, setUser] = useState<UserData | null>(null);
 
   // Função para setar grupo e salvar no localStorage
   function setActiveGroup(group: CompanyGroup | null) {
@@ -69,6 +78,8 @@ export function MenuProvider({ children }: MenuProviderProps) {
         setIsCollapsed,
         activeGroup,
         setActiveGroup,
+        user,
+        setUser,
       }}
     >
       {children}

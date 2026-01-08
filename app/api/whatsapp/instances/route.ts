@@ -12,40 +12,91 @@ export async function GET() {
 
     const supabase = createAdminClient();
 
-    let query = supabase
-      .from('whatsapp_instances')
-      .select('id, name, instance_name, api_url, phone_number, is_connected, last_connected_at, created_at')
-      .order('created_at', { ascending: false });
+    // Buscar role e grupos do usuário
+    let userRole = 'user';
+    let userGroupIds: string[] = [];
 
-    // Se não é master, filtra por grupos do usuário
-    if (!user.is_master) {
+    if (user.is_master) {
+      userRole = 'master';
+    } else {
       const { data: memberships } = await supabase
         .from('user_group_membership')
-        .select('company_group_id')
-        .eq('user_id', user.id);
+        .select('company_group_id, role')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+      
+      userGroupIds = memberships?.map(m => m.company_group_id) || [];
+      if (memberships?.some(m => m.role === 'admin')) {
+        userRole = 'admin';
+      }
+    }
 
-      const groupIds = memberships?.map(m => m.company_group_id) || [];
-      if (groupIds.length === 0) {
+    // User não tem acesso
+    if (userRole === 'user') {
+      return NextResponse.json({ error: 'Sem permissão para acessar este módulo' }, { status: 403 });
+    }
+
+    // Buscar instâncias conforme role
+    let instances: any[] = [];
+
+    if (userRole === 'master') {
+      // Master vê todas, com os grupos vinculados
+      const { data, error } = await supabase
+        .from('whatsapp_instances')
+        .select(`
+          *,
+          groups:whatsapp_instance_groups(
+            company_group:company_groups(id, name)
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Erro ao buscar instâncias:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      instances = data || [];
+    } else {
+      // Admin vê apenas instâncias vinculadas aos seus grupos
+      const { data: instanceGroups } = await supabase
+        .from('whatsapp_instance_groups')
+        .select('instance_id')
+        .in('company_group_id', userGroupIds);
+      
+      const instanceIds = instanceGroups?.map(ig => ig.instance_id) || [];
+      
+      if (instanceIds.length === 0) {
         return NextResponse.json({ instances: [] });
       }
-      query = query.in('company_group_id', groupIds);
+      
+      const { data, error } = await supabase
+        .from('whatsapp_instances')
+        .select(`
+          *,
+          groups:whatsapp_instance_groups(
+            company_group:company_groups(id, name)
+          )
+        `)
+        .in('id', instanceIds)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Erro ao buscar instâncias:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      instances = data || [];
     }
 
-    const { data: instances, error } = await query;
-
-    if (error) {
-      console.error('Erro ao buscar instâncias:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json({ instances: instances || [] });
+    return NextResponse.json({ instances });
   } catch (error: any) {
     console.error('Erro:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-// POST - Criar instância
+// POST - Criar instância ou link_groups
 export async function POST(request: Request) {
   try {
     const user = await getAuthUser();
@@ -53,18 +104,77 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    if (!user.is_master) {
+    const body = await request.json();
+    const supabase = createAdminClient();
+
+    // Action: link_groups (apenas Master)
+    if (body.action === 'link_groups') {
+      if (!user.is_master) {
+        return NextResponse.json({ error: 'Apenas Master pode vincular grupos' }, { status: 403 });
+      }
+
+      const { instance_id, group_ids } = body;
+
+      if (!instance_id || !Array.isArray(group_ids)) {
+        return NextResponse.json({ error: 'instance_id e group_ids são obrigatórios' }, { status: 400 });
+      }
+
+      // Remover vínculos antigos
+      await supabase
+        .from('whatsapp_instance_groups')
+        .delete()
+        .eq('instance_id', instance_id);
+
+      // Criar novos vínculos
+      if (group_ids.length > 0) {
+        const inserts = group_ids.map(gid => ({
+          instance_id,
+          company_group_id: gid,
+          created_by: user.id
+        }));
+
+        const { error } = await supabase
+          .from('whatsapp_instance_groups')
+          .insert(inserts);
+
+        if (error) {
+          console.error('Erro ao vincular grupos:', error);
+          return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+      }
+
+      return NextResponse.json({ success: true, message: 'Grupos vinculados com sucesso' });
+    }
+
+    // Criar nova instância
+    // Verificar permissões
+    let userRole = 'user';
+    let userGroupIds: string[] = [];
+
+    if (user.is_master) {
+      userRole = 'master';
+    } else {
+      const { data: memberships } = await supabase
+        .from('user_group_membership')
+        .select('company_group_id, role')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+      
+      userGroupIds = memberships?.map(m => m.company_group_id) || [];
+      if (memberships?.some(m => m.role === 'admin')) {
+        userRole = 'admin';
+      }
+    }
+
+    if (userRole === 'user') {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { name, api_url, api_key, instance_name, company_group_id } = body;
+    const { name, api_url, api_key, instance_name, group_ids } = body;
 
     if (!name || !api_url || !api_key || !instance_name) {
       return NextResponse.json({ error: 'Campos obrigatórios faltando' }, { status: 400 });
     }
-
-    const supabase = createAdminClient();
 
     // Verificar conexão com Evolution API
     let isConnected = false;
@@ -94,10 +204,10 @@ export async function POST(request: Request) {
       console.log('Não foi possível verificar status da Evolution');
     }
 
-    const { data: instance, error } = await supabase
+    // Criar instância
+    const { data: instance, error: instanceError } = await supabase
       .from('whatsapp_instances')
       .insert({
-        company_group_id: company_group_id,
         name,
         api_url: api_url.replace(/\/$/, ''),
         api_key,
@@ -107,15 +217,50 @@ export async function POST(request: Request) {
         created_by: user.id,
         last_connected_at: isConnected ? new Date().toISOString() : null
       })
-      .select('id, name, instance_name, api_url, phone_number, is_connected, last_connected_at, created_at')
+      .select()
       .single();
 
-    if (error) {
-      console.error('Erro ao criar instância:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (instanceError) {
+      console.error('Erro ao criar instância:', instanceError);
+      return NextResponse.json({ error: instanceError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ instance });
+    // Vincular grupos
+    let groupsToLink: string[] = [];
+
+    if (userRole === 'master' && group_ids && Array.isArray(group_ids)) {
+      // Master pode especificar os grupos
+      groupsToLink = group_ids;
+    } else if (userRole === 'admin') {
+      // Admin vincula automaticamente ao primeiro grupo dele
+      groupsToLink = userGroupIds.slice(0, 1);
+    }
+
+    if (groupsToLink.length > 0) {
+      const inserts = groupsToLink.map(gid => ({
+        instance_id: instance.id,
+        company_group_id: gid,
+        created_by: user.id
+      }));
+
+      await supabase
+        .from('whatsapp_instance_groups')
+        .insert(inserts);
+    }
+
+    // Buscar instância com grupos vinculados
+    const { data: createdInstance } = await supabase
+      .from('whatsapp_instances')
+      .select(`
+        *,
+        groups:whatsapp_instance_groups(
+          company_group:company_groups(id, name)
+        )
+      `)
+      .eq('id', instance.id)
+      .single();
+
+    return NextResponse.json({ instance: createdInstance });
   } catch (error: any) {
     console.error('Erro:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -130,12 +275,46 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    if (!user.is_master) {
+    const body = await request.json();
+    const supabase = createAdminClient();
+
+    // Buscar role e grupos do usuário
+    let userRole = 'user';
+    let userGroupIds: string[] = [];
+
+    if (user.is_master) {
+      userRole = 'master';
+    } else {
+      const { data: memberships } = await supabase
+        .from('user_group_membership')
+        .select('company_group_id, role')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+      
+      userGroupIds = memberships?.map(m => m.company_group_id) || [];
+      if (memberships?.some(m => m.role === 'admin')) {
+        userRole = 'admin';
+      }
+    }
+
+    if (userRole === 'user') {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     }
 
-    const body = await request.json();
-    const supabase = createAdminClient();
+    // Admin: verificar se instância está vinculada ao seu grupo
+    if (userRole === 'admin') {
+      const { data: instanceGroups } = await supabase
+        .from('whatsapp_instance_groups')
+        .select('company_group_id')
+        .eq('instance_id', body.id);
+
+      const instanceGroupIds = instanceGroups?.map(ig => ig.company_group_id) || [];
+      const hasAccess = instanceGroupIds.some(gid => userGroupIds.includes(gid));
+
+      if (!hasAccess) {
+        return NextResponse.json({ error: 'Sem permissão para editar esta instância' }, { status: 403 });
+      }
+    }
 
     const updateData: any = {
       name: body.name,
@@ -151,7 +330,12 @@ export async function PUT(request: Request) {
       .from('whatsapp_instances')
       .update(updateData)
       .eq('id', body.id)
-      .select('id, name, instance_name, api_url, phone_number, is_connected, last_connected_at, created_at')
+      .select(`
+        *,
+        groups:whatsapp_instance_groups(
+          company_group:company_groups(id, name)
+        )
+      `)
       .single();
 
     if (error) {
@@ -174,10 +358,6 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    if (!user.is_master) {
-      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
-    }
-
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -187,6 +367,49 @@ export async function DELETE(request: Request) {
 
     const supabase = createAdminClient();
 
+    // Buscar role e grupos do usuário
+    let userRole = 'user';
+    let userGroupIds: string[] = [];
+
+    if (user.is_master) {
+      userRole = 'master';
+    } else {
+      const { data: memberships } = await supabase
+        .from('user_group_membership')
+        .select('company_group_id, role')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+      
+      userGroupIds = memberships?.map(m => m.company_group_id) || [];
+      if (memberships?.some(m => m.role === 'admin')) {
+        userRole = 'admin';
+      }
+    }
+
+    if (userRole === 'user') {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+    }
+
+    // Admin: pode excluir apenas se instância está vinculada SOMENTE ao seu grupo
+    if (userRole === 'admin') {
+      const { data: instanceGroups } = await supabase
+        .from('whatsapp_instance_groups')
+        .select('company_group_id')
+        .eq('instance_id', id);
+
+      const instanceGroupIds = instanceGroups?.map(ig => ig.company_group_id) || [];
+
+      // Verificar se todos os grupos da instância pertencem ao admin
+      const hasFullAccess = instanceGroupIds.every(gid => userGroupIds.includes(gid));
+
+      if (!hasFullAccess || instanceGroupIds.length === 0) {
+        return NextResponse.json({ 
+          error: 'Você só pode excluir instâncias vinculadas exclusivamente ao seu grupo' 
+        }, { status: 403 });
+      }
+    }
+
+    // Excluir instância (CASCADE já remove vínculos)
     const { error } = await supabase
       .from('whatsapp_instances')
       .delete()
@@ -203,6 +426,3 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
-
-
-

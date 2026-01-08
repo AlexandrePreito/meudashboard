@@ -176,7 +176,7 @@ export default function AlertasPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 -mt-12">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>

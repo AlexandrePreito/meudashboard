@@ -144,10 +144,11 @@ export async function POST(request: Request) {
         .eq('id', screen_id)
         .single();
 
-      if (screen?.report) {
-        connectionId = screen.report.connection_id;
-        datasetId = screen.report.dataset_id;
-        reportName = screen.report.name;
+      if (screen?.report && !Array.isArray(screen.report)) {
+        const report = screen.report as any;
+        connectionId = report.connection_id;
+        datasetId = report.dataset_id;
+        reportName = report.name;
       }
     }
 

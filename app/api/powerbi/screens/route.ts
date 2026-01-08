@@ -16,6 +16,22 @@ export async function GET(request: Request) {
 
     const supabase = createAdminClient();
 
+    // Se não for master, buscar grupos do usuário
+    let userGroupIds: string[] = [];
+    if (!user.is_master) {
+      const { data: memberships } = await supabase
+        .from('user_group_membership')
+        .select('company_group_id')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+
+      userGroupIds = memberships?.map(m => m.company_group_id) || [];
+
+      if (userGroupIds.length === 0) {
+        return NextResponse.json({ screens: [] });
+      }
+    }
+
     let query = supabase
       .from('powerbi_dashboard_screens')
       .select(`
@@ -96,7 +112,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ screens: filteredScreens });
     }
 
-    return NextResponse.json({ screens: screens || [] });
+    // Filtrar por grupos do usuário (se não for master)
+    let filteredScreens = screens || [];
+    if (!user.is_master) {
+      filteredScreens = filteredScreens.filter(screen => 
+        screen.company_group_id && 
+        userGroupIds.includes(screen.company_group_id)
+      );
+    }
+
+    return NextResponse.json({ screens: filteredScreens });
   } catch (error) {
     console.error('Erro:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
@@ -126,7 +151,7 @@ export async function POST(request: Request) {
       .eq('id', company_group_id)
       .single();
 
-    const maxScreens = group?.plan?.max_powerbi_screens || 10;
+    const maxScreens = (group?.plan as any)?.max_powerbi_screens || 10;
 
     const { count } = await supabase
       .from('powerbi_dashboard_screens')

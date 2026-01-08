@@ -212,7 +212,7 @@ export default function PlanosPage() {
   return (
     <MainLayout>
       <Notifications notifications={notifications} onRemove={removeNotification} />
-      <div className="space-y-6">
+      <div className="space-y-6 -mt-12">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>

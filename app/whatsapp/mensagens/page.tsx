@@ -180,7 +180,7 @@ export default function MensagensPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 -mt-12">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -398,9 +398,7 @@ export default function MensagensPage() {
         {showDetailsPanel && selectedMessage && (
           <div className="fixed inset-y-0 right-0 w-[450px] bg-white shadow-2xl z-50 flex flex-col">
             {/* Header */}
-            <div className={`px-4 py-3 flex items-center justify-between ${
-              selectedMessage.direction === 'incoming' ? 'bg-blue-600' : 'bg-green-600'
-            } text-white`}>
+            <div className="px-4 h-16 flex items-center justify-between text-white" style={{ backgroundColor: 'var(--color-primary)' }}>
               <div className="flex items-center gap-2">
                 {selectedMessage.direction === 'incoming' ? (
                   <ArrowDownLeft size={20} />
@@ -413,9 +411,16 @@ export default function MensagensPage() {
               </div>
               <button
                 onClick={closeDetailsPanel}
-                className={`p-2 rounded-lg transition-colors ${
-                  selectedMessage.direction === 'incoming' ? 'hover:bg-blue-500' : 'hover:bg-green-500'
-                }`}
+                className="p-2 rounded-lg transition-colors"
+                style={{ 
+                  backgroundColor: 'transparent',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--color-primary-hover)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
               >
                 <X size={18} />
               </button>

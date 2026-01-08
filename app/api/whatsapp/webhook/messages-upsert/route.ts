@@ -18,7 +18,7 @@ async function getModelContext(supabase: any, connectionId: string): Promise<str
       .maybeSingle();
 
     if (context?.context_content) {
-      return context.context_content.slice(0, 8000);
+      return context.context_content.slice(0, 12000);
     }
     return null;
   } catch (error) {
@@ -90,20 +90,40 @@ async function executeDaxQuery(connectionId: string, datasetId: string, query: s
 // Função para enviar mensagem via WhatsApp
 async function sendWhatsAppMessage(instance: any, phone: string, message: string) {
   try {
-    const response = await fetch(`${instance.api_url}/message/sendText/${instance.instance_name}`, {
+    console.log('[sendWhatsAppMessage] Iniciando envio...');
+    console.log('[sendWhatsAppMessage] Instância:', instance.instance_name);
+    console.log('[sendWhatsAppMessage] API URL:', instance.api_url);
+    console.log('[sendWhatsAppMessage] Número formatado:', phone.replace(/\D/g, ''));
+    
+    const url = `${instance.api_url}/message/sendText/${instance.instance_name}`;
+    console.log('[sendWhatsAppMessage] URL completa:', url);
+    
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'apikey': instance.api_key
+        'apikey': instance.api_key || ''
       },
       body: JSON.stringify({
         number: phone.replace(/\D/g, ''),
         text: message
       })
     });
+    
+    console.log('[sendWhatsAppMessage] Status HTTP:', response.status);
+    console.log('[sendWhatsAppMessage] Response OK:', response.ok);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[sendWhatsAppMessage] Erro da Evolution API:', errorText);
+    } else {
+      const responseData = await response.json();
+      console.log('[sendWhatsAppMessage] Resposta da API:', JSON.stringify(responseData));
+    }
+    
     return response.ok;
   } catch (error) {
-    console.error('Erro ao enviar mensagem:', error);
+    console.error('[sendWhatsAppMessage] EXCEÇÃO ao enviar mensagem:', error);
     return false;
   }
 }
@@ -148,18 +168,42 @@ export async function POST(request: Request) {
     
     console.log('phone extraído:', phone);
 
-    // Verificar se o número é autorizado
-    const { data: authorizedNumber } = await supabase
+    // Verificar se o número é autorizado e buscar instância vinculada
+    const { data: authorizedNumber, error: authError } = await supabase
       .from('whatsapp_authorized_numbers')
-      .select('*, company_group_id')
+      .select(`
+        *,
+        company_group_id,
+        instance:whatsapp_instances(
+          id,
+          name,
+          instance_name,
+          api_url,
+          api_key,
+          is_connected
+        )
+      `)
       .eq('phone_number', phone)
       .eq('is_active', true)
-      .maybeSingle();
+      .single();
 
-    if (!authorizedNumber) {
+    if (authError || !authorizedNumber) {
       console.log('Número não autorizado:', phone);
       return NextResponse.json({ status: 'ignored', reason: 'unauthorized number' });
     }
+
+    // Verificar se número tem instância vinculada
+    if (!authorizedNumber.instance) {
+      console.error('❌ Número autorizado não tem instância vinculada!');
+      return NextResponse.json({ status: 'error', reason: 'no instance linked to number' });
+    }
+
+    console.log('━━━━━━━━━ INSTÂNCIA VINCULADA AO NÚMERO ━━━━━━━━━');
+    console.log('Instância:', authorizedNumber.instance.name);
+    console.log('Instance Name:', authorizedNumber.instance.instance_name);
+    console.log('API URL:', authorizedNumber.instance.api_url);
+    console.log('Conectada?', authorizedNumber.instance.is_connected ? '✅ SIM' : '❌ NÃO');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     // Buscar histórico de mensagens recentes deste número (últimas 20 mensagens)
     const { data: messageHistory } = await supabase
@@ -189,73 +233,170 @@ export async function POST(request: Request) {
       sender_name: authorizedNumber.name || phone
     });
 
-    // Buscar instância WhatsApp ativa
-    const { data: instance } = await supabase
-      .from('whatsapp_instances')
-      .select('*')
-      .eq('is_connected', true)
-      .limit(1)
-      .maybeSingle();
-
-    if (!instance) {
-      console.log('Nenhuma instância conectada');
-      return NextResponse.json({ status: 'error', reason: 'no instance' });
+    // Usar a instância vinculada ao número autorizado
+    const instance = authorizedNumber.instance;
+    
+    // Verificar se a instância está conectada
+    if (!instance.is_connected) {
+      console.warn('⚠️ AVISO: Instância não está conectada:', instance.name);
+      // Continua mesmo assim, pois pode ter desconectado temporariamente
     }
 
-    // Buscar último alerta disparado para este número (últimas 24h)
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { data: recentAlert } = await supabase
-      .from('ai_alerts')
-      .select('*')
-      .contains('whatsapp_number', [phone])
-      .gte('last_triggered_at', oneDayAgo)
-      .order('last_triggered_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // Buscar datasets vinculados ao número
+    const { data: numberDatasets } = await supabase
+      .from('whatsapp_number_datasets')
+      .select('connection_id, dataset_id, dataset_name')
+      .eq('authorized_number_id', authorizedNumber.id);
 
-    // Buscar contexto do modelo (da conexão do alerta ou primeira conexão ativa)
+    console.log('━━━━━━━━━ DATASETS VINCULADOS ━━━━━━━━━');
+    console.log('Número autorizado ID:', authorizedNumber.id);
+    console.log('Datasets encontrados:', numberDatasets?.length || 0);
+    if (numberDatasets && numberDatasets.length > 0) {
+      console.log('Datasets:', JSON.stringify(numberDatasets, null, 2));
+    } else {
+      console.log('⚠️ NENHUM dataset vinculado - usando fallback');
+    }
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
     let modelContext = '';
-    let connectionId = recentAlert?.connection_id || null;
-    let datasetId = recentAlert?.dataset_id || null;
-    
-    // Se não tem alerta recente, buscar primeira conexão ativa
-    if (!connectionId) {
-      const { data: firstConnection } = await supabase
-        .from('powerbi_connections')
-        .select('id')
-        .limit(1)
-        .maybeSingle();
-      connectionId = firstConnection?.id || null;
-    }
-    
-    // Se tem conexão mas não tem dataset, buscar o primeiro dataset da conexão
-    if (connectionId && !datasetId) {
-      const { data: report } = await supabase
-        .from('powerbi_reports')
-        .select('dataset_id')
-        .eq('connection_id', connectionId)
-        .limit(1)
-        .maybeSingle();
-      
-      if (report?.dataset_id) {
-        datasetId = report.dataset_id;
-      }
-    }
-    
-    // Se ainda não tem dataset, tentar buscar do alerta mais recente (qualquer um)
-    if (!datasetId) {
-      const { data: anyAlert } = await supabase
+    let connectionId: string | null = null;
+    let datasetId: string | null = null;
+
+    // LÓGICA DE SELEÇÃO DE DATASET
+    if (!numberDatasets || numberDatasets.length === 0) {
+      // Comportamento atual: buscar por alerta ou primeira conexão
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: recentAlert } = await supabase
         .from('ai_alerts')
-        .select('dataset_id, connection_id')
-        .not('dataset_id', 'is', null)
+        .select('*')
+        .contains('whatsapp_number', [phone])
+        .gte('last_triggered_at', oneDayAgo)
+        .order('last_triggered_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      connectionId = recentAlert?.connection_id || null;
+      datasetId = recentAlert?.dataset_id || null;
+      
+      if (!connectionId) {
+        const { data: firstConnection } = await supabase
+          .from('powerbi_connections')
+          .select('id')
+          .limit(1)
+          .maybeSingle();
+        connectionId = firstConnection?.id || null;
+      }
+      
+      if (connectionId && !datasetId) {
+        const { data: report } = await supabase
+          .from('powerbi_reports')
+          .select('dataset_id')
+          .eq('connection_id', connectionId)
+          .limit(1)
+          .maybeSingle();
+        
+        if (report?.dataset_id) {
+          datasetId = report.dataset_id;
+        }
+      }
+      
+      if (!datasetId) {
+        const { data: anyAlert } = await supabase
+          .from('ai_alerts')
+          .select('dataset_id, connection_id')
+          .not('dataset_id', 'is', null)
+          .limit(1)
+          .maybeSingle();
+        
+        if (anyAlert?.dataset_id) {
+          datasetId = anyAlert.dataset_id;
+          if (!connectionId && anyAlert.connection_id) {
+            connectionId = anyAlert.connection_id;
+          }
+        }
+      }
+    } 
+    else if (numberDatasets.length === 1) {
+      // Se tem apenas 1 dataset, usar diretamente
+      connectionId = numberDatasets[0].connection_id;
+      datasetId = numberDatasets[0].dataset_id;
+      console.log('✅ Usando dataset único vinculado:', numberDatasets[0].dataset_name);
+    } 
+    else {
+      // Se tem múltiplos datasets
+      console.log('🔀 Múltiplos datasets encontrados:', numberDatasets.length);
+      const trimmedMessage = messageText.trim();
+      const isSelectingDataset = /^[1-9]$/.test(trimmedMessage);
+      console.log('Mensagem é seleção numérica?', isSelectingDataset, '(mensagem:', trimmedMessage, ')');
+      
+      // Buscar última mensagem do sistema
+      const { data: lastBotMessage } = await supabase
+        .from('whatsapp_messages')
+        .select('message_content')
+        .eq('phone_number', phone)
+        .eq('direction', 'outgoing')
+        .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
       
-      if (anyAlert?.dataset_id) {
-        datasetId = anyAlert.dataset_id;
-        if (!connectionId && anyAlert.connection_id) {
-          connectionId = anyAlert.connection_id;
+      const wasAskingForDataset = lastBotMessage?.message_content?.includes('Sobre qual base você quer consultar?');
+      console.log('Última mensagem do bot perguntava sobre dataset?', wasAskingForDataset);
+      
+      if (isSelectingDataset && wasAskingForDataset) {
+        // Usuário está selecionando um dataset
+        const selectedIndex = parseInt(trimmedMessage) - 1;
+        console.log('👆 Usuário selecionou opção:', selectedIndex + 1);
+        if (selectedIndex >= 0 && selectedIndex < numberDatasets.length) {
+          connectionId = numberDatasets[selectedIndex].connection_id;
+          datasetId = numberDatasets[selectedIndex].dataset_id;
+          console.log('✅ Dataset selecionado:', numberDatasets[selectedIndex].dataset_name);
+        } else {
+          // Índice inválido
+          console.log('❌ Seleção inválida:', trimmedMessage);
+          const invalidMessage = `❌ Opção inválida. Digite um número de 1 a ${numberDatasets.length}.`;
+          await sendWhatsAppMessage(instance, phone, invalidMessage);
+          return NextResponse.json({ status: 'invalid_selection' });
         }
+      } else if (!wasAskingForDataset) {
+        // Perguntar qual dataset usar
+        console.log('❓ Perguntando ao usuário qual dataset usar...');
+        let datasetMenu = '📊 Sobre qual base você quer consultar?\n\n';
+        const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'];
+        numberDatasets.forEach((ds, idx) => {
+          const emoji = emojis[idx] || `${idx + 1}.`;
+          datasetMenu += `${emoji} ${ds.dataset_name || ds.dataset_id}\n`;
+        });
+        datasetMenu += '\nDigite o número da opção.';
+        
+        console.log('📤 Enviando menu de seleção...');
+        await sendWhatsAppMessage(instance, phone, datasetMenu);
+        
+        // Salvar pergunta do usuário
+        await supabase.from('whatsapp_messages').insert({
+          company_group_id: authorizedNumber.company_group_id,
+          phone_number: phone,
+          message_content: messageText,
+          direction: 'incoming',
+          sender_name: authorizedNumber.name || phone
+        });
+        
+        // Salvar resposta do bot
+        await supabase.from('whatsapp_messages').insert({
+          company_group_id: authorizedNumber.company_group_id,
+          phone_number: phone,
+          message_content: datasetMenu,
+          direction: 'outgoing',
+          sender_name: 'Assistente IA'
+        });
+        
+        console.log('✅ Menu de seleção enviado e salvo');
+        return NextResponse.json({ status: 'asking_dataset_selection' });
+      } else {
+        // wasAskingForDataset mas não é seleção válida - usar primeiro dataset
+        console.log('⚠️ Não é seleção válida, usando primeiro dataset (fallback)');
+        connectionId = numberDatasets[0].connection_id;
+        datasetId = numberDatasets[0].dataset_id;
+        console.log('Usando primeiro dataset (fallback):', numberDatasets[0].dataset_name);
       }
     }
     
@@ -264,171 +405,85 @@ export async function POST(request: Request) {
       if (context) {
         modelContext = context;
         console.log('Contexto do modelo carregado:', modelContext.substring(0, 200) + '...');
+      } else {
+        console.log('⚠️ AVISO: Nenhum contexto encontrado para connectionId:', connectionId);
       }
     }
 
+    // Se não tem contexto, avisar no log
+    if (!modelContext) {
+      console.log('⚠️ AVISO: Assistente vai responder SEM contexto do modelo');
+    }
+
     // Construir prompt para a IA
-    const systemPrompt = `Você é o Assistente Aquarius, um analista de BI via WhatsApp.
+    const systemPrompt = `Você é um Assistente de BI via WhatsApp, especializado em consultar dados e responder perguntas sobre indicadores de negócio.
+
+## REGRA DE CONFIDENCIALIDADE
+⚠️ NUNCA mencione nomes de empresas, grupos ou sistemas internos (como Aquarius, Hospcom, Vion, VionFlow, etc).
+⚠️ Se os dados contiverem nomes de empresas do grupo, apresente apenas os valores sem revelar que são empresas relacionadas.
+⚠️ Você é apenas "Assistente de BI" - não tem nome específico.
+⚠️ Se perguntarem quem é você ou para quem trabalha, diga apenas: "Sou um assistente de BI que ajuda a consultar dados e indicadores."
 
 ## REGRA MAIS IMPORTANTE
 ⚠️ NUNCA invente valores! Use SEMPRE a função execute_dax para buscar dados reais.
 ⚠️ Se não conseguir executar a query, diga que não encontrou os dados.
+⚠️ SEMPRE consulte a seção "DOCUMENTAÇÃO DO MODELO" abaixo para saber os nomes EXATOS das tabelas, colunas e medidas. NUNCA adivinhe nomes.
 
-## QUERIES DAX CORRETAS - USE EXATAMENTE ASSIM
+## COMO USAR A DOCUMENTAÇÃO
+1. Leia a documentação do modelo ANTES de criar qualquer query
+2. Use EXATAMENTE os nomes de tabelas, colunas e medidas documentados
+3. Aplique os filtros obrigatórios indicados (ex: Intercompany = "N")
+4. Se uma coluna/medida não estiver na documentação, NÃO USE
 
-### Faturamento de um mês específico:
-EVALUATE ROW("Valor", CALCULATE([QA_Faturamento], Calendario[Ano] = 2025, Calendario[NumeroMes] = 9))
-
-### Faturamento por filial:
-EVALUATE SUMMARIZECOLUMNS(Empresa[Filial], "Valor", [QA_Faturamento])
-
-### Top 10 vendedores:
-EVALUATE TOPN(10, SUMMARIZECOLUMNS(Colaboradores[COLABORADOR], "Valor", [QA_Faturamento]), [Valor], DESC)
-
-### Top 10 produtos:
-EVALUATE TOPN(10, SUMMARIZECOLUMNS(Produtos[PRODUTO], "Valor", [QA_Faturamento]), [Valor], DESC)
-
-### Faturamento com MoM (mês anterior):
-EVALUATE 
-VAR MesAtual = CALCULATE([QA_Faturamento], Calendario[Ano] = 2025, Calendario[NumeroMes] = 12)
-VAR MesAnterior = CALCULATE([QA_Faturamento], Calendario[Ano] = 2025, Calendario[NumeroMes] = 11)
-VAR Variacao = DIVIDE(MesAtual - MesAnterior, MesAnterior, 0) * 100
-RETURN ROW("Atual", MesAtual, "Anterior", MesAnterior, "MoM", Variacao)
-
-### Vendas de um vendedor específico:
-EVALUATE ROW("Valor", CALCULATE([QA_Faturamento], Colaboradores[COLABORADOR] = "DARCIVAN"))
-
-### Vendas de um produto específico:
-EVALUATE ROW("Valor", CALCULATE([QA_Faturamento], CONTAINSSTRING(Produtos[PRODUTO], "CHOPP")))
-
-### Vendas por filial em um mês:
-EVALUATE SUMMARIZECOLUMNS(Empresa[Filial], "Valor", CALCULATE([QA_Faturamento], Calendario[Ano] = 2025, Calendario[NumeroMes] = 9))
-
-## NOMES DAS TABELAS E COLUNAS (USE EXATAMENTE):
-- Medida principal: [QA_Faturamento]
-- Calendário: Calendario[Ano], Calendario[NumeroMes], Calendario[Data]
-- Filiais: Empresa[Filial] - valores: "Jd. da Luz", "Marista", "Quintal", "Alto da Glória"
-- Vendedores: Colaboradores[COLABORADOR]
-- Produtos: Produtos[PRODUTO]
-
-## REGRAS DE QUERY:
-1. SEMPRE use a medida [QA_Faturamento] para valores de venda
-2. Para filtrar mês, use Calendario[NumeroMes] (1-12)
-3. Para filtrar ano, use Calendario[Ano] (2024, 2025, 2026)
-4. Para busca parcial de texto, use CONTAINSSTRING()
-5. NUNCA invente colunas ou tabelas que não existem
-
-⚠️ IMPORTANTE: Sempre consulte a seção "DOCUMENTAÇÃO DO MODELO" abaixo para saber os nomes corretos das tabelas e colunas. NUNCA adivinhe nomes de tabelas.
-
-## FORMATAÇÃO DAS MENSAGENS
-- NÃO use asteriscos (*) para negrito - o WhatsApp já formata automaticamente
-- NÃO inclua "Período:" redundante - já está no título
-- NÃO faça elogios genéricos como "Ótima performance!" ou "Excelente mês!"
-- NÃO use 📅 com período quando já está no título
+## FORMATAÇÃO DAS MENSAGENS WHATSAPP
+- NÃO use asteriscos (*) para negrito
 - Use emojis de forma limpa e organizada
 - Separe seções com linha: ━━━━━━━━━━━━━━━━━
+- Seja conciso (máximo 1200 caracteres)
 
-## FORMATO PARA VENDAS/FATURAMENTO DE UM MÊS
-📊 Faturamento Setembro/2025
+## FORMATO PARA VALORES/FATURAMENTO
+📊 [Título do que foi pedido]
 
-💰 R$ 2.432.919,67
+💰 R$ X.XXX.XXX,XX
 
-📈 MoM: +5,2% vs Agosto/25
-📊 YoY: +12,8% vs Set/24
-
-━━━━━━━━━━━━━━━━━
-💡 Quer saber mais?
-1️⃣ Por filial
-2️⃣ Top vendedores
-3️⃣ Top produtos
-4️⃣ Evolução diária
-
-## FORMATO PARA VENDAS POR FILIAL
-📊 Faturamento por Filial - Set/2025
-
-🥇 Jd. da Luz: R$ 1.076.798,03
-🥈 Marista: R$ 482.301,15
-🥉 Quintal: R$ 411.419,67
-4️⃣ Alto da Glória: R$ 462.400,82
-
-💰 Total: R$ 2.432.919,67
+📈 Comparativo se relevante
 
 ━━━━━━━━━━━━━━━━━
 💡 Quer saber mais?
-1️⃣ Top vendedores por filial
-2️⃣ Produtos mais vendidos
-3️⃣ Comparar com mês anterior
-4️⃣ Análise de margem
+1️⃣ Opção 1
+2️⃣ Opção 2
+3️⃣ Opção 3
 
-## FORMATO PARA TOP VENDEDORES
-🏆 Top Vendedores - Set/2025
+## FORMATO PARA RANKINGS/TOP N
+🏆 [Título]
 
-🥇 DARCIVAN: R$ 103.445,83
-🥈 EDICARLOS: R$ 99.505,15
-🥉 EDUARDO: R$ 98.706,45
-4️⃣ ANDERSON: R$ 97.031,02
-5️⃣ PAULO CESAR: R$ 93.115,24
-6️⃣ HEYLANE: R$ 87.855,68
-7️⃣ RONEI: R$ 86.792,80
-8️⃣ JEAN CARLO: R$ 84.578,18
-9️⃣ ANTONIO: R$ 81.042,26
-🔟 ESTEFANNY: R$ 78.012,04
+🥇 Primeiro: R$ X.XXX,XX
+🥈 Segundo: R$ X.XXX,XX
+🥉 Terceiro: R$ X.XXX,XX
+4️⃣ Quarto: R$ X.XXX,XX
+5️⃣ Quinto: R$ X.XXX,XX
 
 ━━━━━━━━━━━━━━━━━
 💡 Quer saber mais?
-1️⃣ Vendas por filial
-2️⃣ Produtos mais vendidos
-3️⃣ Comparar com mês anterior
-4️⃣ Análise de performance
+1️⃣ Opção 1
+2️⃣ Opção 2
 
-## PERGUNTAS COMPLEXAS COM MÚLTIPLOS FILTROS
-Quando o usuário perguntar algo específico como:
-- "quanto o Adão vendeu de chopp brahma?"
-- "vendas da filial Marista em outubro"
-- "top produtos do vendedor João"
-
-Você DEVE:
-1. Manter o período do contexto anterior (se não especificado, use o último período mencionado)
-2. Criar query DAX com TODOS os filtros necessários
-3. Usar CALCULATE com múltiplos filtros
-
-Exemplos de queries com múltiplos filtros:
-- Vendedor + Produto:
-  EVALUATE ROW("Vendas", CALCULATE([QA_Faturamento], Colaboradores[COLABORADOR] = "ADAO", Produtos[PRODUTO] CONTAINS "CHOPP BRAHMA"))
-
-- Filial + Período:
-  EVALUATE ROW("Vendas", CALCULATE([QA_Faturamento], Empresa[Filial] = "Marista", Calendario[Ano] = 2025, Calendario[NumeroMes] = 10))
-
-- Vendedor + Período + Filial:
-  EVALUATE ROW("Vendas", CALCULATE([QA_Faturamento], Colaboradores[COLABORADOR] = "ADAO", Empresa[Filial] = "Jd. da Luz", Calendario[Ano] = 2025))
-
-## MANTER CONTEXTO DA CONVERSA
-- Se o usuário estava vendo dados de Dezembro/2025, mantenha esse período nas próximas perguntas
-- Se o usuário menciona um vendedor específico, lembre-se dele para perguntas seguintes
-- Exemplo: Se mostrou top vendedores de Dez/25 e usuário pergunta "quanto o Adão vendeu de chopp?", use Dez/25 como período
-
-## NOMES NO MODELO (USE EXATAMENTE ASSIM)
-- Tabela de vendedores: Colaboradores[COLABORADOR]
-- Tabela de produtos: Produtos[PRODUTO] ou Produtos[DESCRICAO]
-- Tabela de filiais: Empresa[Filial]
-- Tabela de datas: Calendario[Ano], Calendario[NumeroMes], Calendario[Data]
-- Use CONTAINS para busca parcial: Produtos[PRODUTO] CONTAINS "CHOPP"
-
-## QUERIES DAX IMPORTANTES
-- Para MoM (mês anterior): Compare com CALCULATE usando filtro do mês anterior
-- Para YoY (ano anterior): Compare com CALCULATE usando SAMEPERIODLASTYEAR ou filtro do ano anterior
-- Sempre calcule a variação percentual: ((atual - anterior) / anterior) * 100
+## INTERPRETAÇÃO DE NÚMEROS
+Se usuário digitar apenas 1, 2, 3 ou 4, interprete como a opção sugerida anteriormente.
 
 ## HISTÓRICO DA CONVERSA
 ${conversationContext || 'Início da conversa'}
 
-## INTERPRETAÇÃO DE NÚMEROS
-Se usuário digitar 1, 2, 3 ou 4, interprete como a opção sugerida anteriormente.
-
-${modelContext ? `## DOCUMENTAÇÃO DO MODELO\n${modelContext}\n` : ''}
+${modelContext ? `## DOCUMENTAÇÃO DO MODELO (USE EXATAMENTE COMO ESTÁ AQUI)
+${modelContext}
+` : `## SEM DOCUMENTAÇÃO
+Não há documentação do modelo disponível. Informe ao usuário que não foi possível acessar os dados.`}
 
 ## DATA ATUAL
 ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+Mês atual: ${new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+Mês número: ${new Date().getMonth() + 1}
+Ano: ${new Date().getFullYear()}
 `;
 
     // Definir tools para o Claude
@@ -450,7 +505,6 @@ ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', mont
     ] : [];
 
     console.log('=== DEBUG TOOLS ===');
-    console.log('recentAlert:', recentAlert?.name || 'NENHUM');
     console.log('connectionId:', connectionId || 'NENHUM');
     console.log('datasetId:', datasetId || 'NENHUM');
     console.log('Tools configuradas:', tools.length);
@@ -551,9 +605,13 @@ ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', mont
       .replace(/\n{3,}/g, '\n\n')
       .trim();
 
-    // Se a resposta ficou muito curta ou vazia, não enviar
+    // Se a resposta ficou muito curta ou vazia, dar mensagem mais útil
     if (!assistantMessage || assistantMessage.length < 20) {
-      assistantMessage = '📊 Consultei os dados mas houve um problema ao formatar. Pode repetir a pergunta?';
+      if (!modelContext) {
+        assistantMessage = '⚠️ Não foi possível acessar os dados. Por favor, verifique se o contexto do modelo está configurado.';
+      } else {
+        assistantMessage = '📊 Não consegui processar essa consulta. Pode reformular a pergunta?';
+      }
     }
 
     // Garantir que começa com emoji se não começar
@@ -572,8 +630,20 @@ ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', mont
       assistantMessage = assistantMessage.substring(0, 1197) + '...';
     }
 
+    console.log('━━━━━━━━━ ENVIANDO MENSAGEM ━━━━━━━━━');
+    console.log('Para:', phone);
+    console.log('Instância:', instance.instance_name);
+    console.log('URL:', `${instance.api_url}/message/sendText/${instance.instance_name}`);
+    console.log('Tamanho da mensagem:', assistantMessage.length, 'caracteres');
+    console.log('Primeiros 100 chars:', assistantMessage.substring(0, 100));
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
     // Enviar resposta
     const sent = await sendWhatsAppMessage(instance, phone, assistantMessage);
+
+    console.log('━━━━━━━━━ RESULTADO DO ENVIO ━━━━━━━━━');
+    console.log('Status de envio:', sent ? '✅ SUCESSO' : '❌ FALHOU');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     // Salvar mensagem enviada
     if (sent) {
@@ -584,7 +654,15 @@ ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', mont
         direction: 'outgoing',
         sender_name: 'Assistente IA'
       });
+      console.log('✅ Mensagem salva no banco de dados');
+    } else {
+      console.error('❌ ERRO: Mensagem NÃO foi enviada e NÃO foi salva!');
     }
+
+    console.log('━━━━━━━━━ WEBHOOK FINALIZADO ━━━━━━━━━');
+    console.log('Status final:', sent ? 'SUCESSO' : 'FALHA');
+    console.log('Mensagem foi enviada?', sent);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     return NextResponse.json({ 
       status: 'success', 
@@ -593,7 +671,11 @@ ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', mont
     });
 
   } catch (error: any) {
-    console.error('Erro no webhook:', error);
+    console.error('━━━━━━━━━ ERRO NO WEBHOOK ━━━━━━━━━');
+    console.error('Tipo:', error.name);
+    console.error('Mensagem:', error.message);
+    console.error('Stack:', error.stack);
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

@@ -5,9 +5,10 @@ import { getAuthUser } from '@/lib/auth';
 // PUT - Atualizar plano
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const user = await getAuthUser();
     if (!user?.is_master) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
@@ -41,7 +42,7 @@ export async function PUT(
         max_companies,
         display_order
       })
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single();
 
@@ -57,9 +58,10 @@ export async function PUT(
 // DELETE - Excluir plano
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const user = await getAuthUser();
     if (!user?.is_master) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
@@ -71,7 +73,7 @@ export async function DELETE(
     const { data: groups } = await supabase
       .from('company_groups')
       .select('id')
-      .eq('plan_id', params.id)
+      .eq('plan_id', id)
       .limit(1);
 
     if (groups && groups.length > 0) {
@@ -84,7 +86,7 @@ export async function DELETE(
     const { error } = await supabase
       .from('powerbi_plans')
       .delete()
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (error) throw error;
 

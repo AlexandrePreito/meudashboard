@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
+import DatasetSelector from '@/components/whatsapp/DatasetSelector';
 import {
   Users,
   Plus,
@@ -27,6 +29,12 @@ interface AuthorizedNumber {
   is_active: boolean;
   created_at: string;
   instance: { id: string; name: string } | null;
+  datasets?: Array<{
+    id: string;
+    connection_id: string;
+    dataset_id: string;
+    dataset_name: string;
+  }>;
 }
 
 interface Instance {
@@ -35,6 +43,11 @@ interface Instance {
 }
 
 export default function NumerosAutorizadosPage() {
+  const router = useRouter();
+  const [user, setUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string>('loading');
+  const [userGroupIds, setUserGroupIds] = useState<string[]>([]);
+  
   const [numbers, setNumbers] = useState<AuthorizedNumber[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,12 +63,45 @@ export default function NumerosAutorizadosPage() {
     name: '',
     instance_id: '',
     can_receive_alerts: true,
-    can_use_chat: true
+    can_use_chat: true,
+    datasets: [] as Array<{connection_id: string, dataset_id: string, dataset_name: string}>
   });
 
   useEffect(() => {
-    loadData();
+    checkAccessAndLoad();
   }, []);
+
+  async function checkAccessAndLoad() {
+    try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      
+      if (!data.user) {
+        router.push('/login');
+        return;
+      }
+      
+      setUser(data.user);
+      
+      if (data.user.is_master) {
+        setUserRole('master');
+      } else if (data.role === 'admin') {
+        setUserRole('admin');
+        // IMPORTANTE: Garantir que groupIds está sendo setado
+        setUserGroupIds(data.groupIds || []);
+        console.log('Admin groupIds:', data.groupIds); // Debug
+      } else {
+        // User sem acesso - redirecionar
+        router.push('/');
+        return;
+      }
+      
+      loadData();
+    } catch (error) {
+      console.error('Erro ao verificar acesso:', error);
+      router.push('/login');
+    }
+  }
 
   async function loadData() {
     setLoading(true);
@@ -93,7 +139,8 @@ export default function NumerosAutorizadosPage() {
       name: '',
       instance_id: '',
       can_receive_alerts: true,
-      can_use_chat: true
+      can_use_chat: true,
+      datasets: []
     });
     setEditingNumber(null);
   }
@@ -110,7 +157,12 @@ export default function NumerosAutorizadosPage() {
       name: number.name,
       instance_id: number.instance?.id || '',
       can_receive_alerts: number.can_receive_alerts,
-      can_use_chat: number.can_use_chat
+      can_use_chat: number.can_use_chat,
+      datasets: number.datasets?.map(d => ({
+        connection_id: d.connection_id,
+        dataset_id: d.dataset_id,
+        dataset_name: d.dataset_name
+      })) || []
     });
     setShowModal(true);
   }
@@ -128,8 +180,14 @@ export default function NumerosAutorizadosPage() {
         name: formData.name,
         instance_id: formData.instance_id || null,
         can_receive_alerts: formData.can_receive_alerts,
-        can_use_chat: formData.can_use_chat
+        can_use_chat: formData.can_use_chat,
+        datasets: formData.datasets
       };
+
+      // Se admin, forçar company_group_id
+      if (userRole === 'admin' && userGroupIds.length > 0) {
+        payload.company_group_id = userGroupIds[0];
+      }
 
       if (editingNumber) {
         payload.id = editingNumber.id;
@@ -227,9 +285,18 @@ export default function NumerosAutorizadosPage() {
     return true;
   });
 
+  // Loading state
+  if (userRole === 'loading') {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 -mt-12">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -278,6 +345,7 @@ export default function NumerosAutorizadosPage() {
                 <tr>
                   <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Contato</th>
                   <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Instância</th>
+                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Datasets</th>
                   <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Alertas</th>
                   <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Chat IA</th>
                   <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Status</th>
@@ -287,7 +355,7 @@ export default function NumerosAutorizadosPage() {
               <tbody className="divide-y divide-gray-100">
                 {filteredNumbers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                    <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
                       <Phone className="w-10 h-10 text-gray-300 mx-auto mb-2" />
                       Nenhum número autorizado
                     </td>
@@ -308,6 +376,22 @@ export default function NumerosAutorizadosPage() {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {num.instance?.name || '-'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {num.datasets && num.datasets.length > 0 ? (
+                            num.datasets.map((d: any) => (
+                              <span 
+                                key={`${d.connection_id}-${d.dataset_id}`}
+                                className="px-2 py-0.5 text-xs bg-green-100 text-green-800 rounded-full"
+                              >
+                                {d.dataset_name || d.dataset_id}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-gray-400 text-sm">Nenhum</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-center">
                         {num.can_receive_alerts ? (
@@ -365,8 +449,8 @@ export default function NumerosAutorizadosPage() {
         {/* Modal */}
         {showModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl w-full max-w-lg">
-              <div className="flex items-center justify-between p-4 border-b border-gray-200">
+            <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between p-4 border-b border-gray-200 sticky top-0 bg-white">
                 <h2 className="text-lg font-bold text-gray-900">
                   {editingNumber ? 'Editar Número' : 'Novo Número Autorizado'}
                 </h2>
@@ -416,6 +500,13 @@ export default function NumerosAutorizadosPage() {
                   </select>
                 </div>
 
+                {/* DatasetSelector */}
+                <DatasetSelector
+                  companyGroupId={userRole === 'admin' ? userGroupIds[0] : undefined}
+                  selectedDatasets={formData.datasets}
+                  onChange={(datasets) => setFormData({...formData, datasets})}
+                />
+
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
                     <input
@@ -447,7 +538,7 @@ export default function NumerosAutorizadosPage() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+              <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl sticky bottom-0">
                 <button
                   onClick={() => { setShowModal(false); resetForm(); }}
                   className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
@@ -468,4 +559,3 @@ export default function NumerosAutorizadosPage() {
     </MainLayout>
   );
 }
-

@@ -6,21 +6,33 @@ import { MenuProvider, useMenu } from '@/contexts/MenuContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import Sidebar from './Sidebar';
 import Header from './Header';
-import { Loader2 } from 'lucide-react';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import { showToast } from '@/lib/toast';
 
 interface User {
   id: string;
   email: string;
   full_name?: string;
   is_master?: boolean;
+  role?: string;
 }
 
 interface MainLayoutProps {
   children: React.ReactNode;
 }
 
-function MainContent({ children }: MainLayoutProps) {
-  const { isCollapsed } = useMenu();
+function MainContent({ children, user }: MainLayoutProps & { user: User | null }) {
+  const { isCollapsed, setUser: setContextUser } = useMenu();
+
+  useEffect(() => {
+    if (user) {
+      setContextUser({
+        id: user.id,
+        is_master: user.is_master,
+        role: user.role
+      });
+    }
+  }, [user, setContextUser]);
   
   return (
     <main className={`pt-16 min-h-screen transition-all duration-300 ${
@@ -40,6 +52,25 @@ export default function MainLayout({ children }: MainLayoutProps) {
 
   useEffect(() => {
     checkAuth();
+    
+    // Substituir alert() nativo por toasts bonitos
+    if (typeof window !== 'undefined' && !(window as any).__alertReplaced) {
+      (window as any).__originalAlert = window.alert;
+      window.alert = (message: string) => {
+        // Detectar tipo de mensagem pelo conteúdo
+        let type: 'success' | 'error' | 'warning' | 'info' = 'info';
+        const msg = message.toLowerCase();
+        if (msg.includes('sucesso') || msg.includes('salvo') || msg.includes('criado') || msg.includes('atualizado')) {
+          type = 'success';
+        } else if (msg.includes('erro') || msg.includes('falhou') || msg.includes('inválido')) {
+          type = 'error';
+        } else if (msg.includes('atenção') || msg.includes('aviso')) {
+          type = 'warning';
+        }
+        showToast(message, type);
+      };
+      (window as any).__alertReplaced = true;
+    }
   }, []);
 
   async function checkAuth() {
@@ -63,7 +94,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
+          <LoadingSpinner size={40} />
           <p className="text-gray-500">Carregando...</p>
         </div>
       </div>
@@ -80,7 +111,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
         <div className="min-h-screen bg-gray-50">
           <Header user={user} />
           <Sidebar />
-          <MainContent>{children}</MainContent>
+          <MainContent user={user}>{children}</MainContent>
         </div>
       </MenuProvider>
     </ThemeProvider>

@@ -85,7 +85,7 @@ export default function HistoricoAlertasPage() {
 
   return (
     <MainLayout>
-      <div className="p-6">
+      <div className="p-6 -mt-12">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">

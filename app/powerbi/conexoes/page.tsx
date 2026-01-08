@@ -30,6 +30,11 @@ interface Connection {
   };
 }
 
+interface CompanyGroup {
+  id: string;
+  name: string;
+}
+
 export default function ConexoesPage() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,6 +43,7 @@ export default function ConexoesPage() {
   const [saving, setSaving] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [groups, setGroups] = useState<CompanyGroup[]>([]);
   
   const [form, setForm] = useState({
     name: '',
@@ -45,7 +51,8 @@ export default function ConexoesPage() {
     client_id: '',
     client_secret: '',
     workspace_id: '',
-    show_page_navigation: true
+    show_page_navigation: true,
+    company_group_id: ''
   });
 
   useEffect(() => {
@@ -54,13 +61,22 @@ export default function ConexoesPage() {
 
   async function loadConnections() {
     try {
-      const res = await fetch('/api/powerbi/connections');
-      if (res.ok) {
-        const data = await res.json();
+      const [connRes, groupsRes] = await Promise.all([
+        fetch('/api/powerbi/connections'),
+        fetch('/api/user/groups')
+      ]);
+      
+      if (connRes.ok) {
+        const data = await connRes.json();
         setConnections(data.connections || []);
       }
+      
+      if (groupsRes.ok) {
+        const data = await groupsRes.json();
+        setGroups(data.groups || []);
+      }
     } catch (error) {
-      console.error('Erro ao carregar conexões:', error);
+      console.error('Erro ao carregar dados:', error);
     } finally {
       setLoading(false);
     }
@@ -75,7 +91,8 @@ export default function ConexoesPage() {
         client_id: connection.client_id,
         client_secret: '',
         workspace_id: connection.workspace_id,
-        show_page_navigation: connection.show_page_navigation
+        show_page_navigation: connection.show_page_navigation,
+        company_group_id: connection.company_group?.id || ''
       });
     } else {
       setEditingConnection(null);
@@ -85,7 +102,8 @@ export default function ConexoesPage() {
         client_id: '',
         client_secret: '',
         workspace_id: '',
-        show_page_navigation: true
+        show_page_navigation: true,
+        company_group_id: groups[0]?.id || ''
       });
     }
     setShowModal(true);
@@ -99,7 +117,8 @@ export default function ConexoesPage() {
       client_id: connection.client_id,
       client_secret: '',
       workspace_id: connection.workspace_id,
-      show_page_navigation: connection.show_page_navigation
+      show_page_navigation: connection.show_page_navigation,
+      company_group_id: connection.company_group?.id || ''
     });
     setShowModal(true);
   }
@@ -113,9 +132,10 @@ export default function ConexoesPage() {
         ? `/api/powerbi/connections/${editingConnection.id}`
         : '/api/powerbi/connections';
       
-      const body = editingConnection
-        ? { ...form, client_secret: form.client_secret || undefined }
-        : { ...form, company_group_id: connections[0]?.company_group?.id };
+      const body = {
+        ...form,
+        client_secret: editingConnection ? (form.client_secret || undefined) : form.client_secret
+      };
 
       const res = await fetch(url, {
         method: editingConnection ? 'PUT' : 'POST',
@@ -177,7 +197,7 @@ export default function ConexoesPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 -mt-12">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Conexões Power BI</h1>
@@ -286,7 +306,7 @@ export default function ConexoesPage() {
             </h2>
             
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Linha 1: Nome e Tenant ID */}
+              {/* Linha 1: Nome e Grupo */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
@@ -300,6 +320,24 @@ export default function ConexoesPage() {
                 </div>
 
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Grupo</label>
+                  <select
+                    value={form.company_group_id}
+                    onChange={(e) => setForm({ ...form, company_group_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
+                  >
+                    <option value="">Selecione um grupo</option>
+                    {groups.map((group) => (
+                      <option key={group.id} value={group.id}>{group.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Linha 2: Tenant ID e Client ID */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Tenant ID</label>
                   <input
                     type="text"
@@ -309,10 +347,7 @@ export default function ConexoesPage() {
                     required
                   />
                 </div>
-              </div>
 
-              {/* Linha 2: Client ID e Client Secret */}
-              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Client ID</label>
                   <input
@@ -323,7 +358,10 @@ export default function ConexoesPage() {
                     required
                   />
                 </div>
+              </div>
 
+              {/* Linha 3: Client Secret e Workspace ID */}
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Client Secret {editingConnection && '(deixe vazio para manter)'}
@@ -345,18 +383,17 @@ export default function ConexoesPage() {
                     </button>
                   </div>
                 </div>
-              </div>
 
-              {/* Workspace ID */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Workspace ID</label>
-                <input
-                  type="text"
-                  value={form.workspace_id}
-                  onChange={(e) => setForm({ ...form, workspace_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-                  required
-                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Workspace ID</label>
+                  <input
+                    type="text"
+                    value={form.workspace_id}
+                    onChange={(e) => setForm({ ...form, workspace_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                    required
+                  />
+                </div>
               </div>
 
               {/* Checkbox com cor azul */}

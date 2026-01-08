@@ -10,12 +10,12 @@ import {
   XCircle, 
   AlertTriangle, 
   Clock,
-  Loader2,
   Workflow,
   Activity,
   History,
   X
 } from 'lucide-react';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
 interface Dataset {
   id: string;
@@ -93,7 +93,7 @@ export default function PowerBIDashboardPage() {
     if (status === 'Failed') return <XCircle className="w-5 h-5 text-red-500" />;
     if (isStale) return <AlertTriangle className="w-5 h-5 text-amber-500" />;
     if (status === 'Completed' || status === 'Success') return <CheckCircle className="w-5 h-5 text-green-500" />;
-    if (status === 'InProgress') return <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />;
+    if (status === 'InProgress') return <LoadingSpinner size={20} />;
     return <Clock className="w-5 h-5 text-gray-400" />;
   };
 
@@ -215,7 +215,7 @@ export default function PowerBIDashboardPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 -mt-12">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -383,7 +383,7 @@ export default function PowerBIDashboardPage() {
           <div className="p-6">
             {loading ? (
               <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                <LoadingSpinner size={32} />
               </div>
             ) : error ? (
               <div className="text-center py-12">
@@ -395,9 +395,9 @@ export default function PowerBIDashboardPage() {
                 {datasets.length === 0 ? (
                   <p className="text-center text-gray-500 py-8">Nenhum modelo semântico encontrado</p>
                 ) : (
-                  datasets.map((dataset) => (
+                  datasets.map((dataset, index) => (
                     <div
-                      key={dataset.id}
+                      key={`${dataset.id}-${index}`}
                       className="flex items-center justify-between p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
                     >
                       <div className="flex items-center gap-4">
@@ -444,9 +444,9 @@ export default function PowerBIDashboardPage() {
                 {dataflows.length === 0 ? (
                   <p className="text-center text-gray-500 py-8">Nenhum fluxo de dados encontrado</p>
                 ) : (
-                  dataflows.map((dataflow) => (
+                  dataflows.map((dataflow, index) => (
                     <div
-                      key={dataflow.id}
+                      key={`${dataflow.id}-${index}`}
                       className="flex items-center justify-between p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
                     >
                       <div className="flex items-center gap-4">
@@ -491,7 +491,7 @@ export default function PowerBIDashboardPage() {
               <div className="p-4 max-h-96 overflow-y-auto">
                 {loadingHistory ? (
                   <div className="flex items-center justify-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                    <LoadingSpinner size={24} />
                   </div>
                 ) : history.length === 0 ? (
                   <p className="text-center text-gray-500 py-8">Nenhum histórico encontrado</p>

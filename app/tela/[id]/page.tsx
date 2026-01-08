@@ -6,7 +6,6 @@ import MainLayout from '@/components/layout/MainLayout';
 import { 
   RefreshCw,
   Maximize2,
-  Loader2,
   AlertCircle,
   X,
   Send,
@@ -14,9 +13,10 @@ import {
   User,
   Download,
   Trash2,
-  Sparkles,
+  Asterisk,
   Database
 } from 'lucide-react';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
 interface EmbedConfig {
   embedToken: string;
@@ -466,7 +466,7 @@ ${'='.repeat(50)}
       <MainLayout>
         <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
           <div className="flex flex-col items-center gap-3">
-            <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
+            <LoadingSpinner size={40} />
             <p className="text-gray-500">Carregando dashboard...</p>
           </div>
         </div>
@@ -497,12 +497,12 @@ ${'='.repeat(50)}
       {/* Toast de progresso de atualização */}
       {refreshProgress && (
         <div className="fixed top-20 right-6 z-50 bg-blue-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-slide-down">
-          <Loader2 size={18} className="animate-spin" />
+          <LoadingSpinner size={18} />
           <span className="text-sm font-medium">{refreshProgress}</span>
         </div>
       )}
 
-      <div className="flex h-[calc(100vh-5.5rem)] -mt-6 -mx-6 px-6">
+      <div className="flex h-[calc(100vh-5.5rem)] -mt-12 -mx-6 px-6">
         {/* Área do Dashboard */}
         <div className="flex flex-col flex-1 transition-all duration-300">
           <div className="flex items-center justify-between mb-2">
@@ -546,7 +546,7 @@ ${'='.repeat(50)}
                 title="Chat IA"
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"></div>
-                <Sparkles size={18} className="relative z-10" />
+                <Asterisk size={18} className="relative z-10" />
               </button>
             </div>
           </div>
@@ -569,9 +569,9 @@ ${'='.repeat(50)}
             {/* Painel de Chat */}
             <div className="fixed right-0 top-0 h-full w-96 flex flex-col bg-white shadow-2xl overflow-hidden z-50 animate-slide-in">
             {/* Header do Chat */}
-            <div className="flex items-center justify-between px-4 h-16 bg-blue-700 text-white">
+            <div className="flex items-center justify-between px-4 h-16 text-white" style={{ backgroundColor: 'var(--color-primary)' }}>
               <div className="flex items-center gap-2">
-                <Sparkles size={20} />
+                <Asterisk size={20} />
                 <span className="font-semibold">Assistente IA</span>
                 {usageInfo && (
                   <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
@@ -701,7 +701,16 @@ ${'='.repeat(50)}
                 <button
                   onClick={() => sendMessage()}
                   disabled={sending || !inputMessage.trim()}
-                  className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="p-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  style={{ 
+                    backgroundColor: 'var(--color-primary)',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'var(--color-primary-hover)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'var(--color-primary)';
+                  }}
                 >
                   <Send size={18} />
                 </button>

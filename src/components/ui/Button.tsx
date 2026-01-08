@@ -1,7 +1,7 @@
 'use client';
 
 import { ButtonHTMLAttributes, ReactNode } from 'react';
-import { Loader2 } from 'lucide-react';
+import LoadingSpinner from './LoadingSpinner';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
@@ -42,7 +42,7 @@ export default function Button({
       disabled={disabled || loading}
       {...props}
     >
-      {loading ? <Loader2 size={16} className="animate-spin" /> : icon}
+      {loading ? <LoadingSpinner size={16} /> : icon}
       {children}
     </button>
   );

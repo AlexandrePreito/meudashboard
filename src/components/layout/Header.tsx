@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { 
-  Bell, LogOut, ChevronDown, Building2, User, Zap, Menu, X, Key
+  LogOut, ChevronDown, User, Zap, Menu, X, Key
 } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -23,15 +23,39 @@ interface HeaderProps {
     email: string;
     full_name?: string;
     is_master?: boolean;
+    role?: string;
   };
 }
 
-const mainNavItems = [
-  { href: '/', label: 'Dashboards' },
-  { href: '/powerbi', label: 'Power BI' },
-  { href: '/whatsapp', label: 'WhatsApp' },
-  { href: '/configuracoes', label: 'Configurações' },
-];
+// Menu dinâmico baseado no perfil do usuário
+function getNavItems(user: HeaderProps['user']) {
+  const items: { href: string; label: string }[] = [];
+
+  // User comum: menu vazio no header (navegação fica no sidebar)
+  if (!user.is_master && user.role === 'user') {
+    return items;
+  }
+
+  // Dashboards: apenas master e admin
+  if (user.is_master || user.role === 'admin') {
+    items.push({ href: '/dashboard', label: 'Dashboards' });
+  }
+
+  // Power BI: apenas master e admin
+  if (user.is_master || user.role === 'admin') {
+    items.push({ href: '/powerbi', label: 'Power BI' });
+  }
+
+  // WhatsApp: apenas master e admin
+  if (user.is_master || user.role === 'admin') {
+    items.push({ href: '/whatsapp', label: 'WhatsApp' });
+  }
+
+  // Configurações: master e admin
+  items.push({ href: '/configuracoes', label: 'Configurações' });
+
+  return items;
+}
 
 export default function Header({ user }: HeaderProps) {
   const router = useRouter();
@@ -83,7 +107,7 @@ export default function Header({ user }: HeaderProps) {
   async function handleLogout() {
     try {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-      router.push('/login');
+      router.push('/');
     } catch (error) {
       console.error('Erro ao fazer logout:', error);
     }
@@ -95,8 +119,8 @@ export default function Header({ user }: HeaderProps) {
   }
 
   function isActiveNav(href: string) {
-    if (href === '/') {
-      return pathname === '/' || pathname.startsWith('/tela');
+    if (href === '/dashboard') {
+      return pathname === '/dashboard' || pathname.startsWith('/tela');
     }
     if (href === '/whatsapp') {
       return pathname.startsWith('/whatsapp') || pathname.startsWith('/alertas');
@@ -114,7 +138,7 @@ export default function Header({ user }: HeaderProps) {
 
   return (
     <>
-      <header className="h-16 bg-white border-b border-gray-200 flex items-center px-4 lg:px-6 sticky top-0 z-50">
+      <header className="h-16 bg-white border-b border-gray-200 flex items-center pl-4 lg:pl-2 pr-4 lg:pr-6 sticky top-0 z-50">
         {/* Logo */}
         <div className="flex items-center gap-4">
           <button
@@ -126,16 +150,11 @@ export default function Header({ user }: HeaderProps) {
 
           <div className="flex items-center gap-2">
             {activeGroup?.logo_url ? (
-              <>
-                <img 
-                  src={activeGroup.logo_url} 
-                  alt={activeGroup.name} 
-                  className="h-9 w-auto max-w-[40px] object-contain"
-                />
-                <span className="text-xl font-bold text-gray-800 hidden sm:inline">
-                  {activeGroup.name}
-                </span>
-              </>
+              <img 
+                src={activeGroup.logo_url} 
+                alt={activeGroup.name} 
+                className="h-9 w-auto max-w-[150px] object-contain"
+              />
             ) : (
               <>
                 <div className="p-1.5 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg">
@@ -147,11 +166,40 @@ export default function Header({ user }: HeaderProps) {
               </>
             )}
           </div>
+
+          {/* Seletor de Grupo - Lado Esquerdo */}
+          <div className="relative" ref={groupDropdownRef}>
+            <button
+              onClick={() => setShowGroupDropdown(!showGroupDropdown)}
+              className="flex items-center gap-2 px-2 lg:px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <span className="text-sm font-medium text-gray-700 max-w-[150px] truncate">
+                {activeGroup?.name || 'Grupo'}
+              </span>
+              <ChevronDown size={16} className={`text-gray-400 transition-transform ${showGroupDropdown ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showGroupDropdown && groups.length > 0 && (
+              <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50">
+                {groups.map((group) => (
+                  <button
+                    key={group.id}
+                    onClick={() => selectGroup(group)}
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${
+                      activeGroup?.id === group.id ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
+                    }`}
+                  >
+                    {group.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Navigation - Centralizado */}
         <nav className="flex-1 flex items-center justify-center gap-6 hidden lg:flex">
-          {mainNavItems.map((item) => {
+          {getNavItems(user).map((item) => {
             const isActive = isActiveNav(item.href);
             return (
               <Link
@@ -171,39 +219,6 @@ export default function Header({ user }: HeaderProps) {
 
         {/* Right side */}
         <div className="flex items-center gap-2 lg:gap-4">
-          <div className="relative" ref={groupDropdownRef}>
-            <button
-              onClick={() => setShowGroupDropdown(!showGroupDropdown)}
-              className="flex items-center gap-2 px-2 lg:px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <Building2 size={18} className="text-gray-500" />
-              <span className="text-sm font-medium text-gray-700 hidden sm:inline max-w-[120px] truncate">
-                {activeGroup?.name || 'Grupo'}
-              </span>
-              <ChevronDown size={16} className={`text-gray-400 transition-transform ${showGroupDropdown ? 'rotate-180' : ''}`} />
-            </button>
-
-            {showGroupDropdown && groups.length > 0 && (
-              <div className="absolute top-full right-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50">
-                {groups.map((group) => (
-                  <button
-                    key={group.id}
-                    onClick={() => selectGroup(group)}
-                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${
-                      activeGroup?.id === group.id ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
-                    }`}
-                  >
-                    {group.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors relative hidden sm:block">
-            <Bell size={20} className="text-gray-500" />
-          </button>
-
           {/* User Menu */}
           <div className="relative">
             <button
@@ -260,7 +275,7 @@ export default function Header({ user }: HeaderProps) {
       {showMobileMenu && (
         <div className="lg:hidden fixed top-16 left-0 right-0 bg-white border-b border-gray-200 shadow-lg z-40">
           <nav className="flex flex-col p-2">
-            {mainNavItems.map((item) => {
+            {getNavItems(user).map((item) => {
               const isActive = isActiveNav(item.href);
               return (
                 <Link

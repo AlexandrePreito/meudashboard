@@ -3,13 +3,13 @@
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
+import { useToast } from '@/contexts/ToastContext';
 import {
   Users,
   Building2,
   Plus,
   Edit,
   Trash2,
-  Loader2,
   X,
   Eye,
   EyeOff,
@@ -19,6 +19,7 @@ import {
   UserX,
   Search
 } from 'lucide-react';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
 interface User {
   id: string;
@@ -51,12 +52,15 @@ interface Group {
 }
 
 export default function ConfiguracoesPage() {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<'users' | 'groups'>('users');
   const [users, setUsers] = useState<User[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentUser, setCurrentUser] = useState<{ id?: string; is_master?: boolean; role?: string; adminGroupIds?: string[] } | null>(null);
+  const [myProfile, setMyProfile] = useState<User | null>(null);
 
   // Modais
   const [showUserModal, setShowUserModal] = useState(false);
@@ -85,14 +89,58 @@ export default function ConfiguracoesPage() {
     max_powerbi_screens: 10
   });
 
+  // Verifica se é usuário comum (não master, não admin)
+  const isRegularUser = !currentUser?.is_master && currentUser?.role === 'user';
+
   useEffect(() => {
     loadData();
   }, []);
 
   async function loadData() {
     setLoading(true);
-    await Promise.all([loadUsers(), loadGroups()]);
+    const userData = await loadCurrentUser();
+    
+    // Se for user comum, carrega apenas o próprio perfil
+    if (!userData?.is_master && userData?.role === 'user') {
+      await loadMyProfile(userData.id);
+    } else {
+      await Promise.all([loadUsers(), loadGroups()]);
+    }
     setLoading(false);
+  }
+
+  async function loadMyProfile(userId: string) {
+    try {
+      const res = await fetch(`/api/config/users?id=${userId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user) {
+          setMyProfile(data.user);
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao carregar perfil:', err);
+    }
+  }
+
+  async function loadCurrentUser() {
+    try {
+      const res = await fetch('/api/auth/me');
+      if (res.ok) {
+        const data = await res.json();
+        const userData = {
+          id: data.user?.id,
+          is_master: data.user?.is_master || false,
+          role: data.user?.role || 'user',
+          adminGroupIds: data.user?.adminGroupIds || []
+        };
+        setCurrentUser(userData);
+        return userData;
+      }
+    } catch (err) {
+      console.error('Erro ao carregar usuário:', err);
+    }
+    return null;
   }
 
   async function loadUsers() {
@@ -121,13 +169,16 @@ export default function ConfiguracoesPage() {
 
   // USUÁRIOS
   function openNewUser() {
+    // Se não for master, pré-seleciona o primeiro grupo disponível
+    const defaultGroupId = !currentUser?.is_master && groups.length > 0 ? groups[0].id : '';
+    
     setUserForm({
       email: '',
       full_name: '',
       phone: '',
       password: '',
       is_master: false,
-      company_group_id: '',
+      company_group_id: defaultGroupId,
       role: 'user'
     });
     setEditingUser(null);
@@ -152,11 +203,11 @@ export default function ConfiguracoesPage() {
 
   async function saveUser() {
     if (!userForm.email || !userForm.full_name) {
-      alert('Email e nome são obrigatórios');
+      toast.error('Email e nome são obrigatórios');
       return;
     }
     if (!editingUser && !userForm.password) {
-      alert('Senha é obrigatória para novo usuário');
+      toast.error('Senha é obrigatória para novo usuário');
       return;
     }
 
@@ -186,15 +237,15 @@ export default function ConfiguracoesPage() {
       });
 
       if (res.ok) {
-        alert(editingUser ? 'Usuário atualizado!' : 'Usuário criado!');
+        toast.success(editingUser ? 'Usuário atualizado!' : 'Usuário criado!');
         setShowUserModal(false);
         loadUsers();
       } else {
         const data = await res.json();
-        alert(data.error || 'Erro ao salvar');
+        toast.error(data.error || 'Erro ao salvar');
       }
     } catch (err) {
-      alert('Erro ao salvar usuário');
+      toast.error('Erro ao salvar usuário');
     } finally {
       setSaving(false);
     }
@@ -206,14 +257,14 @@ export default function ConfiguracoesPage() {
     try {
       const res = await fetch(`/api/config/users?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
-        alert('Usuário excluído!');
+        toast.error('Usuário excluído!');
         loadUsers();
       } else {
         const data = await res.json();
-        alert(data.error || 'Erro ao excluir');
+        toast.error(data.error || 'Erro ao excluir');
       }
     } catch (err) {
-      alert('Erro ao excluir usuário');
+      toast.error('Erro ao excluir usuário');
     }
   }
 
@@ -244,7 +295,7 @@ export default function ConfiguracoesPage() {
 
   async function saveGroup() {
     if (!groupForm.name) {
-      alert('Nome é obrigatório');
+      toast.error('Nome é obrigatório');
       return;
     }
 
@@ -269,15 +320,15 @@ export default function ConfiguracoesPage() {
       });
 
       if (res.ok) {
-        alert(editingGroup ? 'Grupo atualizado!' : 'Grupo criado!');
+        toast.success(editingGroup ? 'Grupo atualizado!' : 'Grupo criado!');
         setShowGroupModal(false);
         loadGroups();
       } else {
         const data = await res.json();
-        alert(data.error || 'Erro ao salvar');
+        toast.error(data.error || 'Erro ao salvar');
       }
     } catch (err) {
-      alert('Erro ao salvar grupo');
+      toast.error('Erro ao salvar grupo');
     } finally {
       setSaving(false);
     }
@@ -289,14 +340,14 @@ export default function ConfiguracoesPage() {
     try {
       const res = await fetch(`/api/config/groups?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
-        alert('Grupo excluído!');
+        toast.error('Grupo excluído!');
         loadGroups();
       } else {
         const data = await res.json();
-        alert(data.error || 'Erro ao excluir');
+        toast.error(data.error || 'Erro ao excluir');
       }
     } catch (err) {
-      alert('Erro ao excluir grupo');
+      toast.error('Erro ao excluir grupo');
     }
   }
 
@@ -328,62 +379,119 @@ export default function ConfiguracoesPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 -mt-12">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Configurações</h1>
-            <p className="text-gray-500 text-sm mt-1">Gerencie usuários e grupos do sistema</p>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {isRegularUser ? 'Meu Perfil' : 'Configurações'}
+            </h1>
+            <p className="text-gray-500 text-sm mt-1">
+              {isRegularUser ? 'Visualize e edite seus dados' : 'Gerencie usuários e grupos do sistema'}
+            </p>
           </div>
-          <Button onClick={activeTab === 'users' ? openNewUser : openNewGroup} icon={<Plus size={20} />}>
-            {activeTab === 'users' ? 'Novo Usuário' : 'Novo Grupo'}
-          </Button>
+          {!isRegularUser && (activeTab === 'users' || currentUser?.is_master) && (
+            <Button onClick={activeTab === 'users' ? openNewUser : openNewGroup} icon={<Plus size={20} />}>
+              {activeTab === 'users' ? 'Novo Usuário' : 'Novo Grupo'}
+            </Button>
+          )}
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-4 border-b border-gray-200">
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors ${
-              activeTab === 'users'
-                ? 'text-primary-dark border-b-2 border-primary'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Users size={20} />
-            Usuários ({users.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('groups')}
-            className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors ${
-              activeTab === 'groups'
-                ? 'text-primary-dark border-b-2 border-primary'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Building2 size={20} />
-            Grupos ({groups.length})
-          </button>
-        </div>
+        {/* Tabs - esconde para users comuns */}
+        {!isRegularUser && (
+          <div className="flex gap-4 border-b border-gray-200">
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors ${
+                activeTab === 'users'
+                  ? 'text-primary-dark border-b-2 border-primary'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Users size={20} />
+              Usuários ({users.length})
+            </button>
+            {currentUser?.is_master && (
+              <button
+                onClick={() => setActiveTab('groups')}
+                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors ${
+                  activeTab === 'groups'
+                    ? 'text-primary-dark border-b-2 border-primary'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Building2 size={20} />
+                Grupos ({groups.length})
+              </button>
+            )}
+          </div>
+        )}
 
-        {/* Busca */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-          <input
-            type="text"
-            placeholder={activeTab === 'users' ? 'Buscar usuários...' : 'Buscar grupos...'}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-          />
-        </div>
+        {/* Busca - esconde para users comuns */}
+        {!isRegularUser && (
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+            <input
+              type="text"
+              placeholder={activeTab === 'users' ? 'Buscar usuários...' : 'Buscar grupos...'}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
+            />
+          </div>
+        )}
+
+        {/* Perfil do usuário comum */}
+        {isRegularUser && !loading && myProfile && (
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            {[myProfile].map(user => (
+              <div key={user.id} className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center text-white text-2xl font-medium">
+                    {user.full_name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">{user.full_name}</h2>
+                    <p className="text-gray-500">{user.email}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-100">
+                  <div>
+                    <p className="text-sm text-gray-500">Telefone</p>
+                    <p className="font-medium text-gray-900">{user.phone || 'Não informado'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Grupo</p>
+                    <p className="font-medium text-gray-900">{user.memberships[0]?.company_group?.name || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Último Acesso</p>
+                    <p className="font-medium text-gray-900">{formatDate(user.last_login_at)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Membro desde</p>
+                    <p className="font-medium text-gray-900">{formatDate(user.created_at)}</p>
+                  </div>
+                </div>
+                <div className="pt-4">
+                  <button
+                    onClick={() => openEditUser(user)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Editar Meus Dados
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Loading */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+            <LoadingSpinner size={32} />
           </div>
-        ) : (
+        ) : !isRegularUser ? (
           <>
             {/* Lista de Usuários */}
             {activeTab === 'users' && (
@@ -527,7 +635,7 @@ export default function ConfiguracoesPage() {
               </div>
             )}
           </>
-        )}
+        ) : null}
 
         {/* Modal Usuário */}
         {showUserModal && (
@@ -599,17 +707,29 @@ export default function ConfiguracoesPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Grupo</label>
-                    <select
-                      value={userForm.company_group_id}
-                      onChange={(e) => setUserForm({ ...userForm, company_group_id: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                    >
-                      <option value="">Nenhum</option>
-                      {groups.map(group => (
-                        <option key={group.id} value={group.id}>{group.name}</option>
-                      ))}
-                    </select>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Grupo {!currentUser?.is_master && '*'}</label>
+                    {currentUser?.is_master ? (
+                      <select
+                        value={userForm.company_group_id}
+                        onChange={(e) => setUserForm({ ...userForm, company_group_id: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
+                      >
+                        <option value="">Nenhum</option>
+                        {groups.map(group => (
+                          <option key={group.id} value={group.id}>{group.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <select
+                        value={userForm.company_group_id}
+                        disabled
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-100 text-gray-600"
+                      >
+                        {groups.map(group => (
+                          <option key={group.id} value={group.id}>{group.name}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Perfil</label>
@@ -620,23 +740,24 @@ export default function ConfiguracoesPage() {
                     >
                       <option value="user">Usuário</option>
                       <option value="admin">Admin</option>
-                      <option value="manager">Gerente</option>
                     </select>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="is_master"
-                    checked={userForm.is_master}
-                    onChange={(e) => setUserForm({ ...userForm, is_master: e.target.checked })}
-                    className="w-4 h-4 rounded border-gray-300"
-                  />
-                  <label htmlFor="is_master" className="text-sm text-gray-700">
-                    Usuário Master (acesso total ao sistema)
-                  </label>
-                </div>
+                {currentUser?.is_master && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="is_master"
+                      checked={userForm.is_master}
+                      onChange={(e) => setUserForm({ ...userForm, is_master: e.target.checked })}
+                      className="w-4 h-4 rounded border-gray-300"
+                    />
+                    <label htmlFor="is_master" className="text-sm text-gray-700">
+                      Usuário Master (acesso total ao sistema)
+                    </label>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">

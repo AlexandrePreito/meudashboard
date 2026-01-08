@@ -64,7 +64,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { title, icon, is_first, is_active, is_public, user_ids, company_ids } = body;
+    const { title, icon, is_first, is_active, is_public, user_ids, company_ids, company_group_id } = body;
 
     const supabase = createAdminClient();
 
@@ -88,6 +88,7 @@ export async function PUT(
     if (is_first !== undefined) updateData.is_first = is_first;
     if (is_active !== undefined) updateData.is_active = is_active;
     if (is_public !== undefined) updateData.is_public = is_public;
+    if (company_group_id !== undefined) updateData.company_group_id = company_group_id;
 
     const { data: screen, error } = await supabase
       .from('powerbi_dashboard_screens')

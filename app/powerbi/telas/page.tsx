@@ -225,9 +225,16 @@ export default function TelasPage() {
         ? `/api/powerbi/screens/${editingScreen.id}`
         : '/api/powerbi/screens';
 
-      const body = editingScreen
-        ? { ...form, is_public: form.is_public, user_ids: form.is_public ? [] : form.allowed_users }
-        : { ...form, company_group_id: screens[0]?.company_group?.id || reports[0]?.id, is_public: form.is_public, user_ids: form.is_public ? [] : form.allowed_users };
+      // Pegar o company_group_id do relatório selecionado
+      const selectedReport = reports.find(r => r.id === form.report_id);
+      const company_group_id = selectedReport?.connection?.company_group_id;
+
+      const body = {
+        ...form,
+        company_group_id,
+        is_public: form.is_public,
+        user_ids: form.is_public ? [] : form.allowed_users
+      };
 
       const res = await fetch(url, {
         method: editingScreen ? 'PUT' : 'POST',
@@ -313,7 +320,7 @@ export default function TelasPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 -mt-12">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Telas</h1>
@@ -612,7 +619,7 @@ export default function TelasPage() {
                           if (!screenGroupId) return false;
                           
                           const userInGroup = user.memberships?.some(
-                            m => m.company_group?.id === screenGroupId && m.is_active
+                            (m: any) => m.company_group?.id === screenGroupId && m.is_active
                           );
                           if (!userInGroup) return false;
 
@@ -680,7 +687,7 @@ export default function TelasPage() {
                         if (!screenGroupId) return false;
                         
                         const userInGroup = user.memberships?.some(
-                          m => m.company_group?.id === screenGroupId && m.is_active
+                          (m: any) => m.company_group?.id === screenGroupId && m.is_active
                         );
                         if (!userInGroup) return false;
                         if (userSearchTerm) {

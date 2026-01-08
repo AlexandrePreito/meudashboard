@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser } from '@/lib/auth';
 
-// GET - Listar grupos autorizados
+// GET - Listar grupos WhatsApp autorizados
 export async function GET() {
   try {
     const user = await getAuthUser();
@@ -12,32 +12,48 @@ export async function GET() {
 
     const supabase = createAdminClient();
 
+    // Buscar role e grupos do usuário
+    let userRole = 'user';
+    let userGroupIds: string[] = [];
+
+    if (user.is_master) {
+      userRole = 'master';
+    } else {
+      const { data: memberships } = await supabase
+        .from('user_group_membership')
+        .select('company_group_id, role')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+      
+      userGroupIds = memberships?.map(m => m.company_group_id) || [];
+      if (memberships?.some(m => m.role === 'admin')) {
+        userRole = 'admin';
+      }
+    }
+
+    // User não tem acesso
+    if (userRole === 'user') {
+      return NextResponse.json({ error: 'Sem permissão para acessar este módulo' }, { status: 403 });
+    }
+
+    // Buscar grupos com datasets vinculados
     let query = supabase
-      .from('whatsapp_groups')
+      .from('whatsapp_authorized_groups')
       .select(`
-        id,
-        group_id,
-        group_name,
-        purpose,
-        can_receive_alerts,
-        is_active,
-        created_at,
-        instance:whatsapp_instances(id, name)
+        *,
+        instance:whatsapp_instances(id, name),
+        datasets:whatsapp_group_datasets(
+          id,
+          connection_id,
+          dataset_id,
+          dataset_name
+        )
       `)
       .order('group_name', { ascending: true });
 
-    // Se não for master, filtra por grupo
-    if (!user.is_master) {
-      const { data: membership } = await supabase
-        .from('user_group_membership')
-        .select('company_group_id')
-        .eq('user_id', user.id)
-        .limit(1)
-        .maybeSingle();
-
-      if (membership?.company_group_id) {
-        query = query.eq('company_group_id', membership.company_group_id);
-      }
+    // Admin: filtrar por grupos
+    if (userRole === 'admin') {
+      query = query.in('company_group_id', userGroupIds);
     }
 
     const { data: groups, error } = await query;
@@ -54,7 +70,7 @@ export async function GET() {
   }
 }
 
-// POST - Criar grupo autorizado
+// POST - Criar grupo WhatsApp autorizado
 export async function POST(request: Request) {
   try {
     const user = await getAuthUser();
@@ -63,7 +79,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { group_id, group_name, purpose, instance_id, can_receive_alerts, company_group_id } = body;
+    const { group_id, group_name, purpose, instance_id, can_receive_alerts, company_group_id, datasets } = body;
 
     if (!group_id || !group_name) {
       return NextResponse.json({ error: 'ID do grupo e nome são obrigatórios' }, { status: 400 });
@@ -71,27 +87,46 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient();
 
-    // Buscar grupo da empresa
-    let companyGroupId = company_group_id;
-    if (!companyGroupId) {
-      const { data: membership } = await supabase
+    // Buscar role e grupos do usuário
+    let userRole = 'user';
+    let userGroupIds: string[] = [];
+
+    if (user.is_master) {
+      userRole = 'master';
+    } else {
+      const { data: memberships } = await supabase
         .from('user_group_membership')
-        .select('company_group_id')
+        .select('company_group_id, role')
         .eq('user_id', user.id)
-        .limit(1)
-        .maybeSingle();
+        .eq('is_active', true);
       
-      companyGroupId = membership?.company_group_id;
+      userGroupIds = memberships?.map(m => m.company_group_id) || [];
+      if (memberships?.some(m => m.role === 'admin')) {
+        userRole = 'admin';
+      }
     }
 
-    if (!companyGroupId) {
+    if (userRole === 'user') {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+    }
+
+    // Determinar company_group_id
+    let groupId = company_group_id;
+
+    if (userRole === 'admin') {
+      // Admin: forçar para ser do seu grupo (primeiro grupo)
+      groupId = userGroupIds[0] || null;
+    }
+
+    if (!groupId) {
       return NextResponse.json({ error: 'Grupo não encontrado' }, { status: 400 });
     }
 
-    const { data: newGroup, error } = await supabase
-      .from('whatsapp_groups')
+    // Criar grupo
+    const { data: newGroup, error: groupError } = await supabase
+      .from('whatsapp_authorized_groups')
       .insert({
-        company_group_id: companyGroupId,
+        company_group_id: groupId,
         instance_id: instance_id || null,
         group_id,
         group_name,
@@ -102,19 +137,54 @@ export async function POST(request: Request) {
       .select()
       .single();
 
-    if (error) {
-      console.error('Erro ao criar grupo:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (groupError) {
+      console.error('Erro ao criar grupo:', groupError);
+      return NextResponse.json({ error: groupError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ group: newGroup });
+    // Criar vínculos de datasets
+    if (datasets && Array.isArray(datasets) && datasets.length > 0) {
+      const datasetInserts = datasets.map((d: any) => ({
+        authorized_group_id: newGroup.id,
+        connection_id: d.connection_id,
+        dataset_id: d.dataset_id,
+        dataset_name: d.dataset_name || null
+      }));
+
+      const { error: datasetError } = await supabase
+        .from('whatsapp_group_datasets')
+        .insert(datasetInserts);
+
+      if (datasetError) {
+        console.error('Erro ao vincular datasets:', datasetError);
+        // Não retornar erro, apenas log
+      }
+    }
+
+    // Buscar grupo completo com datasets
+    const { data: completeGroup } = await supabase
+      .from('whatsapp_authorized_groups')
+      .select(`
+        *,
+        instance:whatsapp_instances(id, name),
+        datasets:whatsapp_group_datasets(
+          id,
+          connection_id,
+          dataset_id,
+          dataset_name
+        )
+      `)
+      .eq('id', newGroup.id)
+      .single();
+
+    return NextResponse.json({ group: completeGroup });
   } catch (error: any) {
     console.error('Erro:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-// PUT - Atualizar grupo autorizado
+// PUT - Atualizar grupo WhatsApp autorizado
 export async function PUT(request: Request) {
   try {
     const user = await getAuthUser();
@@ -123,7 +193,7 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json();
-    const { id, group_id, group_name, purpose, instance_id, can_receive_alerts, is_active } = body;
+    const { id, group_id, group_name, purpose, instance_id, can_receive_alerts, is_active, datasets } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID é obrigatório' }, { status: 400 });
@@ -131,8 +201,45 @@ export async function PUT(request: Request) {
 
     const supabase = createAdminClient();
 
-    const { data: updatedGroup, error } = await supabase
-      .from('whatsapp_groups')
+    // Buscar role e grupos do usuário
+    let userRole = 'user';
+    let userGroupIds: string[] = [];
+
+    if (user.is_master) {
+      userRole = 'master';
+    } else {
+      const { data: memberships } = await supabase
+        .from('user_group_membership')
+        .select('company_group_id, role')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+      
+      userGroupIds = memberships?.map(m => m.company_group_id) || [];
+      if (memberships?.some(m => m.role === 'admin')) {
+        userRole = 'admin';
+      }
+    }
+
+    if (userRole === 'user') {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+    }
+
+    // Admin: verificar se grupo pertence ao seu grupo
+    if (userRole === 'admin') {
+      const { data: group } = await supabase
+        .from('whatsapp_authorized_groups')
+        .select('company_group_id')
+        .eq('id', id)
+        .single();
+
+      if (!group || !userGroupIds.includes(group.company_group_id)) {
+        return NextResponse.json({ error: 'Sem permissão para editar este grupo' }, { status: 403 });
+      }
+    }
+
+    // Atualizar grupo
+    const { data: updatedGroup, error: updateError } = await supabase
+      .from('whatsapp_authorized_groups')
       .update({
         group_id,
         group_name,
@@ -146,19 +253,58 @@ export async function PUT(request: Request) {
       .select()
       .single();
 
-    if (error) {
-      console.error('Erro ao atualizar grupo:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (updateError) {
+      console.error('Erro ao atualizar grupo:', updateError);
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ group: updatedGroup });
+    // Atualizar datasets vinculados
+    if (datasets !== undefined) {
+      // Deletar vínculos antigos
+      await supabase
+        .from('whatsapp_group_datasets')
+        .delete()
+        .eq('authorized_group_id', id);
+
+      // Inserir novos vínculos
+      if (Array.isArray(datasets) && datasets.length > 0) {
+        const datasetInserts = datasets.map((d: any) => ({
+          authorized_group_id: id,
+          connection_id: d.connection_id,
+          dataset_id: d.dataset_id,
+          dataset_name: d.dataset_name || null
+        }));
+
+        await supabase
+          .from('whatsapp_group_datasets')
+          .insert(datasetInserts);
+      }
+    }
+
+    // Buscar grupo completo com datasets
+    const { data: completeGroup } = await supabase
+      .from('whatsapp_authorized_groups')
+      .select(`
+        *,
+        instance:whatsapp_instances(id, name),
+        datasets:whatsapp_group_datasets(
+          id,
+          connection_id,
+          dataset_id,
+          dataset_name
+        )
+      `)
+      .eq('id', id)
+      .single();
+
+    return NextResponse.json({ group: completeGroup });
   } catch (error: any) {
     console.error('Erro:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-// DELETE - Excluir grupo autorizado
+// DELETE - Excluir grupo WhatsApp autorizado
 export async function DELETE(request: Request) {
   try {
     const user = await getAuthUser();
@@ -175,8 +321,45 @@ export async function DELETE(request: Request) {
 
     const supabase = createAdminClient();
 
+    // Buscar role e grupos do usuário
+    let userRole = 'user';
+    let userGroupIds: string[] = [];
+
+    if (user.is_master) {
+      userRole = 'master';
+    } else {
+      const { data: memberships } = await supabase
+        .from('user_group_membership')
+        .select('company_group_id, role')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+      
+      userGroupIds = memberships?.map(m => m.company_group_id) || [];
+      if (memberships?.some(m => m.role === 'admin')) {
+        userRole = 'admin';
+      }
+    }
+
+    if (userRole === 'user') {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+    }
+
+    // Admin: verificar se grupo pertence ao seu grupo
+    if (userRole === 'admin') {
+      const { data: group } = await supabase
+        .from('whatsapp_authorized_groups')
+        .select('company_group_id')
+        .eq('id', id)
+        .single();
+
+      if (!group || !userGroupIds.includes(group.company_group_id)) {
+        return NextResponse.json({ error: 'Sem permissão para excluir este grupo' }, { status: 403 });
+      }
+    }
+
+    // Excluir grupo (CASCADE já remove vínculos de datasets)
     const { error } = await supabase
-      .from('whatsapp_groups')
+      .from('whatsapp_authorized_groups')
       .delete()
       .eq('id', id);
 
@@ -191,4 +374,3 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
-

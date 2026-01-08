@@ -38,12 +38,19 @@ interface Connection {
   name: string;
 }
 
+interface Dataset {
+  id: string;
+  name: string;
+}
+
 export default function ContextosPage() {
   const [contexts, setContexts] = useState<Context[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [loadingDatasets, setLoadingDatasets] = useState(false);
 
   const [showModal, setShowModal] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -54,7 +61,6 @@ export default function ContextosPage() {
     context_name: '',
     connection_id: '',
     dataset_id: '',
-    dataset_name: '',
     context_content: ''
   });
 
@@ -91,15 +97,38 @@ export default function ContextosPage() {
     }
   }
 
+  async function loadDatasets(connectionId: string) {
+    if (!connectionId) {
+      setDatasets([]);
+      return;
+    }
+    
+    setLoadingDatasets(true);
+    try {
+      const res = await fetch(`/api/powerbi/datasets?connection_id=${connectionId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDatasets(data.datasets || []);
+      } else {
+        setDatasets([]);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar datasets:', error);
+      setDatasets([]);
+    } finally {
+      setLoadingDatasets(false);
+    }
+  }
+
   function resetForm() {
     setFormData({
       context_name: '',
       connection_id: '',
       dataset_id: '',
-      dataset_name: '',
       context_content: ''
     });
     setEditingContext(null);
+    setDatasets([]);
   }
 
   function openNewContext() {
@@ -113,9 +142,9 @@ export default function ContextosPage() {
       context_name: context.context_name,
       connection_id: context.connection_id,
       dataset_id: context.dataset_id || '',
-      dataset_name: context.dataset_name || '',
       context_content: context.context_content
     });
+    loadDatasets(context.connection_id);
     setShowModal(true);
   }
 
@@ -166,6 +195,11 @@ export default function ContextosPage() {
       return;
     }
 
+    if (!formData.dataset_id) {
+      alert('O dataset é obrigatório');
+      return;
+    }
+
     if (!formData.context_content.trim()) {
       alert('O conteúdo do contexto é obrigatório');
       return;
@@ -173,12 +207,15 @@ export default function ContextosPage() {
 
     setSaving(true);
     try {
+      // Buscar o nome do dataset selecionado
+      const selectedDataset = datasets.find(d => d.id === formData.dataset_id);
+
       const payload = {
         id: editingContext?.id,
         context_name: formData.context_name,
         connection_id: formData.connection_id,
         dataset_id: formData.dataset_id || null,
-        dataset_name: formData.dataset_name || null,
+        dataset_name: selectedDataset?.name || null,
         context_content: formData.context_content,
         context_format: 'markdown'
       };
@@ -253,7 +290,7 @@ export default function ContextosPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 -mt-12">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -408,7 +445,10 @@ export default function ContextosPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Conexão Power BI *</label>
                     <select
                       value={formData.connection_id}
-                      onChange={(e) => setFormData({ ...formData, connection_id: e.target.value })}
+                      onChange={(e) => {
+                        setFormData({ ...formData, connection_id: e.target.value, dataset_id: '' });
+                        loadDatasets(e.target.value);
+                      }}
                       disabled={!!editingContext}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 disabled:bg-gray-100"
                     >
@@ -419,14 +459,20 @@ export default function ContextosPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Dataset (opcional)</label>
-                    <input
-                      type="text"
-                      value={formData.dataset_name}
-                      onChange={(e) => setFormData({ ...formData, dataset_name: e.target.value })}
-                      placeholder="Ex: Vendas_2024"
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                    />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Dataset *</label>
+                    <select
+                      value={formData.dataset_id}
+                      onChange={(e) => setFormData({ ...formData, dataset_id: e.target.value })}
+                      disabled={!formData.connection_id || loadingDatasets}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 disabled:bg-gray-100"
+                    >
+                      <option value="">
+                        {loadingDatasets ? 'Carregando...' : !formData.connection_id ? 'Selecione uma conexão primeiro' : 'Selecione um dataset'}
+                      </option>
+                      {datasets.map(ds => (
+                        <option key={ds.id} value={ds.id}>{ds.name}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 

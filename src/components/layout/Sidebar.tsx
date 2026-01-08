@@ -12,7 +12,6 @@ import {
   PieChart,
   TrendingUp,
   Activity,
-  Loader2,
   Link as LinkIcon,
   Layers,
   Server,
@@ -31,9 +30,10 @@ import {
   History,
   ArrowUpDown,
   Crown,
-  Package
+  Puzzle
 } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
 interface Screen {
   id: string;
@@ -55,33 +55,51 @@ const ICON_MAP: Record<string, any> = {
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { isCollapsed, setIsCollapsed, activeGroup } = useMenu();
+  const { isCollapsed, setIsCollapsed, activeGroup, user } = useMenu();
   const [screens, setScreens] = useState<Screen[]>([]);
   const [loading, setLoading] = useState(false);
-  const [user, setUser] = useState<{ is_master?: boolean } | null>(null);
 
-  const showScreens = pathname === '/' || pathname.startsWith('/tela') || pathname.startsWith('/powerbi');
+  // Verifica se é usuário comum
+  const isRegularUser = !user?.is_master && user?.role === 'user';
 
-  const showPowerBIMenu = pathname.startsWith('/powerbi');
+  // User comum sempre vê as telas no sidebar, independente da página
+  const showScreens = isRegularUser || pathname === '/dashboard' || pathname.startsWith('/tela') || pathname.startsWith('/powerbi');
+
+  const showPowerBIMenu = pathname.startsWith('/powerbi') && !isRegularUser;
   const showConfigMenu = pathname.startsWith('/configuracoes');
   const showWhatsAppMenu = pathname.startsWith('/whatsapp') || pathname.startsWith('/alertas');
+
+  // Verifica se usuário pode ver menu de configurações (master ou admin)
+  const canSeeConfig = user?.is_master || user?.role === 'admin';
 
   const powerBIMenuItems = [
     { href: '/powerbi', icon: Activity, label: 'Dashboard' },
     { href: '/powerbi/conexoes', icon: LinkIcon, label: 'Conexões' },
     { href: '/powerbi/relatorios', icon: FileText, label: 'Relatórios' },
     { href: '/powerbi/telas', icon: Layers, label: 'Telas' },
-    { href: '/powerbi/gateways', icon: Server, label: 'Gateways' },
     { href: '/powerbi/contextos', icon: Brain, label: 'Contextos IA' },
     { href: '/powerbi/ordem-atualizacao', icon: ArrowUpDown, label: 'Ordem Atualização' },
   ];
 
-  const configMenuItems = [
-    { href: '/configuracoes', icon: Users, label: 'Usuários' },
-    { href: '/configuracoes/grupos', icon: Building2, label: 'Grupos' },
-    { href: '/configuracoes/planos', icon: Crown, label: 'Planos' },
-    { href: '/configuracoes/modulos', icon: Package, label: 'Módulos' },
-  ];
+  // Itens de configuração - filtrados por perfil
+  const configMenuItems = user?.is_master
+    ? [
+        { href: '/configuracoes', icon: Users, label: 'Usuários' },
+        { href: '/configuracoes/grupos', icon: Building2, label: 'Grupos' },
+        { href: '/configuracoes/planos', icon: Crown, label: 'Planos' },
+        { href: '/configuracoes/modulos', icon: Puzzle, label: 'Módulos' },
+        { href: '/configuracoes/logs', icon: FileText, label: 'Logs' },
+      ]
+    : user?.role === 'admin'
+    ? [
+        { href: '/configuracoes', icon: Users, label: 'Usuários' },
+        { href: '/configuracoes/grupos', icon: Building2, label: 'Personalização' },
+        { href: '/configuracoes/logs', icon: FileText, label: 'Logs' },
+      ]
+    : [
+        { href: '/configuracoes', icon: User, label: 'Meu Perfil' },
+        { href: '/configuracoes/logs', icon: FileText, label: 'Minhas Atividades' },
+      ];
 
   const whatsappMenuItems = [
     { href: '/whatsapp', icon: LayoutDashboard, label: 'Dashboard' },
@@ -95,28 +113,12 @@ export default function Sidebar() {
   ];
 
   useEffect(() => {
-    loadUser();
-  }, []);
-
-  useEffect(() => {
     if (activeGroup?.id) {
       loadScreens(activeGroup.id);
     } else {
       setScreens([]);
     }
   }, [activeGroup?.id]);
-
-  async function loadUser() {
-    try {
-      const res = await fetch('/api/auth/me', { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data.user);
-      }
-    } catch (error) {
-      console.error('Erro ao carregar usuário:', error);
-    }
-  }
 
   async function loadScreens(groupId: string) {
     setLoading(true);
@@ -162,8 +164,8 @@ export default function Sidebar() {
         </button>
 
         <div className="flex flex-col h-full overflow-y-auto py-4">
-          {/* Menu de Configurações (apenas para master) */}
-          {showConfigMenu && user?.is_master && (
+          {/* Menu de Configurações (master e admin) */}
+          {showConfigMenu && canSeeConfig && (
             <>
               {!isCollapsed && (
                 <div className="px-4 pt-4 pb-2">
@@ -280,7 +282,7 @@ export default function Sidebar() {
 
               {loading ? (
                 <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                  <LoadingSpinner size={24} />
                 </div>
               ) : screens.length === 0 ? (
                 <div className="px-4 py-8 text-center">
@@ -316,6 +318,40 @@ export default function Sidebar() {
                   })}
                 </nav>
               )}
+            </>
+          )}
+
+          {/* Menu de conta para usuários comuns - sempre visível */}
+          {isRegularUser && (
+            <>
+              {!isCollapsed && (
+                <div className="px-4 pt-4 pb-2 border-t border-gray-100 mt-2">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    Minha Conta
+                  </h3>
+                </div>
+              )}
+              <nav className="px-2 pb-4">
+                {configMenuItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = pathname === item.href;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 ${
+                        isActive
+                          ? 'nav-active'
+                          : 'text-gray-600 hover:bg-gray-50'
+                      }`}
+                      title={item.label}
+                    >
+                      <Icon size={20} />
+                      {!isCollapsed && <span className="font-medium">{item.label}</span>}
+                    </Link>
+                  );
+                })}
+              </nav>
             </>
           )}
         </div>

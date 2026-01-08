@@ -24,6 +24,7 @@ function getJwtSecret(): Uint8Array {
 export async function middleware(request: NextRequest) {
   // Rotas públicas que não requerem autenticação
   const publicRoutes = [
+    '/',  // Landing page pública
     '/login', 
     '/api/auth/login', 
     '/api/auth/logout',
@@ -64,9 +65,9 @@ export async function middleware(request: NextRequest) {
     await jwtVerify(token, secret);
     
     // Se token válido
-    // Se está em '/login', redireciona para '/'
+    // Se está em '/login', redireciona para a página principal do sistema
     if (pathname === '/login') {
-      return NextResponse.redirect(new URL('/', request.url));
+      return NextResponse.redirect(new URL('/dashboard', request.url));
     }
     // Senão, permite passar
     return NextResponse.next();

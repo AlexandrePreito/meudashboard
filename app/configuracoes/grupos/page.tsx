@@ -52,6 +52,7 @@ export default function GruposPage() {
   const [uploading, setUploading] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [currentUser, setCurrentUser] = useState<{ is_master?: boolean } | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -62,9 +63,22 @@ export default function GruposPage() {
   });
 
   useEffect(() => {
+    loadCurrentUser();
     loadGroups();
     loadPlans();
   }, []);
+
+  async function loadCurrentUser() {
+    try {
+      const res = await fetch('/api/auth/me');
+      if (res.ok) {
+        const data = await res.json();
+        setCurrentUser({ is_master: data.user?.is_master });
+      }
+    } catch (err) {
+      console.error('Erro ao carregar usuário:', err);
+    }
+  }
 
   async function loadGroups() {
     try {
@@ -218,20 +232,37 @@ export default function GruposPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 -mt-12">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Grupos</h1>
-            <p className="text-gray-500 text-sm mt-1">Gerencie os grupos de empresas do sistema</p>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {currentUser?.is_master ? 'Grupos' : 'Personalização'}
+            </h1>
+            <p className="text-gray-500 text-sm mt-1">
+              {currentUser?.is_master 
+                ? 'Gerencie os grupos de empresas do sistema' 
+                : 'Personalize a logo e cores do seu grupo'}
+            </p>
           </div>
+          {currentUser?.is_master && (
           <button
             onClick={openNewGroup}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-white rounded-lg transition-colors"
+            style={{ 
+              backgroundColor: 'var(--color-primary)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'var(--color-primary-hover)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'var(--color-primary)';
+            }}
           >
             <Plus size={20} />
             Novo Grupo
           </button>
+          )}
         </div>
 
         {/* Busca */}
@@ -255,13 +286,19 @@ export default function GruposPage() {
           <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
             <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum grupo encontrado</h3>
-            <p className="text-gray-500 mb-4">Crie seu primeiro grupo</p>
-            <button
-              onClick={openNewGroup}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Criar Grupo
-            </button>
+            {currentUser?.is_master ? (
+              <>
+                <p className="text-gray-500 mb-4">Crie seu primeiro grupo</p>
+                <button
+                  onClick={openNewGroup}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Criar Grupo
+                </button>
+              </>
+            ) : (
+              <p className="text-gray-500">Você não tem grupos para personalizar</p>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -288,12 +325,14 @@ export default function GruposPage() {
                     >
                       <Edit size={16} />
                     </button>
+                    {currentUser?.is_master && (
                     <button
                       onClick={() => handleDelete(group.id)}
                       className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     >
                       <Trash2 size={16} />
                     </button>
+                    )}
                   </div>
                 </div>
                 {group.description && (
@@ -330,26 +369,6 @@ export default function GruposPage() {
 
               <div className="p-4 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Logo</label>
                   <div className="flex items-center gap-4">
                     <div className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden bg-gray-50">
@@ -378,6 +397,19 @@ export default function GruposPage() {
                   </div>
                 </div>
 
+                {currentUser?.is_master && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                )}
+
+                {currentUser?.is_master && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Plano</label>
                   <select
@@ -391,47 +423,24 @@ export default function GruposPage() {
                     ))}
                   </select>
                 </div>
-
-                {formData.plan_id && (
-                  <div className="bg-gray-50 rounded-lg p-3 mt-2">
-                    <p className="text-xs text-gray-500 mb-2">Limites do plano:</p>
-                    <div className="grid grid-cols-3 gap-2 text-center text-sm">
-                      <div>
-                        <p className="font-semibold text-gray-900">{plans.find(p => p.id === formData.plan_id)?.max_users || '-'}</p>
-                        <p className="text-xs text-gray-500">Usuários</p>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-gray-900">{plans.find(p => p.id === formData.plan_id)?.max_companies || '-'}</p>
-                        <p className="text-xs text-gray-500">Empresas</p>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-gray-900">{plans.find(p => p.id === formData.plan_id)?.max_powerbi_screens || '-'}</p>
-                        <p className="text-xs text-gray-500">Telas BI</p>
-                      </div>
-                    </div>
-                  </div>
                 )}
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Cor do Tema</label>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     {Object.entries(brandColors).map(([key, color]) => (
                       <button
                         key={key}
                         type="button"
                         onClick={() => setFormData({ ...formData, primary_color: key })}
-                        className={`flex items-center gap-2 p-2 rounded-lg border-2 transition-all ${
+                        className={`w-10 h-10 rounded-lg border-2 transition-all ${
                           formData.primary_color === key 
-                            ? 'border-gray-900 bg-gray-50' 
+                            ? 'border-gray-900 scale-110' 
                             : 'border-gray-200 hover:border-gray-300'
                         }`}
-                      >
-                        <div 
-                          className="w-6 h-6 rounded-full" 
-                          style={{ backgroundColor: color.primary }}
-                        />
-                        <span className="text-xs font-medium text-gray-700">{color.name}</span>
-                      </button>
+                        style={{ backgroundColor: color.primary }}
+                        title={color.name}
+                      />
                     ))}
                   </div>
                 </div>

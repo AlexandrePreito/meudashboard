@@ -17,6 +17,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { createToken, setAuthCookie } from '@/lib/auth';
 import type { AuthUser } from '@/types';
+import bcrypt from 'bcryptjs';
+import { logActivity, getUserGroupId } from '@/lib/activity-log';
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,34 +34,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Chama RPC do Supabase para verificar senha
-    const { data: userId, error: rpcError } = await supabase.rpc(
-      'verify_password_id',
-      {
-        p_email: email,
-        p_password: password,
-      }
-    );
-
-    // Verifica se retornou erro ou null
-    if (rpcError || !userId) {
-      return NextResponse.json(
-        { success: false, message: 'Email ou senha inválidos' },
-        { status: 401 }
-      );
-    }
-
-    // Busca usuário completo na tabela users
+    // Busca usuário por email
     const { data: user, error: userError } = await supabase
       .from('users')
-      .select('id, email, full_name, is_master, status, avatar_url')
-      .eq('id', userId)
+      .select('id, email, full_name, is_master, status, avatar_url, password_hash')
+      .eq('email', email.toLowerCase().trim())
       .single();
 
     if (userError || !user) {
       return NextResponse.json(
-        { success: false, message: 'Usuário não encontrado' },
-        { status: 404 }
+        { success: false, message: 'Email ou senha inválidos' },
+        { status: 401 }
       );
     }
 
@@ -70,6 +55,34 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
+
+    // Verifica a senha com bcrypt
+    const passwordValid = await bcrypt.compare(password, user.password_hash);
+
+    if (!passwordValid) {
+      return NextResponse.json(
+        { success: false, message: 'Email ou senha inválidos' },
+        { status: 401 }
+      );
+    }
+
+    // Atualiza last_login_at
+    await supabase
+      .from('users')
+      .update({ last_login_at: new Date().toISOString() })
+      .eq('id', user.id);
+
+    // Registrar log de login
+    const groupId = await getUserGroupId(user.id);
+    await logActivity({
+      userId: user.id,
+      companyGroupId: groupId,
+      actionType: 'login',
+      module: 'auth',
+      description: `Login realizado: ${user.email}`,
+      entityType: 'user',
+      entityId: user.id
+    });
 
     // Gera novo session_id único (sessão única: um login derruba o outro)
     const sessionId = crypto.randomUUID();

@@ -15,6 +15,22 @@ export async function GET(request: Request) {
 
     const supabase = createAdminClient();
 
+    // Se não for master, buscar grupos do usuário
+    let userGroupIds: string[] = [];
+    if (!user.is_master) {
+      const { data: memberships } = await supabase
+        .from('user_group_membership')
+        .select('company_group_id')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+
+      userGroupIds = memberships?.map(m => m.company_group_id) || [];
+
+      if (userGroupIds.length === 0) {
+        return NextResponse.json({ reports: [] });
+      }
+    }
+
     let query = supabase
       .from('powerbi_reports')
       .select(`
@@ -34,7 +50,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ reports: data || [] });
+    // Filtrar por grupos do usuário (se não for master)
+    let filteredReports = data || [];
+    if (!user.is_master) {
+      filteredReports = filteredReports.filter(report => 
+        report.connection?.company_group_id && 
+        userGroupIds.includes(report.connection.company_group_id)
+      );
+    }
+
+    return NextResponse.json({ reports: filteredReports });
   } catch (error) {
     console.error('Erro:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });

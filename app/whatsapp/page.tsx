@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import {
   MessageSquare,
@@ -12,12 +13,12 @@ import {
   ArrowUpRight,
   CheckCircle,
   XCircle,
-  Loader2,
   TrendingUp,
   Clock,
   X
 } from 'lucide-react';
 import Link from 'next/link';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
 interface DashboardStats {
   instances: { total: number; connected: number; disconnected: number };
@@ -27,6 +28,9 @@ interface DashboardStats {
 }
 
 export default function WhatsAppDashboardPage() {
+  const router = useRouter();
+  const [user, setUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string>('user');
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [recentMessages, setRecentMessages] = useState<any[]>([]);
@@ -35,8 +39,33 @@ export default function WhatsAppDashboardPage() {
   const [showDetailsPanel, setShowDetailsPanel] = useState(false);
 
   useEffect(() => {
-    loadDashboard();
+    checkAccessAndLoad();
   }, []);
+
+  async function checkAccessAndLoad() {
+    try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      if (data.user) {
+        setUser(data.user);
+        if (data.user.is_master) {
+          setUserRole('master');
+        } else if (data.user.role === 'admin') {
+          setUserRole('admin');
+        } else {
+          // User sem acesso - redirecionar
+          router.push('/');
+          return;
+        }
+        loadDashboard();
+      } else {
+        router.push('/login');
+      }
+    } catch (error) {
+      console.error('Erro ao verificar acesso:', error);
+      router.push('/');
+    }
+  }
 
   async function loadDashboard() {
     setLoading(true);
@@ -136,11 +165,13 @@ export default function WhatsAppDashboardPage() {
     });
   }
 
-  if (loading) {
+  // Se ainda carregando ou sem permissão
+  if (!user || userRole === 'user' || loading) {
     return (
       <MainLayout>
         <div className="flex items-center justify-center h-96">
-          <Loader2 className="w-8 h-8 animate-spin text-green-600" />
+          <LoadingSpinner size={32} />
+          {userRole === 'user' && <p className="ml-3 text-gray-600">Redirecionando...</p>}
         </div>
       </MainLayout>
     );
@@ -148,7 +179,7 @@ export default function WhatsAppDashboardPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 -mt-12">
         {/* Header */}
         <div>
           <h1 className="text-2xl font-bold text-gray-900">WhatsApp</h1>
@@ -389,16 +420,26 @@ export default function WhatsAppDashboardPage() {
         <>
           <div className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm" onClick={closeDetailsPanel} />
           <div className="fixed inset-y-0 right-0 w-[400px] bg-white shadow-2xl z-50 flex flex-col animate-slide-in">
-            <div className={`px-4 py-3 flex items-center justify-between ${
-              selectedMessage.direction === 'incoming' ? 'bg-blue-600' : 'bg-green-600'
-            } text-white`}>
+            <div className="px-4 h-16 flex items-center justify-between text-white" style={{ backgroundColor: 'var(--color-primary)' }}>
               <div className="flex items-center gap-2">
                 {selectedMessage.direction === 'incoming' ? <ArrowDownLeft size={20} /> : <ArrowUpRight size={20} />}
                 <span className="font-semibold">
                   {selectedMessage.direction === 'incoming' ? 'Mensagem Recebida' : 'Mensagem Enviada'}
                 </span>
               </div>
-              <button onClick={closeDetailsPanel} className="p-2 hover:bg-white/20 rounded-lg transition-colors">
+              <button 
+                onClick={closeDetailsPanel} 
+                className="p-2 rounded-lg transition-colors"
+                style={{ 
+                  backgroundColor: 'transparent',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--color-primary-hover)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+              >
                 <X size={18} />
               </button>
             </div>

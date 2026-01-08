@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
+import { useMenu } from '@/contexts/MenuContext';
 import { 
   GripVertical,
   Play,
@@ -24,11 +25,6 @@ import {
   X
 } from 'lucide-react';
 
-interface CompanyGroup {
-  id: string;
-  name: string;
-}
-
 interface RefreshItem {
   id: string;
   name: string;
@@ -42,9 +38,7 @@ interface RefreshItem {
   errorMessage?: string;
 }
 
-export default function OrdemAtualizacaoPage() {
-  const [groups, setGroups] = useState<CompanyGroup[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState<string>('');
+function OrdemAtualizacaoContent() {
   const [items, setItems] = useState<RefreshItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -64,6 +58,8 @@ export default function OrdemAtualizacaoPage() {
   const [itemDetails, setItemDetails] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
+  const { activeGroup } = useMenu();
+
   const diasSemana = [
     { value: 0, label: 'Dom' },
     { value: 1, label: 'Seg' },
@@ -75,37 +71,16 @@ export default function OrdemAtualizacaoPage() {
   ];
 
   useEffect(() => {
-    loadGroups();
-  }, []);
-
-  useEffect(() => {
-    if (selectedGroup) {
+    if (activeGroup?.id) {
       loadItems();
       loadSchedules();
     }
-  }, [selectedGroup]);
-
-  async function loadGroups() {
-    try {
-      const res = await fetch('/api/company-groups');
-      if (res.ok) {
-        const data = await res.json();
-        setGroups(data.groups || []);
-        if (data.groups?.length > 0) {
-          setSelectedGroup(data.groups[0].id);
-        }
-      }
-    } catch (error) {
-      console.error('Erro ao carregar grupos:', error);
-    } finally {
-      setLoading(false);
-    }
-  }
+  }, [activeGroup?.id]);
 
   async function loadItems() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/powerbi/refresh-order?group_id=${selectedGroup}`);
+      const res = await fetch(`/api/powerbi/refresh-order?group_id=${activeGroup?.id}`);
       if (res.ok) {
         const data = await res.json();
         setItems((data.items || []).map((item: RefreshItem) => ({
@@ -122,9 +97,9 @@ export default function OrdemAtualizacaoPage() {
   }
 
   async function loadSchedules() {
-    if (!selectedGroup) return;
+    if (!activeGroup?.id) return;
     try {
-      const res = await fetch(`/api/powerbi/refresh-schedules?group_id=${selectedGroup}`);
+      const res = await fetch(`/api/powerbi/refresh-schedules?group_id=${activeGroup?.id}`);
       if (res.ok) {
         const data = await res.json();
         const schedulesMap: Record<string, any> = {};
@@ -139,14 +114,14 @@ export default function OrdemAtualizacaoPage() {
   }
 
   async function saveOrder() {
-    if (!selectedGroup || items.length === 0) return;
+    if (!activeGroup?.id || items.length === 0) return;
     setSaving(true);
     try {
       const res = await fetch('/api/powerbi/refresh-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          company_group_id: selectedGroup,
+          company_group_id: activeGroup.id,
           items: items.map((item, index) => ({
             ...item,
             order: index + 1
@@ -319,14 +294,14 @@ export default function OrdemAtualizacaoPage() {
   }
 
   async function saveItemSchedule() {
-    if (!selectedItemForSchedule || !selectedGroup) return;
+    if (!selectedItemForSchedule || !activeGroup?.id) return;
     
     try {
       const res = await fetch('/api/powerbi/refresh-schedules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          company_group_id: selectedGroup,
+          company_group_id: activeGroup.id,
           item_id: selectedItemForSchedule.id,
           item_type: selectedItemForSchedule.type,
           item_name: selectedItemForSchedule.name,
@@ -468,19 +443,16 @@ export default function OrdemAtualizacaoPage() {
     return type === 'dataflow' ? 'Fluxo de Dados' : 'Modelo Semântico';
   }
 
-  if (loading && groups.length === 0) {
+  if (loading && !activeGroup) {
     return (
-      <MainLayout>
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-        </div>
-      </MainLayout>
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
     );
   }
 
   return (
-    <MainLayout>
-      <div className="space-y-6">
+    <div className="space-y-6 -mt-12">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Ordem de Atualização</h1>
@@ -508,25 +480,7 @@ export default function OrdemAtualizacaoPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Grupo de Empresa
-        </label>
-        <select
-          value={selectedGroup}
-          onChange={(e) => setSelectedGroup(e.target.value)}
-          className="w-full max-w-md px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-        >
-          <option value="">Selecione um grupo...</option>
-          {groups.map((group) => (
-            <option key={group.id} value={group.id}>
-              {group.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {selectedGroup && (
+      {activeGroup?.id && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -754,7 +708,7 @@ export default function OrdemAtualizacaoPage() {
       {showDetailsPanel && (
         <div className="fixed inset-y-0 right-0 w-[400px] bg-white shadow-2xl z-50 flex flex-col">
           {/* Header azul */}
-          <div className="bg-blue-600 text-white px-4 py-3 flex items-center justify-between">
+          <div className="text-white px-4 h-16 flex items-center justify-between" style={{ backgroundColor: 'var(--color-primary)' }}>
             <div className="flex items-center gap-2">
               {selectedItem?.type === 'dataflow' ? (
                 <Database size={20} />
@@ -771,14 +725,32 @@ export default function OrdemAtualizacaoPage() {
                   e.stopPropagation();
                   selectedItem && refreshItem(items.findIndex(i => i.id === selectedItem.id));
                 }}
-                className="p-2 hover:bg-blue-500 rounded-lg transition-colors"
+                className="p-2 rounded-lg transition-colors"
+                style={{ 
+                  backgroundColor: 'transparent',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--color-primary-hover)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
                 title="Atualizar agora"
               >
                 <Play size={18} />
               </button>
               <button
                 onClick={closeDetailsPanel}
-                className="p-2 hover:bg-blue-500 rounded-lg transition-colors"
+                className="p-2 rounded-lg transition-colors"
+                style={{ 
+                  backgroundColor: 'transparent',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--color-primary-hover)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
               >
                 <X size={18} />
               </button>
@@ -938,7 +910,14 @@ export default function OrdemAtualizacaoPage() {
           </div>
         </div>
       )}
-      </div>
+    </div>
+  );
+}
+
+export default function OrdemAtualizacaoPage() {
+  return (
+    <MainLayout>
+      <OrdemAtualizacaoContent />
     </MainLayout>
   );
 }

@@ -29,6 +29,17 @@ interface Report {
   connection: Connection;
 }
 
+interface Dataset {
+  id: string;
+  name: string;
+}
+
+interface PowerBIReport {
+  id: string;
+  name: string;
+  datasetId: string;
+}
+
 export default function RelatoriosPage() {
   const [reports, setReports] = useState<Report[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -37,13 +48,15 @@ export default function RelatoriosPage() {
   const [editingReport, setEditingReport] = useState<Report | null>(null);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [pbiReports, setPbiReports] = useState<PowerBIReport[]>([]);
+  const [loadingPbiData, setLoadingPbiData] = useState(false);
   
   const [form, setForm] = useState({
     connection_id: '',
     name: '',
     report_id: '',
-    dataset_id: '',
-    default_page: ''
+    dataset_id: ''
   });
 
   useEffect(() => {
@@ -73,6 +86,33 @@ export default function RelatoriosPage() {
     }
   }
 
+  async function loadPbiData(connectionId: string) {
+    if (!connectionId) {
+      setDatasets([]);
+      setPbiReports([]);
+      return;
+    }
+    
+    setLoadingPbiData(true);
+    try {
+      const res = await fetch(`/api/powerbi/datasets?connection_id=${connectionId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDatasets(data.datasets || []);
+        setPbiReports(data.reports || []);
+      } else {
+        setDatasets([]);
+        setPbiReports([]);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar dados do Power BI:', error);
+      setDatasets([]);
+      setPbiReports([]);
+    } finally {
+      setLoadingPbiData(false);
+    }
+  }
+
   function openModal(report?: Report) {
     if (report) {
       setEditingReport(report);
@@ -80,18 +120,22 @@ export default function RelatoriosPage() {
         connection_id: report.connection.id,
         name: report.name,
         report_id: report.report_id,
-        dataset_id: report.dataset_id,
-        default_page: report.default_page || ''
+        dataset_id: report.dataset_id
       });
+      // Carregar dados do Power BI
+      loadPbiData(report.connection.id);
     } else {
       setEditingReport(null);
       setForm({
         connection_id: connections[0]?.id || '',
         name: '',
         report_id: '',
-        dataset_id: '',
-        default_page: ''
+        dataset_id: ''
       });
+      // Carregar dados do Power BI
+      if (connections[0]?.id) {
+        loadPbiData(connections[0].id);
+      }
     }
     setShowModal(true);
   }
@@ -102,9 +146,9 @@ export default function RelatoriosPage() {
       connection_id: report.connection.id,
       name: `${report.name} (Cópia)`,
       report_id: report.report_id,
-      dataset_id: report.dataset_id,
-      default_page: report.default_page || ''
+      dataset_id: report.dataset_id
     });
+    loadPbiData(report.connection.id);
     setShowModal(true);
   }
 
@@ -120,10 +164,7 @@ export default function RelatoriosPage() {
       const res = await fetch(url, {
         method: editingReport ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...form,
-          default_page: form.default_page || null
-        })
+        body: JSON.stringify(form)
       });
 
       if (res.ok) {
@@ -172,7 +213,7 @@ export default function RelatoriosPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 -mt-12">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Relatórios Power BI</h1>
@@ -301,7 +342,10 @@ export default function RelatoriosPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Conexão</label>
                   <select
                     value={form.connection_id}
-                    onChange={(e) => setForm({ ...form, connection_id: e.target.value })}
+                    onChange={(e) => {
+                      setForm({ ...form, connection_id: e.target.value, report_id: '', dataset_id: '' });
+                      loadPbiData(e.target.value);
+                    }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     required
                   >
@@ -326,40 +370,50 @@ export default function RelatoriosPage() {
                 </div>
               </div>
 
-              {/* Report ID e Dataset ID na mesma linha */}
+              {/* Dataset e Report na mesma linha */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Report ID</label>
-                  <input
-                    type="text"
-                    value={form.report_id}
-                    onChange={(e) => setForm({ ...form, report_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Dataset</label>
+                  <select
+                    value={form.dataset_id}
+                    onChange={(e) => setForm({ ...form, dataset_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     required
-                  />
+                    disabled={loadingPbiData}
+                  >
+                    <option value="">{loadingPbiData ? 'Carregando...' : 'Selecione um dataset'}</option>
+                    {datasets.map((ds) => (
+                      <option key={ds.id} value={ds.id}>
+                        {ds.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Dataset ID</label>
-                  <input
-                    type="text"
-                    value={form.dataset_id}
-                    onChange={(e) => setForm({ ...form, dataset_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Relatório</label>
+                  <select
+                    value={form.report_id}
+                    onChange={(e) => {
+                      const selectedReport = pbiReports.find(r => r.id === e.target.value);
+                      setForm({ 
+                        ...form, 
+                        report_id: e.target.value,
+                        dataset_id: selectedReport?.datasetId || ''
+                      });
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     required
-                  />
+                    disabled={loadingPbiData}
+                  >
+                    <option value="">{loadingPbiData ? 'Carregando...' : 'Selecione um report'}</option>
+                    {pbiReports.map((report) => (
+                      <option key={report.id} value={report.id}>
+                        {report.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Página Padrão (opcional)</label>
-                <input
-                  type="text"
-                  value={form.default_page}
-                  onChange={(e) => setForm({ ...form, default_page: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Nome da página padrão"
-                />
               </div>
 
               {/* Botões menores e alinhados à direita */}
