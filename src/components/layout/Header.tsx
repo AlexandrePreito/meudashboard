@@ -65,7 +65,8 @@ export default function Header({ user }: HeaderProps) {
   const [showGroupDropdown, setShowGroupDropdown] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const groupDropdownRef = useRef<HTMLDivElement>(null);
+  const groupDropdownRefDesktop = useRef<HTMLDivElement>(null);
+  const groupDropdownRefMobile = useRef<HTMLDivElement>(null);
   const { setPrimaryColor } = useTheme();
 
   useEffect(() => {
@@ -74,7 +75,12 @@ export default function Header({ user }: HeaderProps) {
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (groupDropdownRef.current && !groupDropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const isOutsideDesktop = groupDropdownRefDesktop.current && !groupDropdownRefDesktop.current.contains(target);
+      const isOutsideMobile = groupDropdownRefMobile.current && !groupDropdownRefMobile.current.contains(target);
+      
+      // Só fecha se clicar fora de AMBOS os refs
+      if (isOutsideDesktop && isOutsideMobile) {
         setShowGroupDropdown(false);
       }
     }
@@ -94,9 +100,27 @@ export default function Header({ user }: HeaderProps) {
       const res = await fetch('/api/user/groups', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
-        setGroups(data.groups || []);
-        if (data.groups?.length > 0 && !activeGroup) {
-          setActiveGroup(data.groups[0]);
+        const freshGroups = data.groups || [];
+        setGroups(freshGroups);
+        
+        if (freshGroups.length > 0) {
+          if (activeGroup) {
+            // Atualiza o activeGroup com dados frescos do servidor (inclui cor atualizada)
+            const updatedGroup = freshGroups.find((g: CompanyGroup) => g.id === activeGroup.id);
+            if (updatedGroup) {
+              // Só atualiza se houver diferença (evita loop)
+              if (JSON.stringify(updatedGroup) !== JSON.stringify(activeGroup)) {
+                console.log('Atualizando grupo com dados frescos:', updatedGroup.name, 'cor:', updatedGroup.primary_color);
+                setActiveGroup(updatedGroup);
+              }
+            } else {
+              // Grupo antigo não existe mais, seleciona o primeiro
+              setActiveGroup(freshGroups[0]);
+            }
+          } else {
+            // Não tinha grupo selecionado, seleciona o primeiro
+            setActiveGroup(freshGroups[0]);
+          }
         }
       }
     } catch (error) {
@@ -114,6 +138,7 @@ export default function Header({ user }: HeaderProps) {
   }
 
   function selectGroup(group: CompanyGroup) {
+    console.log('Selecionando grupo:', group.name);
     setActiveGroup(group);
     setShowGroupDropdown(false);
   }
@@ -171,7 +196,7 @@ export default function Header({ user }: HeaderProps) {
           </div>
 
           {/* Seletor de Grupo - Desktop */}
-          <div className="relative" ref={groupDropdownRef}>
+          <div className="relative" ref={groupDropdownRefDesktop}>
             <button
               onClick={() => setShowGroupDropdown(!showGroupDropdown)}
               className="flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
@@ -216,7 +241,7 @@ export default function Header({ user }: HeaderProps) {
             )}
             
             {/* Seletor de Grupo - Mobile */}
-            <div className="relative" ref={groupDropdownRef}>
+            <div className="relative" ref={groupDropdownRefMobile}>
               <button
                 onClick={() => setShowGroupDropdown(!showGroupDropdown)}
                 className="flex items-center gap-1 px-2 py-1.5 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"

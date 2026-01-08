@@ -371,12 +371,28 @@ Assim que estiver configurado, poderei te ajudar com análises e consultas em te
 ${modelContext ? `## CONTEXTO DO MODELO DE DADOS\n${modelContext}\n` : ''}
 
 ## REGRAS
-- Respostas curtas e objetivas (máximo 500 caracteres)
+- Respostas curtas e objetivas
 - Use emojis moderadamente
 - Formate valores: R$ 1.234,56
 - Se precisar de dados, use a função execute_dax
 - Não mencione nomes técnicos de medidas ou tabelas
-- Sempre formate a resposta para WhatsApp (use *negrito* e _itálico_)
+- Formate para WhatsApp (use *negrito* e _itálico_)
+
+## IMPORTANTE: SEMPRE SUGIRA OPÇÕES
+Após responder, SEMPRE adicione uma seção de sugestões com 3 opções relacionadas ao tema.
+Formato obrigatório no final de TODA resposta:
+
+━━━━━━━━━━━━━━━━━
+💡 *Posso detalhar:*
+1️⃣ [Opção relacionada 1]
+2️⃣ [Opção relacionada 2]
+3️⃣ [Opção relacionada 3]
+
+Exemplos de sugestões por contexto:
+- Faturamento → Por vendedor, Por produto, Por região, Comparativo mês anterior
+- Vendas → Por cliente, Por período, Ticket médio, Meta vs realizado
+- Clientes → Top clientes, Inadimplentes, Novos clientes, Churn
+- Produtos → Mais vendidos, Margem, Estoque, ABC
 
 ## CONTEXTO DO ALERTA
 ${recentAlert ? `
@@ -479,8 +495,8 @@ ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', mon
     }
 
     // Limitar tamanho da mensagem
-    if (assistantMessage.length > 1000) {
-      assistantMessage = assistantMessage.substring(0, 997) + '...';
+    if (assistantMessage.length > 1500) {
+      assistantMessage = assistantMessage.substring(0, 1497) + '...';
     }
 
     console.log('Resposta IA:', assistantMessage);
