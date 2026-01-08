@@ -289,16 +289,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: 'error', reason: 'no instance' });
     }
 
-    // Buscar último alerta disparado para este número (últimas 24h)
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { data: recentAlert } = await supabase
+    // Buscar alerta configurado para este número
+    // O campo whatsapp_number é uma string separada por vírgula, não um array
+    console.log('Buscando alertas para o número:', phone);
+
+    const { data: alerts, error: alertError } = await supabase
       .from('ai_alerts')
       .select('*')
-      .contains('whatsapp_number', [phone])
-      .gte('last_triggered_at', oneDayAgo)
-      .order('last_triggered_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .eq('company_group_id', authorizedNumber.company_group_id)
+      .eq('is_enabled', true)
+      .order('updated_at', { ascending: false });
+
+    if (alertError) {
+      console.error('Erro ao buscar alertas:', alertError);
+    }
+
+    // Filtrar alertas que contêm o número de telefone
+    const recentAlert = alerts?.find(alert => {
+      const numbers = alert.whatsapp_number || '';
+      return numbers.includes(phone);
+    }) || null;
+
+    console.log('Alerta encontrado:', recentAlert ? recentAlert.name : 'NENHUM');
+    console.log('Connection ID:', recentAlert?.connection_id);
+    console.log('Dataset ID:', recentAlert?.dataset_id);
 
     // Buscar contexto do modelo (se houver alerta com conexão)
     let modelContext = '';
