@@ -102,7 +102,7 @@ export default function LoginPage() {
         setTransitioning(true);
         setTimeout(() => {
           router.push('/dashboard');
-        }, 600);
+        }, 800);
       } else {
         setError(data.message || 'Email ou senha inválidos');
       }
@@ -129,17 +129,32 @@ export default function LoginPage() {
         }
         @keyframes fadeOutScale {
           0% { opacity: 1; transform: scale(1); }
-          100% { opacity: 0; transform: scale(1.02); }
+          100% { opacity: 0; transform: scale(1.01); }
         }
         @keyframes slideUp {
           0% { opacity: 1; transform: translateY(0); }
-          100% { opacity: 0; transform: translateY(-20px); }
+          100% { opacity: 0; transform: translateY(-10px); }
+        }
+        @keyframes fadeIn {
+          0% { opacity: 0; }
+          100% { opacity: 1; }
+        }
+        @keyframes spinnerFadeIn {
+          0% { opacity: 0; transform: scale(0.8); }
+          100% { opacity: 1; transform: scale(1); }
         }
         .page-transition {
-          animation: fadeOutScale 0.6s ease-out forwards;
+          animation: fadeOutScale 0.8s ease-in-out forwards;
         }
         .form-transition {
-          animation: slideUp 0.4s ease-out forwards;
+          animation: slideUp 0.5s ease-in-out forwards;
+        }
+        .transition-overlay {
+          animation: fadeIn 0.3s ease-out forwards;
+        }
+        .transition-spinner {
+          animation: spinnerFadeIn 0.4s ease-out 0.2s forwards;
+          opacity: 0;
         }
       `}</style>
 
@@ -305,10 +320,29 @@ export default function LoginPage() {
       </div>
 
       {transitioning && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 border-4 border-white/20 border-t-white rounded-full animate-spin" />
-            <p className="text-white text-sm">Carregando seu ambiente...</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white transition-overlay">
+          <div className="flex flex-col items-center gap-4 transition-spinner">
+            <svg
+              viewBox="0 0 100 100"
+              width={48}
+              height={48}
+              className="animate-spin"
+              style={{ animationDuration: '1.5s' }}
+            >
+              <defs>
+                <linearGradient id="transitionGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#06b6d4" />
+                  <stop offset="50%" stopColor="#3b82f6" />
+                  <stop offset="100%" stopColor="#8b5cf6" />
+                </linearGradient>
+              </defs>
+              <g fill="url(#transitionGrad)">
+                <rect x="45" y="10" width="10" height="80" rx="5" />
+                <rect x="45" y="10" width="10" height="80" rx="5" transform="rotate(60 50 50)" />
+                <rect x="45" y="10" width="10" height="80" rx="5" transform="rotate(120 50 50)" />
+              </g>
+            </svg>
+            <p className="text-slate-600 text-sm font-medium">Carregando seu ambiente...</p>
           </div>
         </div>
       )}

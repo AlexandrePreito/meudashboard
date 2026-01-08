@@ -138,21 +138,24 @@ export default function Header({ user }: HeaderProps) {
 
   return (
     <>
-      <header className="h-16 bg-white border-b border-gray-200 flex items-center pl-4 lg:pl-2 pr-4 lg:pr-6 sticky top-0 z-50">
-        {/* Logo */}
-        <div className="flex items-center gap-4">
+      <header className="h-16 bg-white border-b border-gray-200 flex items-center px-4 sticky top-0 z-50">
+        {/* Mobile: Menu à esquerda */}
+        <div className="lg:hidden">
           <button
             onClick={handleMobileMenuToggle}
-            className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"
+            className="p-2 hover:bg-gray-100 rounded-lg"
           >
             {showMobileMenu ? <X size={24} /> : <Menu size={24} />}
           </button>
+        </div>
 
+        {/* Desktop: Logo + Seletor de Grupo à esquerda */}
+        <div className="hidden lg:flex items-center gap-4">
           <div className="flex items-center gap-2">
             {activeGroup?.logo_url ? (
-              <img 
-                src={activeGroup.logo_url} 
-                alt={activeGroup.name} 
+              <img
+                src={activeGroup.logo_url}
+                alt={activeGroup.name}
                 className="h-9 w-auto max-w-[150px] object-contain"
               />
             ) : (
@@ -167,11 +170,11 @@ export default function Header({ user }: HeaderProps) {
             )}
           </div>
 
-          {/* Seletor de Grupo - Lado Esquerdo */}
+          {/* Seletor de Grupo - Desktop */}
           <div className="relative" ref={groupDropdownRef}>
             <button
               onClick={() => setShowGroupDropdown(!showGroupDropdown)}
-              className="flex items-center gap-2 px-2 lg:px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+              className="flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
             >
               <span className="text-sm font-medium text-gray-700 max-w-[150px] truncate">
                 {activeGroup?.name || 'Grupo'}
@@ -197,7 +200,53 @@ export default function Header({ user }: HeaderProps) {
           </div>
         </div>
 
-        {/* Navigation - Centralizado */}
+        {/* Mobile: Logo + Grupo centralizado */}
+        <div className="flex-1 flex items-center justify-center lg:hidden">
+          <div className="flex items-center gap-2">
+            {activeGroup?.logo_url ? (
+              <img
+                src={activeGroup.logo_url}
+                alt={activeGroup.name}
+                className="h-8 w-auto max-w-[120px] object-contain"
+              />
+            ) : (
+              <div className="p-1.5 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg">
+                <Zap size={18} className="text-white" />
+              </div>
+            )}
+            
+            {/* Seletor de Grupo - Mobile */}
+            <div className="relative" ref={groupDropdownRef}>
+              <button
+                onClick={() => setShowGroupDropdown(!showGroupDropdown)}
+                className="flex items-center gap-1 px-2 py-1.5 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <span className="text-sm font-medium text-gray-700 max-w-[100px] truncate">
+                  {activeGroup?.name || 'Grupo'}
+                </span>
+                <ChevronDown size={14} className={`text-gray-400 transition-transform ${showGroupDropdown ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showGroupDropdown && groups.length > 0 && (
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50">
+                  {groups.map((group) => (
+                    <button
+                      key={group.id}
+                      onClick={() => selectGroup(group)}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${
+                        activeGroup?.id === group.id ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
+                      }`}
+                    >
+                      {group.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Desktop: Navigation - Centralizado */}
         <nav className="flex-1 flex items-center justify-center gap-6 hidden lg:flex">
           {getNavItems(user).map((item) => {
             const isActive = isActiveNav(item.href);
@@ -217,58 +266,55 @@ export default function Header({ user }: HeaderProps) {
           })}
         </nav>
 
-        {/* Right side */}
-        <div className="flex items-center gap-2 lg:gap-4">
-          {/* User Menu */}
-          <div className="relative">
-            <button
-              onClick={() => setShowUserMenu(!showUserMenu)}
-              className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 hover:bg-blue-200 transition-colors"
-            >
-              <User size={20} className="text-blue-600" />
-            </button>
-            
-            {showUserMenu && (
-              <>
-                <div 
-                  className="fixed inset-0 z-40" 
-                  onClick={() => setShowUserMenu(false)}
-                />
-                <div className="absolute right-0 top-12 w-56 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-50">
-                  <div className="px-4 py-2 border-b border-gray-100">
-                    <p className="font-medium text-gray-800">{user?.full_name || 'Usuário'}</p>
-                    <p className="text-sm text-gray-500">{user?.email}</p>
-                  </div>
-                  
-                  <button
-                    onClick={() => { setShowUserMenu(false); router.push('/perfil'); }}
-                    className="w-full flex items-center gap-3 px-4 py-2 text-gray-700 hover:bg-gray-50"
-                  >
-                    <User size={18} />
-                    Meus Dados
-                  </button>
-                  
-                  <button
-                    onClick={() => { setShowUserMenu(false); router.push('/trocar-senha'); }}
-                    className="w-full flex items-center gap-3 px-4 py-2 text-gray-700 hover:bg-gray-50"
-                  >
-                    <Key size={18} />
-                    Trocar Senha
-                  </button>
-                  
-                  <div className="border-t border-gray-100 mt-2 pt-2">
-                    <button
-                      onClick={handleLogout}
-                      className="w-full flex items-center gap-3 px-4 py-2 text-red-600 hover:bg-red-50"
-                    >
-                      <LogOut size={18} />
-                      Sair
-                    </button>
-                  </div>
+        {/* User Menu - Sempre à direita */}
+        <div className="relative">
+          <button
+            onClick={() => setShowUserMenu(!showUserMenu)}
+            className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 hover:bg-blue-200 transition-colors"
+          >
+            <User size={20} className="text-blue-600" />
+          </button>
+
+          {showUserMenu && (
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setShowUserMenu(false)}
+              />
+              <div className="absolute right-0 top-12 w-56 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-50">
+                <div className="px-4 py-2 border-b border-gray-100">
+                  <p className="font-medium text-gray-800">{user?.full_name || 'Usuário'}</p>
+                  <p className="text-sm text-gray-500">{user?.email}</p>
                 </div>
-              </>
-            )}
-          </div>
+
+                <button
+                  onClick={() => { setShowUserMenu(false); router.push('/perfil'); }}
+                  className="w-full flex items-center gap-3 px-4 py-2 text-gray-700 hover:bg-gray-50"
+                >
+                  <User size={18} />
+                  Meus Dados
+                </button>
+
+                <button
+                  onClick={() => { setShowUserMenu(false); router.push('/trocar-senha'); }}
+                  className="w-full flex items-center gap-3 px-4 py-2 text-gray-700 hover:bg-gray-50"
+                >
+                  <Key size={18} />
+                  Trocar Senha
+                </button>
+
+                <div className="border-t border-gray-100 mt-2 pt-2">
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-red-600 hover:bg-red-50"
+                  >
+                    <LogOut size={18} />
+                    Sair
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </header>
 

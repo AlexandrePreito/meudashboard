@@ -21,7 +21,11 @@ export default function Button({
   className = '',
   ...props
 }: ButtonProps) {
-  const baseStyles = 'inline-flex items-center justify-center gap-2 font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+  // No mobile com ícone: circular e sem gap. No desktop ou sem ícone: normal
+  const hasIcon = icon || loading;
+  const baseStyles = hasIcon
+    ? 'inline-flex items-center justify-center font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed rounded-full lg:rounded-lg lg:gap-2'
+    : 'inline-flex items-center justify-center gap-2 font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
   
   const variants = {
     primary: 'btn-primary',
@@ -30,7 +34,12 @@ export default function Button({
     ghost: 'text-gray-600 hover:bg-gray-100'
   };
   
-  const sizes = {
+  // No mobile com ícone: quadrado (p-2/p-2.5/p-3). No desktop ou sem ícone: retangular
+  const sizes = hasIcon ? {
+    sm: 'p-2 lg:px-3 lg:py-1.5 text-sm',
+    md: 'p-2.5 lg:px-4 lg:py-2 text-sm',
+    lg: 'p-3 lg:px-6 lg:py-3 text-base'
+  } : {
     sm: 'px-3 py-1.5 text-sm',
     md: 'px-4 py-2 text-sm',
     lg: 'px-6 py-3 text-base'
@@ -43,7 +52,7 @@ export default function Button({
       {...props}
     >
       {loading ? <LoadingSpinner size={16} /> : icon}
-      {children}
+      <span className={hasIcon ? 'hidden lg:inline' : ''}>{children}</span>
     </button>
   );
 }

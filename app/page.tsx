@@ -5,15 +5,19 @@ import Link from 'next/link';
 import { BarChart3, MessageSquare, Bell, Shield, ArrowRight, Brain } from 'lucide-react';
 
 // Componente do Asterisco Animado (gira TODA vez que rolar)
-function AnimatedLogo({ size = 48, scrollY = 0 }: { size?: number; scrollY?: number }) {
-  const rotation = scrollY * 0.5;
+function AnimatedLogo({ size = 48, scrollY = 0, isInitialSpin = false }: { size?: number; scrollY?: number; isInitialSpin?: boolean }) {
+  const rotation = isInitialSpin ? 0 : scrollY * 0.5;
 
   return (
     <svg 
       viewBox="0 0 100 100" 
       width={size} 
       height={size}
-      style={{ transform: `rotate(${rotation}deg)`, transition: 'transform 0.1s ease-out' }}
+      style={{ 
+        transform: `rotate(${rotation}deg)`,
+        transition: isInitialSpin ? 'none' : 'transform 0.1s ease-out',
+        animation: isInitialSpin ? 'initialSpin 2s cubic-bezier(0.25, 0.1, 0.25, 1) forwards' : 'none'
+      }}
     >
       <defs>
         <linearGradient id={`logoGrad${size}`} x1="0%" y1="0%" x2="100%" y2="100%">
@@ -251,6 +255,7 @@ function StepCard({ number, title, description, isLast = false }: {
 
 export default function LandingPage() {
   const [scrollY, setScrollY] = useState(0);
+  const [isInitialSpin, setIsInitialSpin] = useState(true);
   const [dashboardVisible, setDashboardVisible] = useState(false);
   const dashboardRef = useRef<HTMLDivElement>(null);
   
@@ -264,6 +269,14 @@ export default function LandingPage() {
     
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Animação de entrada - gira e para após 2 segundos
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsInitialSpin(false);
+    }, 2000);
+    return () => clearTimeout(timer);
   }, []);
 
   // Detecta quando o dashboard fica visível
@@ -286,6 +299,30 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'SoftwareApplication',
+            name: 'MeuDashboard',
+            description: 'Plataforma de gestão de dashboards e relatórios Power BI com integração de IA',
+            url: 'https://meudashboard.org',
+            applicationCategory: 'BusinessApplication',
+            operatingSystem: 'Web',
+            offers: {
+              '@type': 'Offer',
+              price: '0',
+              priceCurrency: 'BRL',
+            },
+            aggregateRating: {
+              '@type': 'AggregateRating',
+              ratingValue: '4.8',
+              ratingCount: '150',
+            },
+          }),
+        }}
+      />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700;800&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap');
@@ -304,6 +341,24 @@ export default function LandingPage() {
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(8px); }
           to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes initialSpin {
+          0% {
+            transform: rotate(0deg);
+          }
+          20% {
+            transform: rotate(360deg);
+          }
+          50% {
+            transform: rotate(600deg);
+          }
+          75% {
+            transform: rotate(700deg);
+          }
+          100% {
+            transform: rotate(720deg);
+          }
         }
         
         .animate-fadeIn {
@@ -350,7 +405,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <AnimatedLogo size={32} scrollY={scrollY} />
+              <AnimatedLogo size={32} scrollY={scrollY} isInitialSpin={isInitialSpin} />
               <BrandName size="text-xl" />
             </div>
             <Link href="/login" className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all">
@@ -370,7 +425,7 @@ export default function LandingPage() {
         <div className="relative z-10 max-w-5xl mx-auto px-6 text-center">
           {/* Logo animada principal */}
           <div className="flex justify-center mb-10">
-            <AnimatedLogo size={90} scrollY={scrollY} />
+            <AnimatedLogo size={90} scrollY={scrollY} isInitialSpin={isInitialSpin} />
           </div>
           
           {/* Título */}
@@ -529,7 +584,7 @@ export default function LandingPage() {
             <div className="relative z-10">
               {/* Asterisco + Título juntos */}
               <div className="flex items-center justify-center gap-4 mb-6">
-                <AnimatedLogo size={48} scrollY={scrollY} />
+                <AnimatedLogo size={48} scrollY={scrollY} isInitialSpin={isInitialSpin} />
                 <h2 className="text-3xl md:text-4xl font-bold text-slate-900">
                   Pronto para elevar seu Dashboard?
                 </h2>

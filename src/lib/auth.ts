@@ -68,14 +68,29 @@ export async function setAuthCookie(token: string): Promise<void> {
   try {
     const cookieStore = await cookies();
     const isProduction = process.env.NODE_ENV === 'production';
-    
-    cookieStore.set('auth_token', token, {
+
+    // Em produção, define o domain para funcionar com e sem www
+    const cookieOptions: {
+      httpOnly: boolean;
+      secure: boolean;
+      sameSite: 'lax' | 'strict' | 'none';
+      maxAge: number;
+      path: string;
+      domain?: string;
+    } = {
       httpOnly: true,
       secure: isProduction,
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7, // 7 dias em segundos
       path: '/',
-    });
+    };
+
+    // Adiciona domain em produção para funcionar em www e sem www
+    if (isProduction) {
+      cookieOptions.domain = '.meudashboard.org'; // O ponto permite subdomínios
+    }
+
+    cookieStore.set('auth_token', token, cookieOptions);
   } catch (error) {
     throw new Error('Erro ao definir cookie de autenticação');
   }

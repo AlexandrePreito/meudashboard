@@ -55,6 +55,7 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
   const [refreshing, setRefreshing] = useState(false);
   const [refreshingData, setRefreshingData] = useState(false);
   const [refreshProgress, setRefreshProgress] = useState<string>('');
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Chat states
   const [chatOpen, setChatOpen] = useState(false);
@@ -201,6 +202,24 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
     }
   }, [chatOpen]);
 
+  // Detectar mudança de fullscreen
+  useEffect(() => {
+    function handleFullscreenChange() {
+      const isFs = !!document.fullscreenElement;
+      setIsFullscreen(isFs);
+      
+      // Tentar travar orientação em landscape quando fullscreen
+      if (isFs && screen.orientation && (screen.orientation as any).lock) {
+        (screen.orientation as any).lock('landscape').catch(() => {
+          // Alguns navegadores não suportam, ignora erro
+        });
+      }
+    }
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
   function handleRefresh() {
     setRefreshing(true);
     setEmbedConfig(null);
@@ -224,13 +243,36 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
       });
   }
 
-  function handleFullscreen() {
+  async function handleFullscreen() {
     if (!embedContainerRef.current) return;
 
     if (document.fullscreenElement) {
-      document.exitFullscreen();
+      // Sair do fullscreen
+      await document.exitFullscreen();
+      // Desbloquear orientação
+      if (screen.orientation && (screen.orientation as any).unlock) {
+        (screen.orientation as any).unlock();
+      }
     } else {
-      embedContainerRef.current.requestFullscreen();
+      // Entrar em fullscreen
+      try {
+        await embedContainerRef.current.requestFullscreen();
+        // Tentar forçar landscape
+        if (screen.orientation && (screen.orientation as any).lock) {
+          await (screen.orientation as any).lock('landscape').catch(() => {});
+        }
+      } catch (err) {
+        console.error('Erro ao entrar em fullscreen:', err);
+      }
+    }
+  }
+
+  function exitFullscreen() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+      if (screen.orientation && (screen.orientation as any).unlock) {
+        (screen.orientation as any).unlock();
+      }
     }
   }
 
@@ -553,8 +595,19 @@ ${'='.repeat(50)}
 
           <div
             ref={embedContainerRef}
-            className="flex-1 bg-white rounded-lg shadow-sm overflow-hidden"
-          />
+            className="flex-1 bg-white rounded-lg shadow-sm overflow-hidden relative"
+          >
+            {/* Botão para sair do fullscreen - aparece só em fullscreen */}
+            {isFullscreen && (
+              <button
+                onClick={exitFullscreen}
+                className="absolute top-4 right-4 z-50 p-3 bg-black/70 hover:bg-black/90 text-white rounded-full shadow-lg transition-all"
+                title="Sair da tela cheia"
+              >
+                <X size={24} />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Painel de Chat - Overlay */}
@@ -567,11 +620,17 @@ ${'='.repeat(50)}
             />
             
             {/* Painel de Chat */}
-            <div className="fixed right-0 top-0 h-full w-96 flex flex-col bg-white shadow-2xl overflow-hidden z-50 animate-slide-in">
+            <div className="fixed inset-0 lg:inset-auto lg:right-0 lg:top-0 lg:h-full lg:w-96 flex flex-col bg-white shadow-2xl overflow-hidden z-50 animate-slide-in">
             {/* Header do Chat */}
             <div className="flex items-center justify-between px-4 h-16 text-white" style={{ backgroundColor: 'var(--color-primary)' }}>
               <div className="flex items-center gap-2">
-                <Asterisk size={20} />
+                <button
+                  onClick={() => setChatOpen(false)}
+                  className="lg:hidden p-1 hover:bg-white/20 rounded transition-colors mr-1"
+                >
+                  <X size={20} />
+                </button>
+                <Asterisk size={20} className="hidden lg:block" />
                 <span className="font-semibold">Assistente IA</span>
                 {usageInfo && (
                   <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
@@ -596,7 +655,7 @@ ${'='.repeat(50)}
                 </button>
                 <button
                   onClick={() => setChatOpen(false)}
-                  className="p-1.5 hover:bg-white/20 rounded transition-colors"
+                  className="hidden lg:block p-1.5 hover:bg-white/20 rounded transition-colors"
                   title="Fechar"
                 >
                   <X size={18} />

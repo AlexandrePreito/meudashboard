@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 
 type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -23,11 +23,17 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [mounted, setMounted] = useState(false);
+
+  // Evita hydration mismatch - só renderiza toasts no cliente
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const showToast = useCallback((message: string, type: ToastType = 'info') => {
-    const id = Date.now().toString();
+    const id = Math.random().toString(36).substring(2, 9);
     const newToast: Toast = { id, type, message };
-    
+
     setToasts((prev) => [...prev, newToast]);
 
     // Remove after 4 seconds
@@ -81,45 +87,62 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ showToast, success, error, warning, info }}>
       {children}
-      
-      {/* Toast Container */}
-      <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
-        {toasts.map((toast) => {
-          const styles = getToastStyles(toast.type);
-          return (
-            <div
-              key={toast.id}
-              className={`${styles.bg} ${styles.border} ${styles.text} border rounded-xl px-4 py-3 shadow-lg flex items-center gap-3 min-w-[320px] max-w-md pointer-events-auto animate-slideIn`}
-            >
-              {styles.icon}
-              <p className="flex-1 text-sm font-medium">{toast.message}</p>
-              <button
-                onClick={() => removeToast(toast.id)}
-                className="p-1 hover:bg-black/5 rounded transition-colors"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          );
-        })}
-      </div>
 
-      <style jsx global>{`
-        @keyframes slideIn {
-          from {
-            transform: translateX(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-        
-        .animate-slideIn {
-          animation: slideIn 0.3s ease-out;
-        }
-      `}</style>
+      {/* Toast Container - só renderiza no cliente */}
+      {mounted && toasts.length > 0 && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: '1rem',
+            right: '1rem',
+            zIndex: 9999,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.5rem',
+            pointerEvents: 'none'
+          }}
+        >
+          {toasts.map((toast) => {
+            const styles = getToastStyles(toast.type);
+            return (
+              <div
+                key={toast.id}
+                className={`${styles.bg} ${styles.border} ${styles.text} border rounded-xl px-4 py-3 shadow-lg flex items-center gap-3 min-w-[320px] max-w-md pointer-events-auto`}
+                style={{
+                  animation: 'toastSlideIn 0.3s ease-out'
+                }}
+              >
+                {styles.icon}
+                <p className="flex-1 text-sm font-medium">{toast.message}</p>
+                <button
+                  onClick={() => removeToast(toast.id)}
+                  className="p-1 hover:bg-black/5 rounded transition-colors"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Injeta CSS de animação apenas uma vez no head */}
+      {mounted && (
+        <style dangerouslySetInnerHTML={{
+          __html: `
+            @keyframes toastSlideIn {
+              from {
+                transform: translateX(100%);
+                opacity: 0;
+              }
+              to {
+                transform: translateX(0);
+                opacity: 1;
+              }
+            }
+          `
+        }} />
+      )}
     </ToastContext.Provider>
   );
 }

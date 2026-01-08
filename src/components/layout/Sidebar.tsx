@@ -148,14 +148,16 @@ export default function Sidebar() {
     <>
       {!isCollapsed && (
         <div 
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          className="fixed inset-0 bg-black/50 z-20 lg:hidden"
           onClick={() => setIsCollapsed(true)}
         />
       )}
 
-      <aside className={`fixed left-0 top-16 h-[calc(100vh-4rem)] bg-white border-r border-gray-200 z-40 transition-all duration-300 ${
-        isCollapsed ? 'w-16' : 'w-64'
-      }`}>
+      <aside className={`fixed left-0 top-16 h-[calc(100vh-4rem)] bg-white border-r border-gray-200 transition-all duration-300 ${
+        isCollapsed 
+          ? '-translate-x-full lg:translate-x-0 w-64 lg:w-16' 
+          : 'translate-x-0 w-64'
+      } z-30 lg:z-40`}>
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
           className="absolute -right-3 top-6 w-6 h-6 bg-white border border-gray-200 rounded-full flex items-center justify-center hover:bg-gray-50 transition-colors shadow-sm"
