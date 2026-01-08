@@ -15,7 +15,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { createToken, setAuthCookie } from '@/lib/auth';
+import { createToken } from '@/lib/auth';
 import type { AuthUser } from '@/types';
 import bcrypt from 'bcryptjs';
 import { logActivity, getUserGroupId } from '@/lib/activity-log';
@@ -109,9 +109,6 @@ export async function POST(request: NextRequest) {
       session_id: sessionId,
     });
 
-    // Salva token no cookie
-    await setAuthCookie(token);
-
     // Prepara dados do usuário para retorno (sem dados sensíveis)
     const userData: AuthUser = {
       id: user.id,
@@ -122,12 +119,28 @@ export async function POST(request: NextRequest) {
       avatar_url: user.avatar_url || undefined,
     };
 
-    // Retorna resposta de sucesso
-    return NextResponse.json({
+    // Configuração do cookie
+    const isProduction = process.env.NODE_ENV === 'production';
+    const cookieOptions = [
+      `auth_token=${token}`,
+      `Path=/`,
+      `Max-Age=${60 * 60 * 24 * 7}`, // 7 dias
+      `HttpOnly`,
+      `SameSite=Lax`,
+      isProduction ? `Secure` : '',
+      isProduction ? `Domain=.meudashboard.org` : '',
+    ].filter(Boolean).join('; ');
+
+    // Retorna resposta de sucesso com cookie no header
+    const response = NextResponse.json({
       success: true,
       message: 'Login realizado',
       user: userData,
     });
+
+    response.headers.set('Set-Cookie', cookieOptions);
+
+    return response;
   } catch (error) {
     console.error('Erro no login:', error);
     return NextResponse.json(

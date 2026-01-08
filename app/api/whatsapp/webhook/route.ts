@@ -104,13 +104,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: 'ignored', reason: 'not a message event' });
     }
 
-    const message = messageData.message || messageData;
-    const remoteJid = message.key?.remoteJid || messageData.remoteJid;
-    const fromMe = message.key?.fromMe || false;
-    const messageText = message.message?.conversation || 
-                        message.message?.extendedTextMessage?.text ||
-                        message.body ||
+    // Extrair key e message corretamente do Evolution API
+    const keyData = messageData.key || {};
+    const messageContent = messageData.message || {};
+
+    const remoteJid = keyData.remoteJid || messageData.remoteJid || '';
+    const fromMe = keyData.fromMe || false;
+    const messageText = messageContent.conversation ||
+                        messageContent.extendedTextMessage?.text ||
+                        messageContent.imageMessage?.caption ||
+                        messageContent.videoMessage?.caption ||
+                        messageContent.documentMessage?.caption ||
+                        messageData.body ||
                         '';
+
+    // Log detalhado para debug
+    console.log('Dados extraídos:', {
+      event,
+      remoteJid,
+      fromMe,
+      messageText: messageText.substring(0, 100),
+      hasKey: !!messageData.key,
+      hasMessage: !!messageData.message
+    });
 
     // Ignora mensagens enviadas por mim ou vazias
     if (fromMe || !messageText.trim()) {
