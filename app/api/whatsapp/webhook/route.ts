@@ -69,20 +69,43 @@ async function executeDaxQuery(connectionId: string, datasetId: string, query: s
 // Função para enviar mensagem via WhatsApp
 async function sendWhatsAppMessage(instance: any, phone: string, message: string) {
   try {
-    const response = await fetch(`${instance.api_url}/message/sendText/${instance.instance_name}`, {
+    const url = `${instance.api_url}/message/sendText/${instance.instance_name}`;
+    const body = {
+      number: phone.replace(/\D/g, ''),
+      text: message
+    };
+
+    console.log('Enviando mensagem WhatsApp:', {
+      url,
+      instanceName: instance.instance_name,
+      phone: body.number,
+      messageLength: message.length
+    });
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'apikey': instance.api_key
       },
-      body: JSON.stringify({
-        number: phone.replace(/\D/g, ''),
-        text: message
-      })
+      body: JSON.stringify(body)
     });
-    return response.ok;
-  } catch (error) {
-    console.error('Erro ao enviar mensagem:', error);
+
+    const responseText = await response.text();
+    console.log('Resposta Evolution API:', {
+      status: response.status,
+      ok: response.ok,
+      body: responseText.substring(0, 500)
+    });
+
+    if (!response.ok) {
+      console.error('Erro Evolution API:', responseText);
+      return false;
+    }
+
+    return true;
+  } catch (error: any) {
+    console.error('Erro ao enviar mensagem:', error.message);
     return false;
   }
 }
@@ -363,8 +386,18 @@ ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', mon
 
     console.log('Resposta IA:', assistantMessage);
 
+    // Log da instância que será usada
+    console.log('Instância para envio:', {
+      id: instance.id,
+      name: instance.instance_name,
+      api_url: instance.api_url,
+      is_connected: instance.is_connected
+    });
+
     // Enviar resposta
     const sent = await sendWhatsAppMessage(instance, phone, assistantMessage);
+
+    console.log('Mensagem enviada:', sent);
 
     // Salvar mensagem enviada
     if (sent) {
