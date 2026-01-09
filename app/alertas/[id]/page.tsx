@@ -396,6 +396,50 @@ export default function EditarAlertaPage() {
     }));
   }
 
+  // Extrair variáveis da DAX para usar no template
+  const extractDaxVariables = (dax: string): Array<{key: string, label: string}> => {
+    const variables: Array<{key: string, label: string}> = [];
+    
+    // Extrair colunas de tabelas (Tabela[Coluna])
+    const columnRegex = /(\w+)\[(\w+)\]/g;
+    const foundColumns = new Set<string>();
+    let match;
+    
+    while ((match = columnRegex.exec(dax)) !== null) {
+      const [, table, column] = match;
+      const key = `{{${column.toLowerCase()}}}`;
+      if (!foundColumns.has(key)) {
+        foundColumns.add(key);
+        variables.push({ key, label: column });
+      }
+    }
+    
+    // Detectar padrões de data
+    if (dax.includes('TODAY() - 1') || dax.toLowerCase().includes('ontem')) {
+      variables.push({ key: '{{periodo}}', label: 'Período (Ontem)' });
+    } else if (dax.match(/TODAY\(\)\s*-\s*(\d+)/)) {
+      const days = dax.match(/TODAY\(\)\s*-\s*(\d+)/)?.[1];
+      variables.push({ key: '{{periodo}}', label: `Período (${days} dias)` });
+    }
+    
+    // Detectar se tem agrupamento (SUMMARIZE, VALUES, ADDCOLUMNS)
+    if (dax.includes('SUMMARIZE') || dax.includes('VALUES') || dax.includes('ADDCOLUMNS')) {
+      if (!variables.find(v => v.key === '{{valor}}')) {
+        variables.push({ key: '{{valor}}', label: 'Valor/Resultado' });
+      }
+    }
+    
+    // Detectar UNION com TOTAL
+    if (dax.includes('UNION') && dax.includes('TOTAL')) {
+      variables.push({ key: '{{total}}', label: 'Total' });
+    }
+    
+    return variables;
+  };
+
+  // Variáveis extraídas da DAX
+  const daxVariables = extractDaxVariables(formData.dax_query);
+
   if (loading) {
     return (
       <MainLayout>
@@ -937,6 +981,53 @@ export default function EditarAlertaPage() {
                       onChange={(value) => setFormData(prev => ({ ...prev, message_template: value }))}
                       alertName={formData.name || 'Meu Alerta'}
                     />
+                    
+                    {/* Variáveis disponíveis */}
+                    <div className="mt-2">
+                      <div className="flex flex-wrap gap-1.5 items-center">
+                        <span className="text-xs text-gray-500">Variáveis do sistema:</span>
+                        {[
+                          { key: '{{nome_alerta}}', label: 'Nome do Alerta' },
+                          { key: '{{valor}}', label: 'Valor/Resultado' },
+                          { key: '{{data}}', label: 'Data' },
+                          { key: '{{hora}}', label: 'Hora' },
+                        ].map((v) => (
+                          <button
+                            key={v.key}
+                            type="button"
+                            onClick={() => setFormData(prev => ({
+                              ...prev,
+                              message_template: prev.message_template + ' ' + v.key
+                            }))}
+                            className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 rounded text-xs font-mono text-blue-600 border border-blue-200"
+                            title={v.label}
+                          >
+                            {v.key}
+                          </button>
+                        ))}
+                      </div>
+                      
+                      {/* Variáveis extraídas da DAX */}
+                      {daxVariables.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 items-center mt-2">
+                          <span className="text-xs text-gray-500">Da sua query:</span>
+                          {daxVariables.map((v) => (
+                            <button
+                              key={v.key}
+                              type="button"
+                              onClick={() => setFormData(prev => ({
+                                ...prev,
+                                message_template: prev.message_template + ' ' + v.key
+                              }))}
+                              className="px-2 py-0.5 bg-purple-50 hover:bg-purple-100 rounded text-xs font-mono text-purple-600 border border-purple-200"
+                              title={v.label}
+                            >
+                              {v.key} <span className="text-purple-400 font-normal">({v.label})</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

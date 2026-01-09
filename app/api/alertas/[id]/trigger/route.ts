@@ -209,7 +209,9 @@ export async function POST(
             },
             body: JSON.stringify({
               number: phone.replace(/\D/g, ''),
-              text: message
+              textMessage: {
+                text: message
+              }
             })
           });
 
@@ -248,7 +250,9 @@ export async function POST(
             },
             body: JSON.stringify({
               number: groupId,
-              text: message
+              textMessage: {
+                text: message
+              }
             })
           });
 

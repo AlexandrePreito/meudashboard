@@ -65,7 +65,12 @@ async function sendWhatsApp(instance: any, phone: string, message: string) {
     const res = await fetch(`${instance.api_url}/message/sendText/${instance.instance_name}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': instance.api_key },
-      body: JSON.stringify({ number: phone.replace(/\D/g, ''), text: message })
+      body: JSON.stringify({ 
+        number: phone.replace(/\D/g, ''), 
+        textMessage: { 
+          text: message 
+        } 
+      })
     });
     return res.ok;
   } catch { return false; }
