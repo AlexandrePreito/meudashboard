@@ -105,6 +105,9 @@ export default function NovoAlertaPage() {
   const [testingDax, setTestingDax] = useState(false);
   const [daxTestResult, setDaxTestResult] = useState<{ success: boolean; message: string; value?: any } | null>(null);
   const [generatingTemplate, setGeneratingTemplate] = useState(false);
+  const [daxPrompt, setDaxPrompt] = useState('');
+  const [generatingDax, setGeneratingDax] = useState(false);
+  const [daxError, setDaxError] = useState<{ message: string; suggestions: string[] } | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -258,6 +261,57 @@ export default function NovoAlertaPage() {
       alert('Erro ao gerar template com IA');
     } finally {
       setGeneratingTemplate(false);
+    }
+  }
+
+  async function handleGenerateDax() {
+    if (!formData.connection_id || !formData.dataset_id) {
+      alert('Selecione uma conexão e dataset primeiro');
+      return;
+    }
+
+    if (!daxPrompt.trim()) {
+      alert('Descreva o que você precisa monitorar');
+      return;
+    }
+
+    setGeneratingDax(true);
+    setDaxError(null);
+    setDaxTestResult(null);
+
+    try {
+      const res = await fetch('/api/ai/generate-dax', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: daxPrompt,
+          connection_id: formData.connection_id,
+          dataset_id: formData.dataset_id
+        })
+      });
+
+      const data = await res.json();
+
+      if (data.success && data.dax_query) {
+        setFormData(prev => ({
+          ...prev,
+          dax_query: data.dax_query
+        }));
+        setDaxError(null);
+        setDaxPrompt('');
+      } else {
+        setDaxError({
+          message: data.error || 'Erro ao gerar DAX',
+          suggestions: data.suggestions || []
+        });
+      }
+    } catch (err) {
+      setDaxError({
+        message: 'Erro ao gerar DAX com IA',
+        suggestions: []
+      });
+    } finally {
+      setGeneratingDax(false);
     }
   }
 
@@ -466,9 +520,84 @@ export default function NovoAlertaPage() {
                     </div>
                   </div>
 
+                  {/* Gerador de DAX com IA */}
+                  <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Sparkles size={18} className="text-purple-600" />
+                      <h3 className="text-sm font-semibold text-purple-900">Gerar DAX com IA</h3>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm text-purple-700 mb-1">
+                          Descreva o que você precisa monitorar:
+                        </label>
+                        <textarea
+                          value={daxPrompt}
+                          onChange={(e) => setDaxPrompt(e.target.value)}
+                          placeholder="Ex: Venda de ontem por filial, Total de vendas do mês, Top 10 clientes..."
+                          rows={2}
+                          disabled={!formData.connection_id || !formData.dataset_id}
+                          className="w-full px-3 py-2 border border-purple-200 rounded-lg focus:outline-none focus:border-purple-500 text-sm resize-none disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        />
+                      </div>
+                      
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={handleGenerateDax}
+                          disabled={generatingDax || !formData.connection_id || !formData.dataset_id || !daxPrompt.trim()}
+                          className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                        >
+                          {generatingDax ? (
+                            <>
+                              <Loader2 size={16} className="animate-spin" />
+                              Gerando...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles size={16} />
+                              Gerar DAX
+                            </>
+                          )}
+                        </button>
+                        
+                        {!formData.connection_id || !formData.dataset_id ? (
+                          <span className="text-xs text-purple-600">
+                            ⚠️ Selecione conexão e dataset primeiro
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {/* Mensagem de erro com sugestões */}
+                      {daxError && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                          <p className="text-sm text-amber-800 font-medium">{daxError.message}</p>
+                          {daxError.suggestions.length > 0 && (
+                            <div className="mt-2">
+                              <p className="text-xs text-amber-700 mb-1">Sugestões disponíveis:</p>
+                              <div className="flex flex-wrap gap-1">
+                                {daxError.suggestions.map((suggestion, idx) => (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => setDaxPrompt(suggestion)}
+                                    className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded text-xs transition-colors"
+                                  >
+                                    {suggestion}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Query DAX *
+                      Query DAX * (ou use a IA acima para gerar)
                     </label>
                     <textarea
                       value={formData.dax_query}
