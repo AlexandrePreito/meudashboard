@@ -83,7 +83,7 @@ const FORM_TABS = [
   { id: 'dados', label: 'Dados', icon: Database },
   { id: 'condicao', label: 'Condição', icon: GitBranch },
   { id: 'agendamento', label: 'Agendamento', icon: Clock },
-  { id: 'notificacoes', label: 'Template', icon: FileCode },
+  { id: 'notificacoes', label: 'Template', icon: Sparkles },
 ] as const;
 
 type TabId = typeof FORM_TABS[number]['id'];
@@ -233,6 +233,11 @@ export default function NovoAlertaPage() {
       return;
     }
 
+    if (!formData.dax_query) {
+      alert('Configure a query DAX na aba Dados primeiro');
+      return;
+    }
+
     setGeneratingTemplate(true);
     try {
       const res = await fetch('/api/ai/generate-alert-template', {
@@ -243,7 +248,9 @@ export default function NovoAlertaPage() {
           alert_type: formData.alert_type,
           description: formData.description,
           condition: formData.condition,
-          threshold: formData.threshold
+          threshold: formData.threshold,
+          dax_query: formData.dax_query,
+          dax_prompt: daxPrompt
         })
       });
 
@@ -921,23 +928,12 @@ export default function NovoAlertaPage() {
               )}
 
               {/* Tab: Template */}
+              {/* Tab: Template */}
               {activeTab === 'notificacoes' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-700">Template da Mensagem</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">Configure a mensagem que será enviada quando o alerta for disparado</p>
-                    </div>
-                    <Button
-                      type="button"
-                      onClick={handleGenerateTemplate}
-                      disabled={generatingTemplate || !formData.name}
-                      loading={generatingTemplate}
-                      icon={!generatingTemplate ? <Sparkles size={16} /> : undefined}
-                      title="Gerar template com IA"
-                    >
-                      {generatingTemplate ? 'Gerando...' : 'IA'}
-                    </Button>
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700">Template da Mensagem</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">Configure a mensagem que será enviada quando o alerta for disparado</p>
                   </div>
 
                   <div>
@@ -974,6 +970,33 @@ export default function NovoAlertaPage() {
                         ))}
                       </div>
                     </div>
+                  </div>
+
+                  {/* Botão IA para gerar template - NOVO POSICIONAMENTO */}
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleGenerateTemplate}
+                      disabled={generatingTemplate || !formData.name || !formData.dax_query}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                    >
+                      {generatingTemplate ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" />
+                          Gerando...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={16} />
+                          Gerar Template com IA
+                        </>
+                      )}
+                    </button>
+                    {(!formData.dax_query || !formData.name) && (
+                      <span className="text-xs text-gray-500">
+                        ⚠️ Preencha o nome do alerta e a query DAX primeiro
+                      </span>
+                    )}
                   </div>
 
                   <div>
