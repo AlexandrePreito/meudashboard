@@ -67,9 +67,7 @@ async function sendWhatsApp(instance: any, phone: string, message: string) {
       headers: { 'Content-Type': 'application/json', 'apikey': instance.api_key },
       body: JSON.stringify({ 
         number: phone.replace(/\D/g, ''), 
-        textMessage: { 
-          text: message 
-        } 
+        text: message 
       })
     });
     return res.ok;
