@@ -76,10 +76,19 @@ async function sendWhatsApp(instance: any, phone: string, message: string) {
 
 export async function GET(request: Request) {
   try {
-    // Verificar chave secreta (proteção básica)
+    // Verificar autenticação - aceita query param OU header Authorization
     const { searchParams } = new URL(request.url);
-    const key = searchParams.get('key');
-    if (key !== process.env.CRON_SECRET && key !== 'manual-trigger') {
+    const keyFromQuery = searchParams.get('key');
+    const authHeader = request.headers.get('authorization');
+    const keyFromHeader = authHeader?.replace('Bearer ', '');
+
+    const isAuthorized = 
+      keyFromQuery === process.env.CRON_SECRET || 
+      keyFromQuery === 'manual-trigger' ||
+      keyFromHeader === process.env.CRON_SECRET;
+
+    if (!isAuthorized) {
+      console.log('[CRON] Não autorizado - key:', keyFromQuery, 'header:', keyFromHeader?.substring(0, 10) + '...');
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
