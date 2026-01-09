@@ -2,6 +2,86 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser } from '@/lib/auth';
 
+// Formatar valor como moeda brasileira
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  }).format(value);
+}
+
+// Formatar resultado da DAX para mensagem
+function formatDaxResult(results: any[]): string {
+  if (!results || results.length === 0) {
+    return 'Sem dados';
+  }
+
+  // Se for só uma linha com um valor, retorna o valor formatado
+  if (results.length === 1) {
+    const row = results[0];
+    const keys = Object.keys(row);
+    
+    // Procurar coluna de valor (geralmente contém "Valor" ou é numérica)
+    const valueKey = keys.find(k => k.toLowerCase().includes('valor') || typeof row[k] === 'number');
+    if (valueKey && typeof row[valueKey] === 'number') {
+      return formatCurrency(row[valueKey]);
+    }
+    return String(Object.values(row)[0] || 'Sem dados');
+  }
+
+  // Múltiplas linhas - formatar como tabela
+  const lines: string[] = [];
+  let totalLine: string | null = null;
+
+  // Identificar colunas
+  const firstRow = results[0];
+  const keys = Object.keys(firstRow);
+  
+  // Procurar coluna de label (Filial, Nome, etc) e valor
+  const labelKey = keys.find(k => 
+    k.toLowerCase().includes('filial') || 
+    k.toLowerCase().includes('nome') || 
+    k.toLowerCase().includes('empresa') ||
+    k.toLowerCase().includes('cliente') ||
+    !k.toLowerCase().includes('valor')
+  );
+  const valueKey = keys.find(k => 
+    k.toLowerCase().includes('valor') || 
+    typeof firstRow[k] === 'number'
+  );
+
+  for (const row of results) {
+    // Pular linhas com valores null
+    if (labelKey && row[labelKey] === null) continue;
+    
+    const label = labelKey ? String(row[labelKey] || '') : '';
+    const value = valueKey ? row[valueKey] : null;
+    
+    // Formatar valor
+    let formattedValue = '';
+    if (typeof value === 'number') {
+      formattedValue = formatCurrency(value);
+    } else if (value !== null && value !== undefined) {
+      formattedValue = String(value);
+    }
+
+    // Verificar se é linha de total
+    if (label.toUpperCase() === 'TOTAL' || label.toUpperCase().includes('TOTAL')) {
+      totalLine = `━━━━━━━━━━━━━━\n*${label}*: ${formattedValue}`;
+    } else if (label && formattedValue) {
+      lines.push(`${label}: ${formattedValue}`);
+    }
+  }
+
+  // Montar resultado final
+  let result = lines.join('\n');
+  if (totalLine) {
+    result += '\n' + totalLine;
+  }
+
+  return result || 'Sem dados';
+}
+
 // Função para executar DAX
 async function executeDaxQuery(connectionId: string, datasetId: string, query: string, supabase: any): Promise<{ success: boolean; results?: any[]; error?: string }> {
   try {
@@ -122,19 +202,9 @@ export async function POST(
       console.log('Resultado DAX completo:', JSON.stringify(daxResult));
       
       if (daxResult.success && daxResult.results && daxResult.results.length > 0) {
-        // Pegar o primeiro valor do resultado
-        const firstRow = daxResult.results[0];
-        console.log('Primeira linha:', JSON.stringify(firstRow));
-        const firstValue = Object.values(firstRow)[0];
-        console.log('Primeiro valor:', firstValue, 'Tipo:', typeof firstValue);
-        
-        // Formatar como moeda se for número
-        if (typeof firstValue === 'number') {
-          valorReal = firstValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        } else {
-          valorReal = String(firstValue);
-        }
-        console.log('Valor DAX obtido:', valorReal);
+        // Formatar todas as linhas do resultado
+        valorReal = formatDaxResult(daxResult.results);
+        console.log('Valor DAX formatado:', valorReal);
       } else {
         console.error('Erro ao executar DAX:', daxResult.error);
       }
