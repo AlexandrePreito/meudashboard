@@ -935,8 +935,6 @@ export default function EditarAlertaPage() {
                       value={formData.message_template}
                       onChange={(value) => setFormData(prev => ({ ...prev, message_template: value }))}
                       alertName={formData.name || 'Meu Alerta'}
-                      showTemplates={true}
-                      previewValue={previewValue}
                     />
                   </div>
                 </div>
