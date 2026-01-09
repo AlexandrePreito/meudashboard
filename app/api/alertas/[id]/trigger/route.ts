@@ -163,24 +163,43 @@ export async function POST(
       groups: [] as { groupId: string; success: boolean; error?: string }[]
     };
 
+    console.log('Configuração do alerta:', {
+      notify_whatsapp: alert.notify_whatsapp,
+      whatsapp_number: alert.whatsapp_number,
+      whatsapp_group_id: alert.whatsapp_group_id
+    });
+
     // Buscar instância WhatsApp ativa
     let instanceData: any = null;
     if (alert.notify_whatsapp) {
-      const { data: instance } = await supabase
+      const { data: instance, error: instanceError } = await supabase
         .from('whatsapp_instances')
         .select('*')
         .eq('is_connected', true)
         .limit(1)
         .maybeSingle();
       
+      if (instanceError) {
+        console.error('Erro ao buscar instância:', instanceError);
+      }
+      
       instanceData = instance;
+      console.log('Instância WhatsApp encontrada:', instanceData ? {
+        id: instanceData.id,
+        name: instanceData.instance_name,
+        api_url: instanceData.api_url
+      } : 'NENHUMA');
+    } else {
+      console.log('WhatsApp não está habilitado para este alerta');
     }
 
     // Enviar para números
     if (alert.notify_whatsapp && alert.whatsapp_number && instanceData) {
       const numbers = alert.whatsapp_number.split(',').filter(Boolean);
+      console.log('Enviando para números:', numbers);
       
       for (const phone of numbers) {
+        console.log('Enviando para:', phone);
         try {
           const response = await fetch(`${instanceData.api_url}/message/sendText/${instanceData.instance_name}`, {
             method: 'POST',
@@ -194,11 +213,18 @@ export async function POST(
             })
           });
 
+          const responseText = await response.text();
+          console.log('Resposta do envio:', { status: response.status, ok: response.ok, body: responseText.substring(0, 300) });
+
           if (response.ok) {
             results.numbers.push({ phone, success: true });
           } else {
-            const errorData = await response.json().catch(() => ({}));
-            results.numbers.push({ phone, success: false, error: errorData.message || 'Erro ao enviar' });
+            try {
+              const errorData = JSON.parse(responseText);
+              results.numbers.push({ phone, success: false, error: errorData.message || responseText });
+            } catch {
+              results.numbers.push({ phone, success: false, error: responseText || 'Erro ao enviar' });
+            }
           }
         } catch (err: any) {
           results.numbers.push({ phone, success: false, error: err.message });
@@ -209,8 +235,10 @@ export async function POST(
     // Enviar para grupos
     if (alert.notify_whatsapp && alert.whatsapp_group_id && instanceData) {
       const groups = alert.whatsapp_group_id.split(',').filter(Boolean);
+      console.log('Enviando para grupos:', groups);
       
       for (const groupId of groups) {
+        console.log('Enviando para grupo:', groupId);
         try {
           const response = await fetch(`${instanceData.api_url}/message/sendText/${instanceData.instance_name}`, {
             method: 'POST',
@@ -224,11 +252,18 @@ export async function POST(
             })
           });
 
+          const responseTextGroup = await response.text();
+          console.log('Resposta do envio para grupo:', { status: response.status, ok: response.ok, body: responseTextGroup.substring(0, 300) });
+
           if (response.ok) {
             results.groups.push({ groupId, success: true });
           } else {
-            const errorData = await response.json().catch(() => ({}));
-            results.groups.push({ groupId, success: false, error: errorData.message || 'Erro ao enviar' });
+            try {
+              const errorData = JSON.parse(responseTextGroup);
+              results.groups.push({ groupId, success: false, error: errorData.message || responseTextGroup });
+            } catch {
+              results.groups.push({ groupId, success: false, error: responseTextGroup || 'Erro ao enviar' });
+            }
           }
         } catch (err: any) {
           results.groups.push({ groupId, success: false, error: err.message });
@@ -263,6 +298,12 @@ export async function POST(
       results.groups.filter(r => r.success).length;
     
     const totalCount = results.numbers.length + results.groups.length;
+
+    console.log('Resultado final do trigger:', {
+      successCount,
+      totalCount,
+      results
+    });
 
     if (!alert.notify_whatsapp) {
       return NextResponse.json({ 

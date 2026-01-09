@@ -20,7 +20,8 @@ import {
   AlertTriangle,
   MessageSquare,
   Calendar,
-  Send
+  Send,
+  X
 } from 'lucide-react';
 
 interface Alert {
@@ -128,8 +129,8 @@ export default function AlertasPage() {
   function handleDelete(id: string, alertName: string) {
     setConfirmModal({
       show: true,
-      title: 'Excluir Alerta',
-      message: `Tem certeza que deseja excluir o alerta "${alertName}"? Esta ação não pode ser desfeita.`,
+      title: 'Excluir alerta?',
+      message: `O alerta "${alertName}" será excluído permanentemente. Esta ação não pode ser desfeita.`,
       type: 'danger',
       onConfirm: async () => {
         try {
@@ -151,8 +152,10 @@ export default function AlertasPage() {
   function triggerAlert(alertItem: Alert) {
     setConfirmModal({
       show: true,
-      title: 'Disparar Alerta',
-      message: `Deseja disparar o alerta "${alertItem.name}" agora? ${alertItem.notify_whatsapp ? 'Notificações WhatsApp serão enviadas.' : ''}`,
+      title: 'Disparar alerta agora?',
+      message: alertItem.notify_whatsapp 
+        ? `O alerta "${alertItem.name}" será disparado e as notificações WhatsApp serão enviadas para os destinatários configurados.`
+        : `O alerta "${alertItem.name}" será executado agora.`,
       type: 'info',
       onConfirm: async () => {
         setConfirmModal({ ...confirmModal, show: false });
@@ -411,8 +414,17 @@ export default function AlertasPage() {
       {confirmModal.show && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full animate-in fade-in zoom-in duration-200">
-            <div className="p-6">
-              <div className="flex items-start gap-4">
+            {/* Header com botão fechar */}
+            <div className="relative p-6 pb-4">
+              <button
+                onClick={() => setConfirmModal({ ...confirmModal, show: false })}
+                className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                aria-label="Fechar"
+              >
+                <X size={20} />
+              </button>
+              
+              <div className="flex items-start gap-4 pr-8">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
                   confirmModal.type === 'danger' 
                     ? 'bg-red-100' 
@@ -421,14 +433,14 @@ export default function AlertasPage() {
                     : 'bg-blue-100'
                 }`}>
                   {confirmModal.type === 'danger' ? (
-                    <Trash2 className={`w-6 h-6 ${confirmModal.type === 'danger' ? 'text-red-600' : ''}`} />
+                    <Trash2 className="w-6 h-6 text-red-600" />
                   ) : confirmModal.type === 'warning' ? (
                     <AlertTriangle className="w-6 h-6 text-yellow-600" />
                   ) : (
                     <Send className="w-6 h-6 text-blue-600" />
                   )}
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 pt-0.5">
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">
                     {confirmModal.title}
                   </h3>
@@ -438,16 +450,16 @@ export default function AlertasPage() {
                 </div>
               </div>
             </div>
-            <div className="bg-gray-50 px-6 py-4 rounded-b-2xl flex gap-3 justify-end">
+            <div className="bg-gray-50 px-6 py-4 rounded-b-2xl flex gap-3 justify-end border-t border-gray-100">
               <button
                 onClick={() => setConfirmModal({ ...confirmModal, show: false })}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all hover:shadow-sm"
               >
                 Cancelar
               </button>
               <button
                 onClick={confirmModal.onConfirm}
-                className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors ${
+                className={`px-5 py-2.5 text-sm font-medium text-white rounded-lg transition-all hover:shadow-md ${
                   confirmModal.type === 'danger'
                     ? 'bg-red-600 hover:bg-red-700'
                     : confirmModal.type === 'warning'
@@ -455,7 +467,7 @@ export default function AlertasPage() {
                     : 'bg-blue-600 hover:bg-blue-700'
                 }`}
               >
-                {confirmModal.type === 'danger' ? 'Excluir' : 'Confirmar'}
+                {confirmModal.type === 'danger' ? 'Sim, excluir' : confirmModal.type === 'info' ? 'Sim, disparar' : 'Confirmar'}
               </button>
             </div>
           </div>
