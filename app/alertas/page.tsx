@@ -41,17 +41,19 @@ interface Alert {
 }
 
 const alertTypeColors: Record<string, string> = {
-  warning: 'bg-yellow-100 text-yellow-700',
-  danger: 'bg-red-100 text-red-700',
-  success: 'bg-green-100 text-green-700',
-  info: 'bg-blue-100 text-blue-700'
+  'threshold': 'bg-yellow-100 text-yellow-700',
+  'anomaly': 'bg-red-100 text-red-700',
+  'comparison': 'bg-blue-100 text-blue-700',
+  'goal': 'bg-green-100 text-green-700',
+  'scheduled_report': 'bg-purple-100 text-purple-700',
 };
 
 const alertTypeLabels: Record<string, string> = {
-  warning: 'Aviso',
-  danger: 'Perigo',
-  success: 'Sucesso',
-  info: 'Info'
+  'threshold': 'Limite',
+  'anomaly': 'Anomalia',
+  'comparison': 'Comparação',
+  'goal': 'Meta',
+  'scheduled_report': 'Relatório',
 };
 
 const conditionLabels: Record<string, string> = {

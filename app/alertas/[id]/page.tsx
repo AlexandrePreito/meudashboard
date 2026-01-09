@@ -54,10 +54,11 @@ const CONDITIONS = [
 ];
 
 const ALERT_TYPES = [
-  { value: 'warning', label: 'Aviso', color: 'bg-yellow-100 text-yellow-700' },
-  { value: 'danger', label: 'Perigo', color: 'bg-red-100 text-red-700' },
-  { value: 'success', label: 'Sucesso', color: 'bg-green-100 text-green-700' },
-  { value: 'info', label: 'Informação', color: 'bg-blue-100 text-blue-700' },
+  { value: 'threshold', label: 'Limite', color: 'bg-yellow-100 text-yellow-700', icon: '⚠️', description: 'Alerta quando valor ultrapassa limite' },
+  { value: 'anomaly', label: 'Anomalia', color: 'bg-red-100 text-red-700', icon: '🚨', description: 'Detecta valores fora do padrão' },
+  { value: 'comparison', label: 'Comparação', color: 'bg-blue-100 text-blue-700', icon: '📊', description: 'Compara períodos ou valores' },
+  { value: 'goal', label: 'Meta', color: 'bg-green-100 text-green-700', icon: '🎯', description: 'Acompanha atingimento de metas' },
+  { value: 'scheduled_report', label: 'Relatório', color: 'bg-purple-100 text-purple-700', icon: '📋', description: 'Envia relatório programado' },
 ];
 
 const CHECK_FREQUENCIES = [
@@ -113,7 +114,7 @@ export default function EditarAlertaPage() {
     dax_query: '',
     condition: 'greater_than',
     threshold: 0,
-    alert_type: 'warning',
+    alert_type: 'scheduled_report',
     check_times: ['08:00'],
     check_frequency: 'daily',
     check_days_of_week: [] as number[],
@@ -177,7 +178,7 @@ export default function EditarAlertaPage() {
             dax_query: alert.dax_query || '',
             condition: alert.condition || 'greater_than',
             threshold: alert.threshold || 0,
-            alert_type: alert.alert_type || 'warning',
+            alert_type: alert.alert_type || 'scheduled_report',
             check_times: alert.check_times || ['08:00'],
             check_frequency: alert.check_frequency || 'daily',
             check_days_of_week: alert.check_days_of_week || [],
