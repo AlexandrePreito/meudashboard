@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
       
       const companyGroup = membership?.company_group;
-      membershipData = Array.isArray(companyGroup) ? companyGroup[0] : companyGroup;
+      membershipData = Array.isArray(companyGroup) ? companyGroup[0] : companyGroup ?? null;
       
       if (membershipData?.developer_id) {
         const { data: devData } = await supabase
