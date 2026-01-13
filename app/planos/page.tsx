@@ -514,7 +514,7 @@ export default function PlanosPage() {
                     <div className="flex items-center gap-3">
                       <Building2 className="w-5 h-5 text-purple-500" />
                       <span className="text-sm text-gray-600">
-                        <strong>{('grupos' in plano.recursos) ? plano.recursos.grupos : ''}</strong> {('grupos' in plano.recursos) && typeof plano.recursos.grupos === 'number' ? 'grupos/clientes' : ''}
+                        <strong>{('grupos' in plano.recursos) ? String(plano.recursos.grupos) : ''}</strong> {('grupos' in plano.recursos) && typeof plano.recursos.grupos === 'number' ? 'grupos/clientes' : ''}
                       </span>
                     </div>
                   )}
