@@ -51,7 +51,9 @@ export async function POST(
       .select('*', { count: 'exact', head: true })
       .eq('developer_id', developerId);
 
-    const maxGroups = developer?.plan?.max_groups || 0;
+    const plan = developer?.plan;
+    const planData = Array.isArray(plan) ? plan[0] : plan;
+    const maxGroups = planData?.max_groups || 0;
     if (currentGroups && currentGroups >= maxGroups) {
       return NextResponse.json(
         { error: `Limite de grupos atingido (${maxGroups})` },
