@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
 
     // Buscar developer info para tema
     let developerInfo = null;
-    let membershipData = null;
+    let membershipData: { developer_id?: string; primary_color?: string; use_developer_colors?: boolean } | null = null;
     
     if (!user.is_master && !user.is_developer_user) {
       // Usuario comum: buscar developer do grupo
@@ -90,7 +90,8 @@ export async function POST(request: NextRequest) {
         .limit(1)
         .maybeSingle();
       
-      membershipData = membership?.company_group;
+      const companyGroup = membership?.company_group;
+      membershipData = Array.isArray(companyGroup) ? companyGroup[0] : companyGroup;
       
       if (membershipData?.developer_id) {
         const { data: devData } = await supabase
