@@ -2,22 +2,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser } from '@/lib/auth';
 
+interface RouteParams {
+  params: Promise<{ id: string }>;
+}
+
 // GET - Buscar usuario por ID
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const user = await getAuthUser();
     if (!user) {
       return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
     }
-
     if (!user.is_master) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     }
 
-    const { id } = params;
+    const { id } = await params;
     const supabase = createAdminClient();
 
     const { data: userData, error } = await supabase
@@ -27,7 +27,6 @@ export async function GET(
       .single();
 
     if (error) throw error;
-
     return NextResponse.json({ user: userData });
   } catch (error: any) {
     console.error('Erro ao buscar usuario:', error);
@@ -36,21 +35,17 @@ export async function GET(
 }
 
 // PUT - Atualizar usuario
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const user = await getAuthUser();
     if (!user) {
       return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
     }
-
     if (!user.is_master) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     }
 
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
     const { full_name, role, is_active, is_developer, is_master } = body;
 
@@ -71,7 +66,6 @@ export async function PUT(
       .single();
 
     if (error) throw error;
-
     return NextResponse.json({ user: userData });
   } catch (error: any) {
     console.error('Erro ao atualizar usuario:', error);
@@ -80,21 +74,17 @@ export async function PUT(
 }
 
 // DELETE - Excluir usuario
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const user = await getAuthUser();
     if (!user) {
       return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
     }
-
     if (!user.is_master) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     }
 
-    const { id } = params;
+    const { id } = await params;
 
     // Nao permitir excluir a si mesmo
     if (id === user.id) {
@@ -116,7 +106,6 @@ export async function DELETE(
       .eq('id', id);
 
     if (error) throw error;
-
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Erro ao excluir usuario:', error);
