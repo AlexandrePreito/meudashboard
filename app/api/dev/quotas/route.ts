@@ -117,7 +117,8 @@ export async function PUT(request: Request) {
       .eq('id', developerId)
       .single();
 
-    const plan = developer?.plan;
+    const planRaw = developer?.plan;
+    const plan = Array.isArray(planRaw) ? planRaw[0] : planRaw;
     if (!plan) {
       return NextResponse.json({ error: 'Plano nao encontrado' }, { status: 400 });
     }
