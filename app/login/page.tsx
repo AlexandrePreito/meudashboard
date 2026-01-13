@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Eye, EyeOff, LogIn } from 'lucide-react';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
@@ -97,11 +98,27 @@ export default function LoginPage() {
       });
 
       const data = await response.json();
+      console.log('=== DADOS LOGIN ===', JSON.stringify(data, null, 2));
 
       if (response.ok && data.success) {
+        // Salvar cor do tema para evitar flash
+        if (data.user?.developer?.primary_color) {
+          localStorage.setItem('theme-color', data.user.developer.primary_color);
+        } else if (data.user?.group?.primary_color && data.user?.group?.use_developer_colors === false) {
+          localStorage.setItem('theme-color', data.user.group.primary_color);
+        }
+        
         setTransitioning(true);
         setTimeout(() => {
-          router.push('/dashboard');
+          // Apos receber resposta do login
+          // Verifica se e usuario desenvolvedor
+          if (data.user?.isDeveloperUser && data.user?.developerId) {
+            router.push('/dev');
+          } else if (data.user?.role === 'master') {
+            router.push('/admin');
+          } else {
+            router.push('/dashboard');
+          }
         }, 800);
       } else {
         setError(data.message || 'Email ou senha inválidos');

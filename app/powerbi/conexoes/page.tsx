@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
+import { useMenu } from '@/contexts/MenuContext';
 import { 
   Plus, 
   Pencil, 
@@ -14,7 +15,8 @@ import {
   Eye,
   EyeOff,
   Copy,
-  Search
+  Search,
+  Database
 } from 'lucide-react';
 
 interface Connection {
@@ -35,7 +37,9 @@ interface CompanyGroup {
   name: string;
 }
 
-export default function ConexoesPage() {
+// Componente interno que usa o contexto
+function ConexoesContent() {
+  const { activeGroup } = useMenu();
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -44,6 +48,8 @@ export default function ConexoesPage() {
   const [showSecret, setShowSecret] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [groups, setGroups] = useState<CompanyGroup[]>([]);
+  const [userRole, setUserRole] = useState<string>('user');
+  const [accessDenied, setAccessDenied] = useState(false);
   
   const [form, setForm] = useState({
     name: '',
@@ -56,13 +62,54 @@ export default function ConexoesPage() {
   });
 
   useEffect(() => {
-    loadConnections();
+    checkAccessAndLoad();
   }, []);
+
+  useEffect(() => {
+    if (userRole !== 'user') {
+      loadConnections();
+    }
+  }, [activeGroup, userRole]);
+
+  async function checkAccessAndLoad() {
+    try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      
+      if (data.user) {
+        if (data.user.is_master) {
+          setUserRole('master');
+        } else if (data.user.is_developer) {
+          setUserRole('developer');
+        } else if (data.user.role === 'admin') {
+          setUserRole('admin');
+        } else {
+          setUserRole('user');
+          setAccessDenied(true);
+          setLoading(false);
+          return;
+        }
+        loadConnections();
+      } else {
+        setAccessDenied(true);
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Erro ao verificar acesso:', error);
+      setAccessDenied(true);
+      setLoading(false);
+    }
+  }
 
   async function loadConnections() {
     try {
+      // Montar URL com filtro de grupo se houver grupo ativo
+      const connUrl = activeGroup 
+        ? `/api/powerbi/connections?group_id=${activeGroup.id}`
+        : '/api/powerbi/connections';
+        
       const [connRes, groupsRes] = await Promise.all([
-        fetch('/api/powerbi/connections'),
+        fetch(connUrl),
         fetch('/api/user/groups')
       ]);
       
@@ -185,19 +232,28 @@ export default function ConexoesPage() {
     conn.company_group?.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  if (accessDenied) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Database className="w-16 h-16 text-gray-300 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700 mb-2">Acesso restrito</h2>
+        <p className="text-gray-500 mb-4">Este modulo nao esta disponivel para seu perfil.</p>
+        <p className="text-sm text-gray-400">Apenas administradores podem acessar.</p>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
-      <MainLayout>
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-        </div>
-      </MainLayout>
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
     );
   }
 
   return (
-    <MainLayout>
-      <div className="space-y-6 -mt-12">
+    <>
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Conexões Power BI</h1>
@@ -429,10 +485,15 @@ export default function ConexoesPage() {
           </div>
         </div>
       )}
-    </MainLayout>
+    </>
   );
 }
 
-
-
-
+// Componente principal exportado
+export default function ConexoesPage() {
+  return (
+    <MainLayout>
+      <ConexoesContent />
+    </MainLayout>
+  );
+}

@@ -1,92 +1,123 @@
 /**
- * API Route - Grupos de Empresas do Usuário
+ * API Route - Grupos de Empresas do Usuario
  * 
- * Endpoint GET que retorna os grupos de empresas disponíveis para o usuário autenticado.
- * 
- * Processo:
- * 1. Verifica autenticação do usuário
- * 2. Se for master: retorna todos os grupos ativos
- * 3. Se não for master: retorna apenas os grupos onde o usuário tem membership ativo
- * 4. Retorna lista de grupos com id, name e slug
+ * Retorna os grupos disponiveis para o usuario autenticado:
+ * - Master: todos os grupos ativos
+ * - Desenvolvedor: grupos do seu developer_id
+ * - Outros: grupos onde tem membership ativo
  */
-
 import { NextResponse } from 'next/server';
-import { getAuthUser } from '@/lib/auth';
-import { supabase } from '@/lib/supabase';
+import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function GET() {
   try {
-    // Obtém o usuário autenticado
     const user = await getAuthUser();
-
-    // Se não autenticado, retorna 401
+    
     if (!user) {
-      return NextResponse.json(
-        { error: 'Não autenticado' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
     }
 
+    const supabase = createAdminClient();
     let groups: Array<{ id: string; name: string; slug: string; logo_url: string | null; primary_color: string | null }> = [];
+    let developerId: string | null = null;
 
-    // Se o usuário for master, busca TODOS os grupos ativos
+    // 1. Se master, busca TODOS os grupos ativos
     if (user.is_master) {
       const { data, error } = await supabase
         .from('company_groups')
-        .select('id, name, slug, logo_url, primary_color')
+        .select('id, name, slug, logo_url, primary_color, use_developer_logo, use_developer_colors')
         .eq('status', 'active')
         .order('name');
 
       if (error) {
         console.error('Erro ao buscar grupos (master):', error);
-        return NextResponse.json(
-          { error: 'Erro ao buscar grupos' },
-          { status: 500 }
-        );
+        return NextResponse.json({ error: 'Erro ao buscar grupos' }, { status: 500 });
       }
-
       groups = data || [];
     } else {
-      // Se não for master, busca através da tabela user_group_membership
-      const { data, error } = await supabase
-        .from('user_group_membership')
-        .select(`
-          company_group:company_groups (
-            id,
-            name,
-            slug,
-            logo_url,
-            primary_color
-          )
-        `)
-        .eq('user_id', user.id)
-        .eq('is_active', true);
+      // 2. Verificar se e desenvolvedor
+      developerId = await getUserDeveloperId(user.id);
+      
+      if (developerId) {
+        // Desenvolvedor: busca grupos do seu developer_id
+        const { data, error } = await supabase
+          .from('company_groups')
+          .select('id, name, slug, logo_url, primary_color, use_developer_logo, use_developer_colors')
+          .eq('developer_id', developerId)
+          .eq('status', 'active')
+          .order('name');
 
-      if (error) {
-        console.error('Erro ao buscar grupos (membership):', error);
-        return NextResponse.json(
-          { error: 'Erro ao buscar grupos' },
-          { status: 500 }
-        );
+        if (error) {
+          console.error('Erro ao buscar grupos (developer):', error);
+          return NextResponse.json({ error: 'Erro ao buscar grupos' }, { status: 500 });
+        }
+        groups = data || [];
+      } else {
+        // 3. Usuario normal: busca atraves de membership
+        const { data, error } = await supabase
+          .from('user_group_membership')
+          .select(`
+            company_group:company_groups (
+              id,
+              name,
+              slug,
+              logo_url,
+              primary_color,
+              use_developer_logo,
+              use_developer_colors,
+              developer_id
+            )
+          `)
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+
+        if (error) {
+          console.error('Erro ao buscar grupos (membership):', error);
+          return NextResponse.json({ error: 'Erro ao buscar grupos' }, { status: 500 });
+        }
+
+        groups = (data || [])
+          .map((item: any) => item.company_group)
+          .filter((group: any) => group !== null && group.status !== 'inactive');
       }
-
-      // Extrai os grupos do resultado do join
-      groups = (data || [])
-        .map((item: any) => item.company_group)
-        .filter((group: any) => group !== null);
     }
 
-    // Retorna os grupos
-    return NextResponse.json({ groups });
+    // Buscar dados do developer para tema
+    let developerInfo = null;
+
+    if (developerId) {
+      // Desenvolvedor: busca pelo seu developer_id
+      const { data: devData } = await supabase
+        .from('developers')
+        .select('id, name, logo_url, primary_color')
+        .eq('id', developerId)
+        .single();
+      developerInfo = devData;
+    } else if (groups.length > 0) {
+      // Usuario comum: busca o developer do primeiro grupo
+      const { data: groupWithDev } = await supabase
+        .from('company_groups')
+        .select('developer_id')
+        .eq('id', groups[0].id)
+        .single();
+      
+      if (groupWithDev?.developer_id) {
+        const { data: devData } = await supabase
+          .from('developers')
+          .select('id, name, logo_url, primary_color')
+          .eq('id', groupWithDev.developer_id)
+          .single();
+        developerInfo = devData;
+      }
+    }
+
+    return NextResponse.json({ 
+      groups,
+      developer: developerInfo  // dados do desenvolvedor para tema
+    });
   } catch (error) {
     console.error('Erro ao buscar grupos:', error);
-    return NextResponse.json(
-      { error: 'Erro interno do servidor' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });
   }
 }
-
-
-
-

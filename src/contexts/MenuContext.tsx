@@ -15,12 +15,23 @@ export interface CompanyGroup {
   slug: string;
   logo_url?: string | null;
   primary_color?: string | null;
+  use_developer_logo?: boolean;
+  use_developer_colors?: boolean;
 }
 
 interface UserData {
   id: string;
   is_master?: boolean;
+  is_developer?: boolean;
   role?: string;
+}
+
+// Interface para desenvolvedor
+export interface DeveloperInfo {
+  id: string;
+  name: string;
+  logo_url: string | null;
+  primary_color: string | null;
 }
 
 // Tipo do contexto de menu
@@ -31,6 +42,8 @@ interface MenuContextType {
   setActiveGroup: (group: CompanyGroup | null) => void;
   user: UserData | null;
   setUser: (user: UserData | null) => void;
+  developer: DeveloperInfo | null;
+  setDeveloper: (developer: DeveloperInfo | null) => void;
 }
 
 // Cria o contexto
@@ -58,6 +71,7 @@ export function MenuProvider({ children }: MenuProviderProps) {
     return null;
   });
   const [user, setUser] = useState<UserData | null>(null);
+  const [developer, setDeveloper] = useState<DeveloperInfo | null>(null);
 
   // Função para setar grupo e salvar no localStorage
   function setActiveGroup(group: CompanyGroup | null) {
@@ -80,6 +94,8 @@ export function MenuProvider({ children }: MenuProviderProps) {
         setActiveGroup,
         user,
         setUser,
+        developer,
+        setDeveloper,
       }}
     >
       {children}

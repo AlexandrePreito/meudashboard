@@ -63,7 +63,7 @@ export default function TrocarSenhaPage() {
 
   return (
     <MainLayout>
-      <div className="max-w-md mx-auto space-y-6 -mt-12">
+      <div className="max-w-md mx-auto space-y-6">
         <div>
           <button
             onClick={() => router.push('/perfil')}

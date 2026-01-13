@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   try {
     const user = await getAuthUser();
     if (!user) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+      return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -18,23 +18,41 @@ export async function GET(request: Request) {
     const actionType = searchParams.get('action_type');
     const dateFrom = searchParams.get('date_from');
     const dateTo = searchParams.get('date_to');
+    const groupId = searchParams.get('group_id');
+    const onlyMine = searchParams.get('only_mine') === 'true';
 
     const supabase = createAdminClient();
     const offset = (page - 1) * limit;
 
-    // Buscar grupo do usuário
-    let companyGroupId: string | null = null;
-    
-    if (!user.is_master) {
-      const { data: membership } = await supabase
+    // Buscar grupos e role do usuario
+    let userGroupIds: string[] = [];
+    let userRole = 'user';
+
+    if (user.is_master) {
+      userRole = 'master';
+    } else {
+      const { data: memberships } = await supabase
         .from('user_group_membership')
-        .select('company_group_id')
+        .select('company_group_id, role')
         .eq('user_id', user.id)
-        .eq('is_active', true)
-        .limit(1)
-        .maybeSingle();
+        .eq('is_active', true);
+
+      userGroupIds = memberships?.map(m => m.company_group_id) || [];
       
-      companyGroupId = membership?.company_group_id || null;
+      if (memberships?.some(m => m.role === 'admin')) {
+        userRole = 'admin';
+      }
+    }
+
+    // Se only_mine=true, usuario comum pode ver seus proprios logs
+    // Senao, usuario comum nao acessa config de logs
+    if (userRole === 'user' && !onlyMine) {
+      return NextResponse.json({ error: 'Sem permissao para acessar logs' }, { status: 403 });
+    }
+
+    // SEGURANCA: Validar acesso ao grupo
+    if (groupId && userRole !== 'master' && !userGroupIds.includes(groupId)) {
+      return NextResponse.json({ error: 'Sem permissao para este grupo' }, { status: 403 });
     }
 
     // Query base
@@ -55,13 +73,22 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    // Filtros
-    if (!user.is_master && companyGroupId) {
-      query = query.eq('company_group_id', companyGroupId);
+    // Se only_mine, filtra apenas logs do proprio usuario
+    if (onlyMine) {
+      query = query.eq('user_id', user.id);
+    } else {
+      // Filtrar por grupo
+      if (groupId) {
+        query = query.eq('company_group_id', groupId);
+      } else if (userRole !== 'master' && userGroupIds.length > 0) {
+        query = query.in('company_group_id', userGroupIds);
+      }
+
+      if (userId) {
+        query = query.eq('user_id', userId);
+      }
     }
-    if (userId) {
-      query = query.eq('user_id', userId);
-    }
+
     if (module) {
       query = query.eq('module', module);
     }
@@ -82,7 +109,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       logs: logs || [],
       total: count || 0,
       page,

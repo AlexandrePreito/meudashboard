@@ -30,10 +30,30 @@ import {
   History,
   ArrowUpDown,
   Crown,
-  Puzzle
+  Puzzle,
+  Code2,
+  Shield,
+  Code
 } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
+import { usePlanPermissions } from '@/hooks/usePlanPermissions';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
+
+const adminMenuItems = [
+  { href: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
+  { href: '/admin/desenvolvedores', icon: Code, label: 'Desenvolvedores' },
+  { href: '/admin/grupos', icon: Building2, label: 'Grupos' },
+  { href: '/admin/usuarios', icon: Users, label: 'Usuarios' },
+  { href: '/admin/relatorios', icon: BarChart3, label: 'Relatorios' },
+];
+
+const devMenuItems = [
+  { href: '/dev', icon: LayoutDashboard, label: 'Dashboard' },
+  { href: '/dev/relatorios', icon: BarChart3, label: 'Relatorios' },
+  { href: '/dev/groups', icon: Building2, label: 'Meus Grupos' },
+  { href: '/dev/quotas', icon: ArrowUpDown, label: 'Distribuir Quotas' },
+  { href: '/dev/perfil', icon: Settings, label: 'Meu Perfil' },
+];
 
 interface Screen {
   id: string;
@@ -56,11 +76,12 @@ const ICON_MAP: Record<string, any> = {
 export default function Sidebar() {
   const pathname = usePathname();
   const { isCollapsed, setIsCollapsed, activeGroup, user } = useMenu();
+  const { canUseAI, canUseAlerts, canUseWhatsApp, isStarterPlan } = usePlanPermissions();
   const [screens, setScreens] = useState<Screen[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Verifica se é usuário comum
-  const isRegularUser = !user?.is_master && user?.role === 'user';
+  const isRegularUser = !user?.is_master && !user?.is_developer && user?.role === 'user';
 
   // User comum sempre vê as telas no sidebar, independente da página
   const showScreens = isRegularUser || pathname === '/dashboard' || pathname.startsWith('/tela') || pathname.startsWith('/powerbi');
@@ -68,6 +89,8 @@ export default function Sidebar() {
   const showPowerBIMenu = pathname.startsWith('/powerbi') && !isRegularUser;
   const showConfigMenu = pathname.startsWith('/configuracoes');
   const showWhatsAppMenu = pathname.startsWith('/whatsapp') || pathname.startsWith('/alertas');
+  const showAdminMenu = pathname.startsWith('/admin');
+  const showDevMenu = pathname.startsWith('/dev');
 
   // Verifica se usuário pode ver menu de configurações (master ou admin)
   const canSeeConfig = user?.is_master || user?.role === 'admin';
@@ -76,8 +99,8 @@ export default function Sidebar() {
     { href: '/powerbi', icon: Activity, label: 'Dashboard' },
     { href: '/powerbi/conexoes', icon: LinkIcon, label: 'Conexões' },
     { href: '/powerbi/relatorios', icon: FileText, label: 'Relatórios' },
-    { href: '/powerbi/telas', icon: Layers, label: 'Telas' },
-    { href: '/powerbi/contextos', icon: Brain, label: 'Contextos IA' },
+    { href: '/powerbi/telas', icon: Layers, label: 'Telas', hideForDeveloper: true },
+    { href: '/powerbi/contextos', icon: Brain, label: 'Contextos IA', requiresPermission: 'ai' },
     { href: '/powerbi/ordem-atualizacao', icon: ArrowUpDown, label: 'Ordem Atualização' },
   ];
 
@@ -102,14 +125,14 @@ export default function Sidebar() {
       ];
 
   const whatsappMenuItems = [
-    { href: '/whatsapp', icon: LayoutDashboard, label: 'Dashboard' },
-    { href: '/whatsapp/instancias', icon: Smartphone, label: 'Instâncias' },
-    { href: '/whatsapp/numeros', icon: User, label: 'Números Autorizados' },
-    { href: '/whatsapp/grupos', icon: UsersRound, label: 'Grupos Autorizados' },
-    { href: '/whatsapp/mensagens', icon: MessageSquare, label: 'Mensagens' },
-    { href: '/alertas', icon: Bell, label: 'Alertas' },
-    { href: '/alertas/historico', icon: History, label: 'Histórico' },
-    { href: '/whatsapp/webhook', icon: Webhook, label: 'Webhook' },
+    { href: '/whatsapp', icon: LayoutDashboard, label: 'Dashboard', requiresPermission: 'whatsapp' },
+    { href: '/whatsapp/instancias', icon: Smartphone, label: 'Instâncias', requiresPermission: 'whatsapp' },
+    { href: '/whatsapp/numeros', icon: User, label: 'Números Autorizados', requiresPermission: 'whatsapp' },
+    { href: '/whatsapp/grupos', icon: UsersRound, label: 'Grupos Autorizados', requiresPermission: 'whatsapp' },
+    { href: '/whatsapp/mensagens', icon: MessageSquare, label: 'Mensagens', requiresPermission: 'whatsapp' },
+    { href: '/alertas', icon: Bell, label: 'Alertas', requiresPermission: 'alerts' },
+    { href: '/alertas/historico', icon: History, label: 'Histórico', requiresPermission: 'alerts' },
+    { href: '/whatsapp/webhook', icon: Webhook, label: 'Webhook', requiresPermission: 'whatsapp' },
   ];
 
   useEffect(() => {
@@ -200,6 +223,76 @@ export default function Sidebar() {
             </>
           )}
 
+          {/* Menu de Admin */}
+          {showAdminMenu && user?.is_master && (
+            <>
+              {!isCollapsed && (
+                <div className="px-4 pt-4 pb-2">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    Administracao
+                  </h3>
+                </div>
+              )}
+              <nav className="px-2 pb-4 border-b border-gray-100 mb-2">
+                {adminMenuItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = pathname === item.href ||
+                    (item.href !== '/admin' && pathname.startsWith(item.href));
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 ${
+                        isActive
+                          ? 'nav-active'
+                          : 'text-gray-600 hover:bg-gray-50'
+                      }`}
+                      title={item.label}
+                    >
+                      <Icon size={20} />
+                      {!isCollapsed && <span className="font-medium">{item.label}</span>}
+                    </Link>
+                  );
+                })}
+              </nav>
+            </>
+          )}
+
+          {/* Menu de Desenvolvedor */}
+          {showDevMenu && (
+            <>
+              {!isCollapsed && (
+                <div className="px-4 pt-4 pb-2">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    Desenvolvedor
+                  </h3>
+                </div>
+              )}
+              <nav className="px-2 pb-4 border-b border-gray-100 mb-2">
+                {devMenuItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = pathname === item.href || 
+                    (item.href !== '/dev' && pathname.startsWith(item.href));
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 ${
+                        isActive
+                          ? 'nav-active'
+                          : 'text-gray-600 hover:bg-gray-50'
+                      }`}
+                      title={item.label}
+                    >
+                      <Icon size={20} />
+                      {!isCollapsed && <span className="font-medium">{item.label}</span>}
+                    </Link>
+                  );
+                })}
+              </nav>
+            </>
+          )}
+
           {showWhatsAppMenu && (
             <>
               {!isCollapsed && (
@@ -218,6 +311,26 @@ export default function Sidebar() {
                   // Mas não marca quando estiver em /alertas/historico (que tem seu próprio item)
                   if (item.href === '/alertas' && pathname.startsWith('/alertas/') && !pathname.startsWith('/alertas/historico')) {
                     isActive = true;
+                  }
+                  
+                  // Verificar permissão (master e developer têm acesso total)
+                  const hasPermission = !item.requiresPermission || 
+                    user?.is_master ||
+                    user?.is_developer ||
+                    (item.requiresPermission === 'whatsapp' && canUseWhatsApp) ||
+                    (item.requiresPermission === 'alerts' && canUseAlerts);
+                  
+                  if (!hasPermission) {
+                    return (
+                      <div
+                        key={item.href}
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg mb-1 opacity-50 cursor-not-allowed"
+                        title="Disponível em planos superiores"
+                      >
+                        <Icon size={20} />
+                        {!isCollapsed && <span className="font-medium">{item.label}</span>}
+                      </div>
+                    );
                   }
                   
                   return (
@@ -250,9 +363,31 @@ export default function Sidebar() {
                 </div>
               )}
               <nav className="px-2 pb-4 border-b border-gray-100 mb-2">
-                  {powerBIMenuItems.map((item) => {
+                  {powerBIMenuItems
+                    .filter(item => !(item.hideForDeveloper && user?.is_developer))
+                    .map((item) => {
                     const Icon = item.icon;
                     const isActive = pathname === item.href;
+                    
+                    // Verificar permissão para IA (master e developer têm acesso total)
+                    const hasPermission = !item.requiresPermission || 
+                      user?.is_master ||
+                      user?.is_developer ||
+                      (item.requiresPermission === 'ai' && canUseAI);
+                    
+                    if (!hasPermission) {
+                      return (
+                        <div
+                          key={item.href}
+                          className="flex items-center gap-3 px-3 py-2 rounded-lg mb-1 opacity-50 cursor-not-allowed"
+                          title="Disponível em planos superiores"
+                        >
+                          <Icon size={20} />
+                          {!isCollapsed && <span className="font-medium">{item.label}</span>}
+                        </div>
+                      );
+                    }
+                    
                     return (
                       <Link
                         key={item.href}

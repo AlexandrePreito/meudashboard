@@ -1,6 +1,35 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
+
+// Função auxiliar para verificar permissão no grupo
+async function checkGroupPermission(supabase: any, user: any, groupId: string): Promise<boolean> {
+  // Master tem acesso total
+  if (user.is_master) return true;
+  
+  // Developer pode acessar grupos que criou
+  const developerId = await getUserDeveloperId(user.id);
+  if (developerId) {
+    const { data: group } = await supabase
+      .from('company_groups')
+      .select('id')
+      .eq('id', groupId)
+      .eq('developer_id', developerId)
+      .single();
+    return !!group;
+  }
+  
+  // Admin/User pode acessar via membership
+  const { data: membership } = await supabase
+    .from('user_group_membership')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('company_group_id', groupId)
+    .eq('is_active', true)
+    .single();
+  
+  return !!membership;
+}
 
 // GET - Buscar ordem de atualização de um grupo
 export async function GET(request: Request) {
@@ -18,6 +47,12 @@ export async function GET(request: Request) {
     }
 
     const supabase = createAdminClient();
+
+    // Verificar permissão no grupo
+    const hasPermission = await checkGroupPermission(supabase, user, groupId);
+    if (!hasPermission) {
+      return NextResponse.json({ error: 'Sem permissão para acessar este grupo' }, { status: 403 });
+    }
 
     // Buscar ordem configurada
     const { data: refreshOrder, error: orderError } = await supabase
@@ -140,11 +175,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'company_group_id é obrigatório' }, { status: 400 });
     }
 
+    const supabase = createAdminClient();
+
+    // Verificar permissão no grupo
+    const hasPermission = await checkGroupPermission(supabase, user, company_group_id);
+    if (!hasPermission) {
+      return NextResponse.json({ error: 'Sem permissão para acessar este grupo' }, { status: 403 });
+    }
+
     if (!Array.isArray(items)) {
       return NextResponse.json({ error: 'items deve ser um array' }, { status: 400 });
     }
-
-    const supabase = createAdminClient();
 
     // Verificar se já existe uma configuração
     const { data: existing } = await supabase

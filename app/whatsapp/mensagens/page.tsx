@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
+import { useMenu } from '@/contexts/MenuContext';
 import {
   MessageSquare,
   Loader2,
@@ -37,7 +38,8 @@ interface Instance {
   name: string;
 }
 
-export default function MensagensPage() {
+function MensagensContent() {
+  const { activeGroup } = useMenu();
   const [messages, setMessages] = useState<Message[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,20 +52,23 @@ export default function MensagensPage() {
   const itemsPerPage = 20;
 
   useEffect(() => {
-    loadData();
-  }, [filterDirection]);
+    loadData(activeGroup);
+  }, [filterDirection, activeGroup]);
 
-  async function loadData() {
+  async function loadData(currentGroup?: { id: string; name: string } | null) {
     setLoading(true);
-    await Promise.all([loadMessages(), loadInstances()]);
+    await Promise.all([loadMessages(currentGroup), loadInstances()]);
     setLoading(false);
   }
 
-  async function loadMessages() {
+  async function loadMessages(currentGroup?: { id: string; name: string } | null) {
     try {
       let url = '/api/whatsapp/messages?limit=100';
       if (filterDirection) {
         url += `&direction=${filterDirection}`;
+      }
+      if (currentGroup) {
+        url += `&group_id=${currentGroup.id}`;
       }
       const res = await fetch(url);
       if (res.ok) {
@@ -179,8 +184,8 @@ export default function MensagensPage() {
   }, [searchTerm, filterDirection, filterInstance]);
 
   return (
-    <MainLayout>
-      <div className="space-y-6 -mt-12">
+    <>
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -188,7 +193,7 @@ export default function MensagensPage() {
             <p className="text-gray-500 text-sm mt-1">Histórico de mensagens do WhatsApp</p>
           </div>
           <Button
-            onClick={loadData}
+            onClick={() => loadData(activeGroup)}
             disabled={loading}
             loading={loading}
             icon={<RefreshCw size={18} />}
@@ -393,9 +398,10 @@ export default function MensagensPage() {
             )}
           </div>
         )}
+      </div>
 
-        {/* Painel Lateral de Detalhes */}
-        {showDetailsPanel && selectedMessage && (
+      {/* Painel Lateral de Detalhes */}
+      {showDetailsPanel && selectedMessage && (
           <div className="fixed inset-y-0 right-0 w-[450px] bg-white shadow-2xl z-50 flex flex-col">
             {/* Header */}
             <div className="px-4 h-16 flex items-center justify-between text-white" style={{ backgroundColor: 'var(--color-primary)' }}>
@@ -544,7 +550,14 @@ export default function MensagensPage() {
             </div>
           </div>
         )}
-      </div>
+    </>
+  );
+}
+
+export default function MensagensPage() {
+  return (
+    <MainLayout>
+      <MensagensContent />
     </MainLayout>
   );
 }

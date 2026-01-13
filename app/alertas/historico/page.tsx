@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
+import { useMenu } from '@/contexts/MenuContext';
 import { 
   History, 
   Bell, 
@@ -27,7 +28,8 @@ interface HistoryItem {
   };
 }
 
-export default function HistoricoAlertasPage() {
+function HistoricoContent() {
+  const { activeGroup } = useMenu();
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -36,10 +38,10 @@ export default function HistoricoAlertasPage() {
   const limit = 20;
 
   useEffect(() => {
-    fetchHistory();
-  }, [page, filter]);
+    fetchHistory(activeGroup);
+  }, [page, filter, activeGroup]);
 
-  async function fetchHistory() {
+  async function fetchHistory(currentGroup?: { id: string; name: string } | null) {
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -47,6 +49,7 @@ export default function HistoricoAlertasPage() {
         offset: (page * limit).toString()
       });
       if (filter) params.append('alert_id', filter);
+      if (currentGroup) params.append('group_id', currentGroup.id);
 
       const res = await fetch(`/api/alertas/historico?${params}`);
       if (res.ok) {
@@ -84,22 +87,16 @@ export default function HistoricoAlertasPage() {
   const totalPages = Math.ceil(total / limit);
 
   return (
-    <MainLayout>
-      <div className="p-6 -mt-12">
+    <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <History className="text-purple-600" size={24} />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-800">Histórico de Alertas</h1>
-              <p className="text-gray-500 text-sm">Registro de todos os alertas disparados</p>
-            </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Histórico de Alertas</h1>
+            <p className="text-gray-500 mt-1">Registro de todos os alertas disparados</p>
           </div>
 
           <Button
-            onClick={() => fetchHistory()}
+            onClick={() => fetchHistory(activeGroup)}
             disabled={loading}
             loading={loading}
             icon={<RefreshCw size={16} />}
@@ -295,7 +292,14 @@ export default function HistoricoAlertasPage() {
             </div>
           )}
         </div>
-      </div>
+    </div>
+  );
+}
+
+export default function HistoricoAlertasPage() {
+  return (
+    <MainLayout>
+      <HistoricoContent />
     </MainLayout>
   );
 }

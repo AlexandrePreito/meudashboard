@@ -44,6 +44,8 @@ export default function GatewaysPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedGateway, setExpandedGateway] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string>('user');
+  const [accessDenied, setAccessDenied] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -74,8 +76,38 @@ export default function GatewaysPage() {
   };
 
   useEffect(() => {
-    loadData();
+    checkAccessAndLoad();
   }, []);
+
+  async function checkAccessAndLoad() {
+    try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      
+      if (data.user) {
+        if (data.user.is_master) {
+          setUserRole('master');
+        } else if (data.user.is_developer) {
+          setUserRole('developer');
+        } else if (data.user.role === 'admin') {
+          setUserRole('admin');
+        } else {
+          setUserRole('user');
+          setAccessDenied(true);
+          setLoading(false);
+          return;
+        }
+        loadData();
+      } else {
+        setAccessDenied(true);
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Erro ao verificar acesso:', error);
+      setAccessDenied(true);
+      setLoading(false);
+    }
+  }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -123,6 +155,19 @@ export default function GatewaysPage() {
     }
   };
 
+  if (accessDenied) {
+    return (
+      <MainLayout>
+        <div className="flex flex-col items-center justify-center min-h-[60vh]">
+          <Database className="w-16 h-16 text-gray-300 mb-4" />
+          <h2 className="text-xl font-semibold text-gray-700 mb-2">Acesso restrito</h2>
+          <p className="text-gray-500 mb-4">Este modulo nao esta disponivel para seu perfil.</p>
+          <p className="text-sm text-gray-400">Apenas administradores podem acessar.</p>
+        </div>
+      </MainLayout>
+    );
+  }
+
   if (error === 'restricted') {
     return (
       <MainLayout>
@@ -137,7 +182,7 @@ export default function GatewaysPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-6 -mt-12">
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>

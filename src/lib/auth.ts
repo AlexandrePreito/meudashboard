@@ -1,36 +1,17 @@
-/**
- * Biblioteca de Autenticação JWT
- * 
- * Gerencia autenticação baseada em JWT para o sistema MeuDashboard.
- * 
- * Funcionalidades:
- * - Criação e verificação de tokens JWT
- * - Gerenciamento de cookies de autenticação
- * - Validação de usuários autenticados
- * - Integração com Supabase para validação de usuários
- */
-
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { supabase } from './supabase';
+import { createAdminClient } from './supabase/admin';
 import type { AuthUser, JWTPayload } from '@/types';
 
-/**
- * Retorna a chave secreta JWT codificada
- */
 function getJwtSecret(): Uint8Array {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
-    throw new Error('JWT_SECRET não configurado');
+    throw new Error('JWT_SECRET nao configurado');
   }
   return new TextEncoder().encode(secret);
 }
 
-/**
- * Cria um token JWT com o payload fornecido
- * @param payload - Dados do usuário para incluir no token
- * @returns Token JWT assinado
- */
 export async function createToken(payload: JWTPayload): Promise<string> {
   try {
     const secret = getJwtSecret();
@@ -38,18 +19,12 @@ export async function createToken(payload: JWTPayload): Promise<string> {
       .setProtectedHeader({ alg: 'HS256' })
       .setExpirationTime('7d')
       .sign(secret);
-    
     return token;
   } catch (error) {
     throw new Error('Erro ao criar token JWT');
   }
 }
 
-/**
- * Verifica e decodifica um token JWT
- * @param token - Token JWT a ser verificado
- * @returns Payload decodificado ou null se inválido
- */
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
     const secret = getJwtSecret();
@@ -60,16 +35,10 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
   }
 }
 
-/**
- * Define o cookie de autenticação
- * @param token - Token JWT a ser armazenado
- */
 export async function setAuthCookie(token: string): Promise<void> {
   try {
     const cookieStore = await cookies();
     const isProduction = process.env.NODE_ENV === 'production';
-
-    // Em produção, define o domain para funcionar com e sem www
     const cookieOptions: {
       httpOnly: boolean;
       secure: boolean;
@@ -81,79 +50,55 @@ export async function setAuthCookie(token: string): Promise<void> {
       httpOnly: true,
       secure: isProduction,
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7, // 7 dias em segundos
+      maxAge: 60 * 60 * 24 * 7,
       path: '/',
     };
-
-    // Adiciona domain em produção para funcionar em www e sem www
     if (isProduction) {
-      cookieOptions.domain = '.meudashboard.org'; // O ponto permite subdomínios
+      cookieOptions.domain = '.meudashboard.org';
     }
-
-    cookieStore.set('auth_token', token, cookieOptions);
+    cookieStore.set('auth-token', token, cookieOptions);
   } catch (error) {
-    throw new Error('Erro ao definir cookie de autenticação');
+    throw new Error('Erro ao definir cookie');
   }
 }
 
-/**
- * Remove o cookie de autenticação
- */
 export async function removeAuthCookie(): Promise<void> {
   try {
     const cookieStore = await cookies();
-    cookieStore.delete('auth_token');
+    cookieStore.delete('auth-token');
   } catch (error) {
-    throw new Error('Erro ao remover cookie de autenticação');
+    throw new Error('Erro ao remover cookie');
   }
 }
 
-/**
- * Obtém o usuário autenticado a partir do cookie
- * @returns Usuário autenticado ou null se não autenticado/inválido
- */
 export async function getAuthUser(): Promise<AuthUser | null> {
   try {
     const cookieStore = await cookies();
-    const token = cookieStore.get('auth_token')?.value;
-
+    const token = cookieStore.get('auth-token')?.value;
     if (!token) {
       return null;
     }
-
     const payload = await verifyToken(token);
     if (!payload) {
       return null;
     }
-
-    // Extrai o session_id do payload junto com o id
-    const sessionId = payload.session_id;
+    // const sessionId = payload.session_id;
     const userId = payload.id;
-
-    // Busca o usuário no Supabase (incluindo current_session_id)
-    const { data: user, error } = await supabase
+    const adminSupabase = createAdminClient();
+    const { data: user, error } = await adminSupabase
       .from('users')
       .select('id, email, full_name, is_master, status, avatar_url, current_session_id')
       .eq('id', userId)
       .single();
-
     if (error || !user) {
       return null;
     }
-
-    // Verifica se a sessão ainda é válida (login único)
-    // Se current_session_id do banco for diferente do session_id do token,
-    // significa que outra sessão foi iniciada e esta foi invalidada
-    if (user.current_session_id !== sessionId) {
-      return null;
-    }
-
-    // Verifica se o usuário não está suspenso
+    // if (user.current_session_id !== sessionId) {
+    //   return null;
+    // }
     if (user.status === 'suspended') {
       return null;
     }
-
-    // Retorna o usuário no formato AuthUser
     return {
       id: user.id,
       email: user.email,
@@ -167,3 +112,57 @@ export async function getAuthUser(): Promise<AuthUser | null> {
   }
 }
 
+export async function getUserDeveloperId(userId: string): Promise<string | null> {
+  try {
+    const adminSupabase = createAdminClient();
+    
+    // Primeiro, buscar direto na tabela users (campo developer_id)
+    const { data: userData, error: userError } = await adminSupabase
+      .from('users')
+      .select('developer_id')
+      .eq('id', userId)
+      .single();
+    
+    if (!userError && userData?.developer_id) {
+      return userData.developer_id;
+    }
+    
+    // Fallback: buscar na tabela developer_users (para compatibilidade)
+    const { data, error } = await adminSupabase
+      .from('developer_users')
+      .select('developer_id')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle();
+    
+    if (error || !data) {
+      return null;
+    }
+    return data.developer_id;
+  } catch (error) {
+    return null;
+  }
+}
+
+export async function getAuthUserWithDeveloper(): Promise<(AuthUser & { developer_id?: string; developer_role?: string }) | null> {
+  try {
+    const user = await getAuthUser();
+    if (!user) return null;
+    const adminSupabase = createAdminClient();
+    const { data: devUser } = await adminSupabase
+      .from('developer_users')
+      .select('developer_id, role')
+      .eq('user_id', user.id)
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle();
+    return {
+      ...user,
+      developer_id: devUser?.developer_id || undefined,
+      developer_role: devUser?.role || undefined,
+    };
+  } catch (error) {
+    return null;
+  }
+}

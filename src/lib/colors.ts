@@ -95,5 +95,41 @@ export const brandColors = {
 export type BrandColor = keyof typeof brandColors;
 
 export function getColorConfig(color: string) {
+  // Se for um codigo hex, gera as variacoes automaticamente
+  if (color.startsWith('#')) {
+    return {
+      name: 'Custom',
+      primary: color,
+      hover: adjustColor(color, -20), // mais escuro
+      light: adjustColor(color, 80, 0.2), // mais claro com transparencia
+      text: adjustColor(color, -40) // ainda mais escuro
+    };
+  }
+  
   return brandColors[color as BrandColor] || brandColors.blue;
+}
+
+// Funcao auxiliar para ajustar cor
+function adjustColor(hex: string, amount: number, alpha?: number): string {
+  // Remove o # se existir
+  hex = hex.replace('#', '');
+  
+  // Converte para RGB
+  let r = parseInt(hex.substring(0, 2), 16);
+  let g = parseInt(hex.substring(2, 4), 16);
+  let b = parseInt(hex.substring(4, 6), 16);
+  
+  // Ajusta os valores
+  r = Math.max(0, Math.min(255, r + amount));
+  g = Math.max(0, Math.min(255, g + amount));
+  b = Math.max(0, Math.min(255, b + amount));
+  
+  // Se tiver alpha, retorna rgba
+  if (alpha !== undefined) {
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  
+  // Converte de volta para hex
+  const toHex = (n: number) => n.toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }

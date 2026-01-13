@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
 
 export async function GET() {
   try {
@@ -14,14 +14,34 @@ export async function GET() {
     const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
 
     // Buscar grupo do usuário
-    const { data: membership } = await supabase
-      .from('user_group_membership')
-      .select('company_group_id')
-      .eq('user_id', user.id)
-      .limit(1)
-      .maybeSingle();
+    let companyGroupId: string | null = null;
+    
+    // Verificar se é developer
+    const developerId = await getUserDeveloperId(user.id);
+    
+    if (developerId) {
+      // Developer: pegar primeiro grupo ativo
+      const { data: devGroups } = await supabase
+        .from('company_groups')
+        .select('id')
+        .eq('developer_id', developerId)
+        .eq('status', 'active')
+        .limit(1);
+      
+      companyGroupId = devGroups?.[0]?.id || null;
+    } else {
+      // Usuário normal: buscar via membership
+      const { data: membership } = await supabase
+        .from('user_group_membership')
+        .select('company_group_id')
+        .eq('user_id', user.id)
+        .limit(1)
+        .maybeSingle();
 
-    if (!membership?.company_group_id) {
+      companyGroupId = membership?.company_group_id || null;
+    }
+
+    if (!companyGroupId) {
       return NextResponse.json({ used_this_month: 0, monthly_limit: 100 });
     }
 
@@ -29,7 +49,7 @@ export async function GET() {
     const { data: groupData } = await supabase
       .from('company_groups')
       .select('plan_id')
-      .eq('id', membership.company_group_id)
+      .eq('id', companyGroupId)
       .single();
 
     let monthlyLimit = 100;
@@ -50,7 +70,7 @@ export async function GET() {
     const { count } = await supabase
       .from('whatsapp_messages')
       .select('*', { count: 'exact', head: true })
-      .eq('company_group_id', membership.company_group_id)
+      .eq('company_group_id', companyGroupId)
       .eq('direction', 'outgoing')
       .gte('created_at', firstDayOfMonth);
 

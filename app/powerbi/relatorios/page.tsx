@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
+import { useMenu } from '@/contexts/MenuContext';
 import { 
   Plus, 
   Pencil, 
@@ -11,13 +12,19 @@ import {
   FileText,
   Link as LinkIcon,
   Search,
-  Copy
+  Copy,
+  Database
 } from 'lucide-react';
 
 interface Connection {
   id: string;
   name: string;
   workspace_id: string;
+  company_group_id?: string;
+  company_group?: {
+    id: string;
+    name: string;
+  };
 }
 
 interface Report {
@@ -40,7 +47,9 @@ interface PowerBIReport {
   datasetId: string;
 }
 
-export default function RelatoriosPage() {
+// Componente interno que usa o contexto
+function RelatoriosContent() {
+  const { activeGroup } = useMenu();
   const [reports, setReports] = useState<Report[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +60,8 @@ export default function RelatoriosPage() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [pbiReports, setPbiReports] = useState<PowerBIReport[]>([]);
   const [loadingPbiData, setLoadingPbiData] = useState(false);
+  const [userRole, setUserRole] = useState<string>('user');
+  const [accessDenied, setAccessDenied] = useState(false);
   
   const [form, setForm] = useState({
     connection_id: '',
@@ -60,14 +71,59 @@ export default function RelatoriosPage() {
   });
 
   useEffect(() => {
-    loadData();
+    checkAccessAndLoad();
   }, []);
 
-  async function loadData() {
+  useEffect(() => {
+    if (userRole !== 'user') {
+      loadData(activeGroup);
+    }
+  }, [activeGroup, userRole]);
+
+  async function checkAccessAndLoad() {
     try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      
+      if (data.user) {
+        if (data.user.is_master) {
+          setUserRole('master');
+        } else if (data.user.is_developer) {
+          setUserRole('developer');
+        } else if (data.user.role === 'admin') {
+          setUserRole('admin');
+        } else {
+          setUserRole('user');
+          setAccessDenied(true);
+          setLoading(false);
+          return;
+        }
+        loadData(activeGroup);
+      } else {
+        setAccessDenied(true);
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Erro ao verificar acesso:', error);
+      setAccessDenied(true);
+      setLoading(false);
+    }
+  }
+
+  async function loadData(currentGroup?: { id: string; name: string } | null) {
+    try {
+      // Montar URL com filtro de grupo se houver grupo ativo
+      const reportsUrl = currentGroup
+        ? `/api/powerbi/reports?group_id=${currentGroup.id}`
+        : '/api/powerbi/reports';
+      
+      const connectionsUrl = currentGroup
+        ? `/api/powerbi/connections?group_id=${currentGroup.id}`
+        : '/api/powerbi/connections';
+        
       const [reportsRes, connectionsRes] = await Promise.all([
-        fetch('/api/powerbi/reports'),
-        fetch('/api/powerbi/connections')
+        fetch(reportsUrl),
+        fetch(connectionsUrl)
       ]);
 
       if (reportsRes.ok) {
@@ -169,7 +225,7 @@ export default function RelatoriosPage() {
 
       if (res.ok) {
         setShowModal(false);
-        loadData();
+        loadData(activeGroup);
       } else {
         const data = await res.json();
         alert(data.error || 'Erro ao salvar');
@@ -191,7 +247,7 @@ export default function RelatoriosPage() {
       });
 
       if (res.ok) {
-        loadData();
+        loadData(activeGroup);
       } else {
         const data = await res.json();
         alert(data.error || 'Erro ao excluir');
@@ -201,19 +257,28 @@ export default function RelatoriosPage() {
     }
   }
 
+  if (accessDenied) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Database className="w-16 h-16 text-gray-300 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700 mb-2">Acesso restrito</h2>
+        <p className="text-gray-500 mb-4">Este modulo nao esta disponivel para seu perfil.</p>
+        <p className="text-sm text-gray-400">Apenas administradores podem acessar.</p>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
-      <MainLayout>
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-        </div>
-      </MainLayout>
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
     );
   }
 
   return (
-    <MainLayout>
-      <div className="space-y-6 -mt-12">
+    <>
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Relatórios Power BI</h1>
@@ -271,6 +336,7 @@ export default function RelatoriosPage() {
                   <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Report ID</th>
                   <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Dataset ID</th>
                   <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Conexão</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Grupo</th>
                   <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Ações</th>
                 </tr>
               </thead>
@@ -297,6 +363,9 @@ export default function RelatoriosPage() {
                     <td className="px-6 py-4 text-sm text-gray-600 font-mono">{report.report_id}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 font-mono">{report.dataset_id}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{report.connection?.name}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {report.connection?.company_group?.name || '-'}
+                    </td>
                     <td className="px-6 py-4 text-right">
                       <button
                         onClick={() => openModal(report)}
@@ -436,10 +505,15 @@ export default function RelatoriosPage() {
           </div>
         </div>
       )}
-    </MainLayout>
+    </>
   );
 }
 
-
-
-
+// Componente principal exportado
+export default function RelatoriosPage() {
+  return (
+    <MainLayout>
+      <RelatoriosContent />
+    </MainLayout>
+  );
+}

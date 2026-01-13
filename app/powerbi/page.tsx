@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
+import { useMenu } from '@/contexts/MenuContext';
 import { 
   Database, 
   RefreshCw, 
@@ -44,7 +45,8 @@ interface Summary {
   stale: number;
 }
 
-export default function PowerBIDashboardPage() {
+function PowerBIDashboardContent() {
+  const { activeGroup } = useMenu();
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [dataflows, setDataflows] = useState<Dataflow[]>([]);
   const [datasetsSummary, setDatasetsSummary] = useState<Summary>({ total: 0, updated: 0, failed: 0, stale: 0 });
@@ -56,15 +58,24 @@ export default function PowerBIDashboardPage() {
   const [historyModal, setHistoryModal] = useState<{ open: boolean; datasetId: string; datasetName: string; connectionName: string } | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [userRole, setUserRole] = useState<string>('user');
+  const [accessDenied, setAccessDenied] = useState(false);
 
-  const loadData = async () => {
+  const loadData = async (currentGroup?: { id: string; name: string } | null) => {
     try {
       setLoading(true);
       setError(null);
 
+      const datasetsUrl = currentGroup 
+        ? `/api/powerbi/datasets/status?group_id=${currentGroup.id}`
+        : '/api/powerbi/datasets/status';
+      const dataflowsUrl = currentGroup
+        ? `/api/powerbi/dataflows/status?group_id=${currentGroup.id}`
+        : '/api/powerbi/dataflows/status';
+
       const [datasetsRes, dataflowsRes] = await Promise.all([
-        fetch('/api/powerbi/datasets/status'),
-        fetch('/api/powerbi/dataflows/status')
+        fetch(datasetsUrl),
+        fetch(dataflowsUrl)
       ]);
 
       if (datasetsRes.ok) {
@@ -86,8 +97,44 @@ export default function PowerBIDashboardPage() {
   };
 
   useEffect(() => {
-    loadData();
+    checkAccessAndLoad();
   }, []);
+
+  useEffect(() => {
+    if (userRole !== 'user') {
+      loadData(activeGroup);
+    }
+  }, [activeGroup, userRole]);
+
+  async function checkAccessAndLoad() {
+    try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      
+      if (data.user) {
+        if (data.user.is_master) {
+          setUserRole('master');
+        } else if (data.user.is_developer) {
+          setUserRole('developer');
+        } else if (data.user.role === 'admin') {
+          setUserRole('admin');
+        } else {
+          setUserRole('user');
+          setAccessDenied(true);
+          setLoading(false);
+          return;
+        }
+        loadData(activeGroup);
+      } else {
+        setAccessDenied(true);
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Erro ao verificar acesso:', error);
+      setAccessDenied(true);
+      setLoading(false);
+    }
+  }
 
   const getStatusIcon = (status: string, isStale: boolean) => {
     if (status === 'Failed') return <XCircle className="w-5 h-5 text-red-500" />;
@@ -142,7 +189,7 @@ export default function PowerBIDashboardPage() {
       if (res.ok) {
         alert('Atualização iniciada com sucesso!');
         // Recarrega os dados após 2 segundos
-        setTimeout(() => loadData(), 2000);
+        setTimeout(() => loadData(activeGroup), 2000);
       } else {
         alert(data.error || 'Erro ao iniciar atualização');
       }
@@ -213,9 +260,20 @@ export default function PowerBIDashboardPage() {
   const totalStale = datasetsSummary.stale + dataflowsSummary.stale;
   const healthPercentage = totalItems > 0 ? Math.round((totalUpdated / totalItems) * 100) : 0;
 
+  if (accessDenied) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Database className="w-16 h-16 text-gray-300 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700 mb-2">Power BI nao disponivel</h2>
+        <p className="text-gray-500 mb-4">Este modulo nao esta disponivel para seu perfil.</p>
+        <p className="text-sm text-gray-400">Apenas administradores podem acessar.</p>
+      </div>
+    );
+  }
+
   return (
-    <MainLayout>
-      <div className="space-y-6 -mt-12">
+    <>
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -223,7 +281,7 @@ export default function PowerBIDashboardPage() {
             <p className="text-gray-500 text-sm mt-1">Monitoramento de atualizações e status dos recursos</p>
           </div>
           <Button
-            onClick={loadData}
+            onClick={() => loadData(activeGroup)}
             disabled={loading}
             loading={loading}
             icon={<RefreshCw size={16} />}
@@ -524,6 +582,14 @@ export default function PowerBIDashboardPage() {
           </div>
         )}
       </div>
+    </>
+  );
+}
+
+export default function PowerBIDashboardPage() {
+  return (
+    <MainLayout>
+      <PowerBIDashboardContent />
     </MainLayout>
   );
 }

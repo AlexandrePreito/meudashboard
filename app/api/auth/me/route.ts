@@ -4,7 +4,7 @@
  * Endpoint GET que retorna os dados do usuário autenticado.
  */
 import { NextResponse } from 'next/server';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function GET() {
@@ -24,7 +24,14 @@ export async function GET() {
     let role: string | null = null;
     let groupIds: string[] = [];
     
+    // Verificar se é desenvolvedor
+    let isDeveloper = false;
     if (!user.is_master) {
+      const developerId = await getUserDeveloperId(user.id);
+      isDeveloper = !!developerId;
+    }
+    
+    if (!user.is_master && !isDeveloper) {
       const supabase = createAdminClient();
       
       // Buscar memberships do usuário
@@ -46,10 +53,11 @@ export async function GET() {
         email: user.email,
         full_name: user.full_name,
         is_master: user.is_master,
+        is_developer: isDeveloper,
         status: user.status,
-        role: user.is_master ? 'master' : role,
+        role: user.is_master ? 'master' : (isDeveloper ? 'developer' : role),
       },
-      role: user.is_master ? 'master' : role,
+      role: user.is_master ? 'master' : (isDeveloper ? 'developer' : role),
       groupIds: groupIds  // GARANTIR QUE ISSO ESTÁ SENDO RETORNADO
     });
   } catch (error) {

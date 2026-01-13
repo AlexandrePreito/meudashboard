@@ -137,7 +137,7 @@ export default function PerfilPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-6 -mt-12">
+      <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Meus Dados</h1>
           <p className="text-gray-500 text-sm mt-1">Gerencie suas informações pessoais</p>

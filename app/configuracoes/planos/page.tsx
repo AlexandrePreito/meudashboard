@@ -39,6 +39,25 @@ interface Plan {
   ai_enabled: boolean;
 }
 
+interface DeveloperPlan {
+  id: string;
+  name: string;
+  description: string;
+  max_groups: number;
+  max_users: number;
+  max_screens: number;
+  max_alerts: number;
+  max_whatsapp_messages_per_day: number;
+  max_alert_executions_per_day: number;
+  max_ai_credits_per_day: number;
+  max_dataset_refreshes_per_day: number;
+  ai_enabled: boolean;
+  is_active: boolean;
+  display_order: number;
+  price_monthly: number;
+  price_yearly: number;
+}
+
 export default function PlanosPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +65,8 @@ export default function PlanosPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<'powerbi' | 'developer'>('powerbi');
+  const [developerPlans, setDeveloperPlans] = useState<DeveloperPlan[]>([]);
   const { notifications, success, error, removeNotification } = useNotification();
 
   // Função para determinar a cor do plano baseado no nome
@@ -95,6 +116,13 @@ export default function PlanosPage() {
       if (plansRes.ok) {
         const data = await plansRes.json();
         setPlans(data.plans || []);
+      }
+
+      // Carregar planos de desenvolvedor
+      const devPlansRes = await fetch('/api/plans/developer');
+      if (devPlansRes.ok) {
+        const devData = await devPlansRes.json();
+        setDeveloperPlans(devData.plans || []);
       }
     } catch (err) {
       console.error('Erro:', err);
@@ -212,31 +240,56 @@ export default function PlanosPage() {
   return (
     <MainLayout>
       <Notifications notifications={notifications} onRemove={removeNotification} />
-      <div className="space-y-6 -mt-12">
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Planos</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Planos de Assinatura</h1>
             <p className="text-gray-500 text-sm mt-1">Gerencie os planos de assinatura do sistema</p>
           </div>
           <Button onClick={handleNew} icon={<Plus size={20} />}>
-            Novo Plano
+            {activeTab === 'powerbi' ? 'Novo Plano PowerBI' : 'Novo Plano Dev'}
           </Button>
         </div>
 
+        {/* Abas */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setActiveTab('powerbi')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              activeTab === 'powerbi'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            Planos PowerBI ({plans.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('developer')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              activeTab === 'developer'
+                ? 'bg-purple-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            Planos Desenvolvedor ({developerPlans.length})
+          </button>
+        </div>
+
         {/* Lista de Planos */}
-        {plans.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-            <Crown className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum plano cadastrado</h3>
-            <p className="text-gray-500 mb-4">Crie o primeiro plano para começar</p>
-            <Button onClick={handleNew} icon={<Plus size={18} />}>
-              Criar Primeiro Plano
-            </Button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {plans.map(plan => (
+        {activeTab === 'powerbi' ? (
+          plans.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+              <Crown className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum plano cadastrado</h3>
+              <p className="text-gray-500 mb-4">Crie o primeiro plano para começar</p>
+              <Button onClick={handleNew} icon={<Plus size={18} />}>
+                Criar Primeiro Plano
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {plans.map(plan => (
               <div 
                 key={plan.id} 
                 className={`bg-white rounded-lg border border-gray-200 ${getPlanColor(plan.name)} border-l-4 shadow-sm hover:shadow-md transition-shadow`}
@@ -316,6 +369,120 @@ export default function PlanosPage() {
               </div>
             ))}
           </div>
+        )
+        ) : (
+          developerPlans.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+              <Crown className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum plano cadastrado</h3>
+              <p className="text-gray-500 mb-4">Crie o primeiro plano para começar</p>
+              <Button onClick={handleNew} icon={<Plus size={18} />}>
+                Criar Primeiro Plano
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {developerPlans.map((plan) => (
+                <div key={plan.id} className={`bg-white rounded-lg border-l-4 ${getPlanColor(plan.name)} shadow-sm p-4`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Crown className="w-5 h-5 text-purple-500" />
+                    <h3 className="font-semibold text-gray-900">{plan.name}</h3>
+                  </div>
+                  <p className="text-sm text-gray-500 mb-4">{plan.description}</p>
+                  
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-2 text-gray-600">
+                        <Building2 className="w-4 h-4" /> Grupos:
+                      </span>
+                      <span className="font-medium">{plan.max_groups || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-2 text-gray-600">
+                        <Users className="w-4 h-4" /> Usuarios:
+                      </span>
+                      <span className="font-medium">{plan.max_users || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-2 text-gray-600">
+                        <Monitor className="w-4 h-4" /> Telas:
+                      </span>
+                      <span className="font-medium">{plan.max_screens || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-2 text-gray-600">
+                        <Bell className="w-4 h-4" /> Alertas:
+                      </span>
+                      <span className="font-medium">{plan.max_alerts || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-2 text-gray-600">
+                        <RefreshCw className="w-4 h-4" /> Refresh/dia:
+                      </span>
+                      <span className="font-medium">{plan.max_dataset_refreshes_per_day || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-2 text-gray-600">
+                        <MessageCircle className="w-4 h-4" /> WhatsApp/dia:
+                      </span>
+                      <span className="font-medium">{plan.max_whatsapp_messages_per_day || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-2 text-gray-600">
+                        <Bot className="w-4 h-4" /> Creditos IA/dia:
+                      </span>
+                      <span className="font-medium">{plan.max_ai_credits_per_day || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-2 text-gray-600">
+                        <AlertCircle className="w-4 h-4" /> Exec. Alertas/dia:
+                      </span>
+                      <span className="font-medium">{plan.max_alert_executions_per_day || 0}</span>
+                    </div>
+                  </div>
+
+                  {/* Precos */}
+                  {(plan.price_monthly || plan.price_yearly) && (
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <div className="flex justify-between text-sm">
+                        {plan.price_monthly && (
+                          <span className="text-gray-600">
+                            Mensal: <span className="font-semibold text-green-600">R$ {plan.price_monthly}</span>
+                          </span>
+                        )}
+                        {plan.price_yearly && (
+                          <span className="text-gray-600">
+                            Anual: <span className="font-semibold text-green-600">R$ {plan.price_yearly}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {isSuperAdmin && (
+                    <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
+                      <button
+                        onClick={() => {
+                          // TODO: implementar edicao de plano dev
+                        }}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          // TODO: implementar exclusao de plano dev
+                        }}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )
         )}
       </div>
 

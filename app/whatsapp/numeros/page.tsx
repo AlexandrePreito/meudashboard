@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
 import DatasetSelector from '@/components/whatsapp/DatasetSelector';
+import { useMenu } from '@/contexts/MenuContext';
 import {
   Users,
   Plus,
@@ -42,8 +43,9 @@ interface Instance {
   name: string;
 }
 
-export default function NumerosAutorizadosPage() {
+function NumerosContent() {
   const router = useRouter();
+  const { activeGroup } = useMenu();
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>('loading');
   const [userGroupIds, setUserGroupIds] = useState<string[]>([]);
@@ -71,6 +73,12 @@ export default function NumerosAutorizadosPage() {
     checkAccessAndLoad();
   }, []);
 
+  useEffect(() => {
+    if (userRole !== 'user') {
+      loadNumbers(activeGroup);
+    }
+  }, [activeGroup, userRole]);
+
   async function checkAccessAndLoad() {
     try {
       const res = await fetch('/api/auth/me');
@@ -85,33 +93,37 @@ export default function NumerosAutorizadosPage() {
       
       if (data.user.is_master) {
         setUserRole('master');
+      } else if (data.user.is_developer) {
+        setUserRole('developer');
       } else if (data.role === 'admin') {
         setUserRole('admin');
         // IMPORTANTE: Garantir que groupIds está sendo setado
         setUserGroupIds(data.groupIds || []);
         console.log('Admin groupIds:', data.groupIds); // Debug
       } else {
-        // User sem acesso - redirecionar
-        router.push('/');
-        return;
+        setUserRole('user');
       }
       
-      loadData();
+      loadData(activeGroup);
     } catch (error) {
       console.error('Erro ao verificar acesso:', error);
       router.push('/login');
     }
   }
 
-  async function loadData() {
+  async function loadData(currentGroup?: { id: string; name: string } | null) {
     setLoading(true);
-    await Promise.all([loadNumbers(), loadInstances()]);
+    await Promise.all([loadNumbers(currentGroup), loadInstances()]);
     setLoading(false);
   }
 
-  async function loadNumbers() {
+  async function loadNumbers(currentGroup?: { id: string; name: string } | null) {
     try {
-      const res = await fetch('/api/whatsapp/authorized-numbers');
+      const url = currentGroup
+        ? `/api/whatsapp/authorized-numbers?group_id=${currentGroup.id}`
+        : '/api/whatsapp/authorized-numbers';
+      
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setNumbers(data.numbers || []);
@@ -204,7 +216,7 @@ export default function NumerosAutorizadosPage() {
         alert(editingNumber ? 'Número atualizado!' : 'Número autorizado!');
         setShowModal(false);
         resetForm();
-        loadNumbers();
+        loadNumbers(activeGroup);
       } else {
         const data = await res.json();
         alert(data.error || 'Erro ao salvar');
@@ -223,7 +235,7 @@ export default function NumerosAutorizadosPage() {
       const res = await fetch(`/api/whatsapp/authorized-numbers?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
         alert('Número removido!');
-        loadNumbers();
+        loadNumbers(activeGroup);
       } else {
         const data = await res.json();
         alert(data.error || 'Erro ao remover');
@@ -247,7 +259,7 @@ export default function NumerosAutorizadosPage() {
       });
 
       if (res.ok) {
-        loadNumbers();
+        loadNumbers(activeGroup);
       }
     } catch (err) {
       console.error('Erro ao atualizar:', err);
@@ -294,9 +306,19 @@ export default function NumerosAutorizadosPage() {
     );
   }
 
+  // Acesso negado para usuários comuns (se necessário, mostrar mensagem)
+  if (userRole === 'user') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Phone className="w-16 h-16 text-gray-300 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700 mb-2">Acesso restrito</h2>
+        <p className="text-gray-500 mb-4">Este módulo não está disponível para seu perfil.</p>
+      </div>
+    );
+  }
+
   return (
-    <MainLayout>
-      <div className="space-y-6 -mt-12">
+    <div className="space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -556,6 +578,13 @@ export default function NumerosAutorizadosPage() {
           </div>
         )}
       </div>
+  );
+}
+
+export default function NumerosPage() {
+  return (
+    <MainLayout>
+      <NumerosContent />
     </MainLayout>
   );
 }

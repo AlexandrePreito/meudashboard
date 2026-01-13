@@ -25,7 +25,8 @@ export async function middleware(request: NextRequest) {
   // Rotas públicas que não requerem autenticação
   const publicRoutes = [
     '/',  // Landing page pública
-    '/login', 
+    '/login',
+    '/planos',  // Página de planos pública
     '/api/auth/login', 
     '/api/auth/logout',
     '/api/whatsapp/webhook',
@@ -43,8 +44,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
   
-  // Pega o token do cookie 'auth_token'
-  const token = request.cookies.get('auth_token')?.value;
+  // Rotas de desenvolvedor - requer autenticacao
+  if (pathname.startsWith('/developer')) {
+    // Verificar se tem token valido
+    const token = request.cookies.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+  }
+  
+  // Pega o token do cookie 'auth-token'
+  const token = request.cookies.get('auth-token')?.value;
   
   // Se não tem token
   if (!token) {

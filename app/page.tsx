@@ -408,9 +408,14 @@ export default function LandingPage() {
               <AnimatedLogo size={32} scrollY={scrollY} isInitialSpin={isInitialSpin} />
               <BrandName size="text-xl" />
             </div>
-            <Link href="/login" className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all">
-              Entrar
-            </Link>
+            <div className="flex items-center gap-3">
+              <Link href="/planos" className="px-4 py-2.5 border border-blue-600 text-blue-600 rounded-xl text-sm font-semibold hover:bg-blue-50 transition-all">
+                Ver Planos
+              </Link>
+              <Link href="/login" className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all">
+                Entrar
+              </Link>
+            </div>
           </div>
         </div>
       </nav>

@@ -5,6 +5,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
 import { useToast } from '@/contexts/ToastContext';
+import { useMenu } from '@/contexts/MenuContext';
 import {
   Bell,
   Plus,
@@ -71,12 +72,15 @@ const frequencyLabels: Record<string, string> = {
   monthly: 'Mensal'
 };
 
-export default function AlertasPage() {
+function AlertasContent() {
   const { showToast } = useToast();
+  const { activeGroup } = useMenu();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [triggeringId, setTriggeringId] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string>('user');
+  const [accessDenied, setAccessDenied] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{
     show: boolean;
     title: string;
@@ -92,12 +96,52 @@ export default function AlertasPage() {
   });
 
   useEffect(() => {
-    loadAlerts();
+    checkAccessAndLoad();
   }, []);
 
-  async function loadAlerts() {
+  useEffect(() => {
+    if (userRole !== 'user') {
+      loadAlerts(activeGroup);
+    }
+  }, [activeGroup, userRole]);
+
+  async function checkAccessAndLoad() {
     try {
-      const res = await fetch('/api/alertas');
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      
+      if (data.user) {
+        if (data.user.is_master) {
+          setUserRole('master');
+        } else if (data.user.is_developer) {
+          setUserRole('developer');
+        } else if (data.user.role === 'admin') {
+          setUserRole('admin');
+      } else {
+        setUserRole('user');
+        setAccessDenied(true);
+        setLoading(false);
+        return;
+      }
+      loadAlerts(activeGroup);
+      } else {
+        setAccessDenied(true);
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Erro ao verificar acesso:', error);
+      setAccessDenied(true);
+      setLoading(false);
+    }
+  }
+
+  async function loadAlerts(currentGroup?: { id: string; name: string } | null) {
+    try {
+      const url = currentGroup
+        ? `/api/alertas?group_id=${currentGroup.id}`
+        : '/api/alertas';
+      
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setAlerts(data.alerts || []);
@@ -121,7 +165,7 @@ export default function AlertasPage() {
       });
 
       if (res.ok) {
-        loadAlerts();
+        loadAlerts(activeGroup);
       }
     } catch (err) {
       console.error('Erro ao atualizar:', err);
@@ -210,9 +254,20 @@ export default function AlertasPage() {
     withWhatsapp: alerts.filter(a => a.notify_whatsapp).length
   };
 
+  if (accessDenied) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Bell className="w-16 h-16 text-gray-300 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700 mb-2">Alertas nao disponiveis</h2>
+        <p className="text-gray-500 mb-4">Este modulo nao esta incluido no seu plano atual.</p>
+        <p className="text-sm text-gray-400">Entre em contato para fazer upgrade.</p>
+      </div>
+    );
+  }
+
   return (
-    <MainLayout>
-      <div className="space-y-6 -mt-12">
+    <>
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -475,6 +530,14 @@ export default function AlertasPage() {
           </div>
         </div>
       )}
+    </>
+  );
+}
+
+export default function AlertasPage() {
+  return (
+    <MainLayout>
+      <AlertasContent />
     </MainLayout>
   );
 }

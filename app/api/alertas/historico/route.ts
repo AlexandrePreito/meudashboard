@@ -12,6 +12,7 @@ export async function GET(request: Request) {
     const supabase = createAdminClient();
     const { searchParams } = new URL(request.url);
     const alertId = searchParams.get('alert_id');
+    const groupId = searchParams.get('group_id');
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
@@ -34,6 +35,11 @@ export async function GET(request: Request) {
           offset
         });
       }
+
+      // SEGURANCA: Se passou group_id, validar acesso
+      if (groupId && !userGroupIds.includes(groupId)) {
+        return NextResponse.json({ error: 'Sem permissão para este grupo' }, { status: 403 });
+      }
     }
 
     // Buscar histórico com join em ai_alerts para pegar o company_group_id
@@ -54,8 +60,11 @@ export async function GET(request: Request) {
       query = query.eq('alert_id', alertId);
     }
 
-    // Filtrar por grupos do usuário (se não for master)
-    if (!user.is_master) {
+    // Filtrar por grupo
+    if (groupId) {
+      query = query.eq('ai_alerts.company_group_id', groupId);
+    } else if (!user.is_master) {
+      // Filtrar por grupos do usuário (se não for master)
       query = query.in('ai_alerts.company_group_id', userGroupIds);
     }
 
@@ -75,7 +84,9 @@ export async function GET(request: Request) {
       countQuery = countQuery.eq('alert_id', alertId);
     }
 
-    if (!user.is_master) {
+    if (groupId) {
+      countQuery = countQuery.eq('ai_alerts.company_group_id', groupId);
+    } else if (!user.is_master) {
       countQuery = countQuery.in('ai_alerts.company_group_id', userGroupIds);
     }
 

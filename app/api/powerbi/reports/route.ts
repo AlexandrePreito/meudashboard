@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
 
 // GET - Listar relatórios
 export async function GET(request: Request) {
@@ -12,19 +12,34 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const connectionId = searchParams.get('connection_id');
+    const groupId = searchParams.get('group_id');
 
     const supabase = createAdminClient();
 
-    // Se não for master, buscar grupos do usuário
+    // Buscar grupos do usuario
     let userGroupIds: string[] = [];
     if (!user.is_master) {
-      const { data: memberships } = await supabase
-        .from('user_group_membership')
-        .select('company_group_id')
-        .eq('user_id', user.id)
-        .eq('is_active', true);
+      const developerId = await getUserDeveloperId(user.id);
 
-      userGroupIds = memberships?.map(m => m.company_group_id) || [];
+      if (developerId) {
+        // Desenvolvedor: buscar grupos pelo developer_id
+        const { data: devGroups } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('developer_id', developerId)
+          .eq('status', 'active');
+
+        userGroupIds = devGroups?.map(g => g.id) || [];
+      } else {
+        // Usuario comum: buscar via membership
+        const { data: memberships } = await supabase
+          .from('user_group_membership')
+          .select('company_group_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+
+        userGroupIds = memberships?.map(m => m.company_group_id) || [];
+      }
 
       if (userGroupIds.length === 0) {
         return NextResponse.json({ reports: [] });
@@ -35,7 +50,12 @@ export async function GET(request: Request) {
       .from('powerbi_reports')
       .select(`
         *,
-        connection:powerbi_connections(id, name, company_group_id)
+        connection:powerbi_connections(
+          id, 
+          name, 
+          company_group_id,
+          company_group:company_groups(id, name)
+        )
       `)
       .order('name');
 
@@ -59,6 +79,13 @@ export async function GET(request: Request) {
       );
     }
 
+    // Se passou group_id, filtrar por grupo
+    if (groupId) {
+      filteredReports = filteredReports.filter(report =>
+        report.connection?.company_group_id === groupId
+      );
+    }
+
     return NextResponse.json({ reports: filteredReports });
   } catch (error) {
     console.error('Erro:', error);
@@ -74,10 +101,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    if (!user.is_master) {
-      return NextResponse.json({ error: 'Apenas master pode criar relatórios' }, { status: 403 });
-    }
-
     const body = await request.json();
     const { connection_id, name, report_id, dataset_id, default_page } = body;
 
@@ -86,6 +109,38 @@ export async function POST(request: Request) {
     }
 
     const supabase = createAdminClient();
+
+    // Verificar permissão: master pode tudo, dev só seus grupos
+    if (!user.is_master) {
+      const developerId = await getUserDeveloperId(user.id);
+      
+      if (!developerId) {
+        return NextResponse.json({ error: 'Sem permissão para criar relatórios' }, { status: 403 });
+      }
+
+      // Buscar conexão para pegar o grupo
+      const { data: connection } = await supabase
+        .from('powerbi_connections')
+        .select('company_group_id')
+        .eq('id', connection_id)
+        .single();
+
+      if (!connection) {
+        return NextResponse.json({ error: 'Conexão não encontrada' }, { status: 404 });
+      }
+
+      // Verificar se o grupo pertence ao desenvolvedor
+      const { data: group } = await supabase
+        .from('company_groups')
+        .select('id')
+        .eq('id', connection.company_group_id)
+        .eq('developer_id', developerId)
+        .single();
+
+      if (!group) {
+        return NextResponse.json({ error: 'Grupo não pertence a você' }, { status: 403 });
+      }
+    }
 
     const { data, error } = await supabase
       .from('powerbi_reports')

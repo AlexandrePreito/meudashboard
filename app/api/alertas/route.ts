@@ -3,14 +3,52 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser } from '@/lib/auth';
 
 // GET - Listar alertas
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const user = await getAuthUser();
     if (!user) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+      return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
     }
 
+    const { searchParams } = new URL(request.url);
+    const groupId = searchParams.get('group_id');
+
     const supabase = createAdminClient();
+
+    // Buscar grupos e role do usuario
+    let userGroupIds: string[] = [];
+    let userRole = 'user';
+
+    if (user.is_master) {
+      userRole = 'master';
+    } else {
+      const { data: memberships } = await supabase
+        .from('user_group_membership')
+        .select('company_group_id, role')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+
+      userGroupIds = memberships?.map(m => m.company_group_id) || [];
+      
+      if (memberships?.some(m => m.role === 'admin')) {
+        userRole = 'admin';
+      }
+    }
+
+    // Usuario comum nao tem acesso a alertas
+    if (userRole === 'user') {
+      return NextResponse.json({ error: 'Sem permissao para acessar alertas' }, { status: 403 });
+    }
+
+    // Se nao for master e nao tem grupos, retorna vazio
+    if (userRole !== 'master' && userGroupIds.length === 0) {
+      return NextResponse.json({ alerts: [] });
+    }
+
+    // SEGURANCA: Se passou groupId, validar acesso
+    if (groupId && userRole !== 'master' && !userGroupIds.includes(groupId)) {
+      return NextResponse.json({ error: 'Sem permissao para este grupo' }, { status: 403 });
+    }
 
     let query = supabase
       .from('ai_alerts')
@@ -36,22 +74,16 @@ export async function GET() {
         created_at,
         connection_id,
         dataset_id,
-        context_id
+        context_id,
+        company_group_id
       `)
       .order('created_at', { ascending: false });
 
-    // Se não for master, filtra por grupo
-    if (!user.is_master) {
-      const { data: membership } = await supabase
-        .from('user_group_membership')
-        .select('company_group_id')
-        .eq('user_id', user.id)
-        .limit(1)
-        .maybeSingle();
-
-      if (membership?.company_group_id) {
-        query = query.eq('company_group_id', membership.company_group_id);
-      }
+    // Filtrar por grupo
+    if (groupId) {
+      query = query.eq('company_group_id', groupId);
+    } else if (userRole !== 'master') {
+      query = query.in('company_group_id', userGroupIds);
     }
 
     const { data: alerts, error } = await query;
@@ -78,6 +110,26 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const supabase = createAdminClient();
+
+    // Verificar role do usuario
+    let userRole = 'user';
+    if (user.is_master) {
+      userRole = 'master';
+    } else {
+      const { data: memberships } = await supabase
+        .from('user_group_membership')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+      
+      if (memberships?.some(m => m.role === 'admin')) {
+        userRole = 'admin';
+      }
+    }
+
+    if (userRole === 'user') {
+      return NextResponse.json({ error: 'Sem permissao para criar alertas' }, { status: 403 });
+    }
 
     // Buscar grupo do usuário
     const { data: membership } = await supabase

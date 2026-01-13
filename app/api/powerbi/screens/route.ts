@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
 
 // GET - Listar telas
 export async function GET(request: Request) {
   try {
     const user = await getAuthUser();
     if (!user) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+      return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -16,22 +16,54 @@ export async function GET(request: Request) {
 
     const supabase = createAdminClient();
 
-    // Se não for master, buscar grupos do usuário
+    // Buscar grupos que o usuario tem acesso
     let userGroupIds: string[] = [];
-    if (!user.is_master) {
-      const { data: memberships } = await supabase
-        .from('user_group_membership')
-        .select('company_group_id')
-        .eq('user_id', user.id)
-        .eq('is_active', true);
+    
+    if (user.is_master) {
+      // Master ve tudo - se passou groupId, usa ele
+      if (groupId) {
+        userGroupIds = [groupId];
+      }
+      // Se nao passou, busca todos
+    } else {
+      const developerId = await getUserDeveloperId(user.id);
 
-      userGroupIds = memberships?.map(m => m.company_group_id) || [];
+      if (developerId) {
+        // Desenvolvedor: buscar grupos pelo developer_id
+        const { data: devGroups } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('developer_id', developerId)
+          .eq('status', 'active');
+
+        userGroupIds = devGroups?.map(g => g.id) || [];
+      } else {
+        // Usuario comum: buscar via membership
+        const { data: memberships } = await supabase
+          .from('user_group_membership')
+          .select('company_group_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+
+        userGroupIds = memberships?.map(m => m.company_group_id) || [];
+      }
 
       if (userGroupIds.length === 0) {
         return NextResponse.json({ screens: [] });
       }
+
+      // SEGURANCA: Se passou groupId, validar que usuario pertence a ele
+      if (groupId && !userGroupIds.includes(groupId)) {
+        return NextResponse.json({ error: 'Sem permissao para este grupo' }, { status: 403 });
+      }
+
+      // Se passou groupId valido, filtra so por ele
+      if (groupId) {
+        userGroupIds = [groupId];
+      }
     }
 
+    // Montar query
     let query = supabase
       .from('powerbi_dashboard_screens')
       .select(`
@@ -43,8 +75,9 @@ export async function GET(request: Request) {
       .order('display_order')
       .order('title');
 
-    if (groupId) {
-      query = query.eq('company_group_id', groupId);
+    // Filtrar por grupos permitidos (sempre, exceto master sem filtro)
+    if (userGroupIds.length > 0) {
+      query = query.in('company_group_id', userGroupIds);
     }
 
     const { data: screens, error } = await query;
@@ -54,7 +87,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Se onlyMine, filtra por permissões do usuário
+    // Se onlyMine, filtra por permissoes especificas do usuario
     if (onlyMine && !user.is_master) {
       const { data: userScreens } = await supabase
         .from('powerbi_screen_users')
@@ -63,65 +96,20 @@ export async function GET(request: Request) {
 
       const userScreenIds = userScreens?.map(s => s.screen_id) || [];
 
-      const { data: userCompanies } = await supabase
-        .from('user_company_access')
-        .select('company_id')
-        .eq('user_id', user.id);
-
-      const userCompanyIds = userCompanies?.map(c => c.company_id) || [];
-
-      const { data: companyScreens } = await supabase
-        .from('powerbi_screen_companies')
-        .select('screen_id')
-        .in('company_id', userCompanyIds.length > 0 ? userCompanyIds : ['00000000-0000-0000-0000-000000000000']);
-
-      const companyScreenIds = companyScreens?.map(s => s.screen_id) || [];
-
-      const filteredScreens = [];
-      
-      for (const screen of screens || []) {
-        const { data: screenUsers } = await supabase
-          .from('powerbi_screen_users')
-          .select('id')
-          .eq('screen_id', screen.id);
-        
-        const { data: screenCompanies } = await supabase
-          .from('powerbi_screen_companies')
-          .select('id')
-          .eq('screen_id', screen.id);
-
-        const hasUserBindings = (screenUsers?.length || 0) > 0;
-        const hasCompanyBindings = (screenCompanies?.length || 0) > 0;
-
-        if (!hasUserBindings && !hasCompanyBindings) {
-          filteredScreens.push(screen);
-          continue;
+      const filteredScreens = (screens || []).filter(screen => {
+        // Se usuario tem acesso direto a tela
+        if (userScreenIds.includes(screen.id)) {
+          return true;
         }
-
-        if (hasUserBindings && userScreenIds.includes(screen.id)) {
-          filteredScreens.push(screen);
-          continue;
-        }
-
-        if (hasCompanyBindings && companyScreenIds.includes(screen.id)) {
-          filteredScreens.push(screen);
-          continue;
-        }
-      }
+        // Tela sem restricao de usuario = todos do grupo veem
+        // (verificar se tela tem usuarios vinculados)
+        return false; // Por padrao, so mostra se tem acesso explicito
+      });
 
       return NextResponse.json({ screens: filteredScreens });
     }
 
-    // Filtrar por grupos do usuário (se não for master)
-    let filteredScreens = screens || [];
-    if (!user.is_master) {
-      filteredScreens = filteredScreens.filter(screen => 
-        screen.company_group_id && 
-        userGroupIds.includes(screen.company_group_id)
-      );
-    }
-
-    return NextResponse.json({ screens: filteredScreens });
+    return NextResponse.json({ screens: screens || [] });
   } catch (error) {
     console.error('Erro:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
@@ -144,6 +132,27 @@ export async function POST(request: Request) {
     }
 
     const supabase = createAdminClient();
+
+    // Verificar permissão: master pode tudo, dev só seus grupos
+    if (!user.is_master) {
+      const developerId = await getUserDeveloperId(user.id);
+      
+      if (!developerId) {
+        return NextResponse.json({ error: 'Sem permissão para criar telas' }, { status: 403 });
+      }
+
+      // Verificar se o grupo pertence ao desenvolvedor
+      const { data: groupCheck } = await supabase
+        .from('company_groups')
+        .select('id')
+        .eq('id', company_group_id)
+        .eq('developer_id', developerId)
+        .single();
+
+      if (!groupCheck) {
+        return NextResponse.json({ error: 'Grupo não pertence a você' }, { status: 403 });
+      }
+    }
 
     const { data: group } = await supabase
       .from('company_groups')

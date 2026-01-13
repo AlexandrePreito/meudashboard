@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
 import { useToast } from '@/contexts/ToastContext';
+import { useMenu } from '@/contexts/MenuContext';
 import {
   Users,
   Building2,
@@ -51,8 +52,9 @@ interface Group {
   created_at: string;
 }
 
-export default function ConfiguracoesPage() {
+function ConfiguracoesContent() {
   const toast = useToast();
+  const { activeGroup } = useMenu();
   const [activeTab, setActiveTab] = useState<'users' | 'groups'>('users');
   const [users, setUsers] = useState<User[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -96,6 +98,12 @@ export default function ConfiguracoesPage() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (!isRegularUser) {
+      loadUsers(activeGroup);
+    }
+  }, [activeGroup]);
+
   async function loadData() {
     setLoading(true);
     const userData = await loadCurrentUser();
@@ -104,7 +112,7 @@ export default function ConfiguracoesPage() {
     if (!userData?.is_master && userData?.role === 'user') {
       await loadMyProfile(userData.id);
     } else {
-      await Promise.all([loadUsers(), loadGroups()]);
+      await Promise.all([loadUsers(activeGroup), loadGroups()]);
     }
     setLoading(false);
   }
@@ -143,9 +151,12 @@ export default function ConfiguracoesPage() {
     return null;
   }
 
-  async function loadUsers() {
+  async function loadUsers(currentGroup?: { id: string; name: string } | null) {
     try {
-      const res = await fetch('/api/config/users');
+      const usersUrl = currentGroup 
+        ? `/api/config/users?group_id=${currentGroup.id}`
+        : '/api/config/users';
+      const res = await fetch(usersUrl);
       if (res.ok) {
         const data = await res.json();
         setUsers(data.users || []);
@@ -239,7 +250,7 @@ export default function ConfiguracoesPage() {
       if (res.ok) {
         toast.success(editingUser ? 'Usuário atualizado!' : 'Usuário criado!');
         setShowUserModal(false);
-        loadUsers();
+        loadUsers(activeGroup);
       } else {
         const data = await res.json();
         toast.error(data.error || 'Erro ao salvar');
@@ -258,7 +269,7 @@ export default function ConfiguracoesPage() {
       const res = await fetch(`/api/config/users?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
         toast.error('Usuário excluído!');
-        loadUsers();
+        loadUsers(activeGroup);
       } else {
         const data = await res.json();
         toast.error(data.error || 'Erro ao excluir');
@@ -378,8 +389,7 @@ export default function ConfiguracoesPage() {
   });
 
   return (
-    <MainLayout>
-      <div className="space-y-6 -mt-12">
+    <div className="space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -858,6 +868,13 @@ export default function ConfiguracoesPage() {
           </div>
         )}
       </div>
+  );
+}
+
+export default function ConfiguracoesPage() {
+  return (
+    <MainLayout>
+      <ConfiguracoesContent />
     </MainLayout>
   );
 }

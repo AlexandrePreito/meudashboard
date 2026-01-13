@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
 
 export async function GET(request: Request) {
   try {
@@ -30,15 +30,34 @@ export async function GET(request: Request) {
 
     // Validar que usuário tem acesso ao grupo da conexão
     if (!user.is_master) {
-      const { data: membership } = await supabase
-        .from('user_group_membership')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('company_group_id', connection.company_group_id)
-        .eq('is_active', true)
-        .single();
+      const developerId = await getUserDeveloperId(user.id);
 
-      if (!membership) {
+      let hasAccess = false;
+
+      if (developerId) {
+        // Desenvolvedor: verificar se o grupo pertence a ele
+        const { data: group } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('id', connection.company_group_id)
+          .eq('developer_id', developerId)
+          .single();
+
+        hasAccess = !!group;
+      } else {
+        // Usuario comum: verificar membership
+        const { data: membership } = await supabase
+          .from('user_group_membership')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('company_group_id', connection.company_group_id)
+          .eq('is_active', true)
+          .single();
+
+        hasAccess = !!membership;
+      }
+
+      if (!hasAccess) {
         return NextResponse.json({ error: 'Sem permissão para acessar esta conexão' }, { status: 403 });
       }
     }

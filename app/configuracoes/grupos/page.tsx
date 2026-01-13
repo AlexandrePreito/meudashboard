@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
+import CascadeDeleteModal from '@/components/CascadeDeleteModal';
 import {
   Building2,
   Plus,
@@ -41,7 +42,7 @@ interface Group {
   primary_color: string | null;
 }
 
-export default function GruposPage() {
+function GruposContent() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -53,6 +54,8 @@ export default function GruposPage() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [currentUser, setCurrentUser] = useState<{ is_master?: boolean } | null>(null);
+  const [cascadeDeleteOpen, setCascadeDeleteOpen] = useState(false);
+  const [groupToDelete, setGroupToDelete] = useState<{id: string, name: string} | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -208,22 +211,10 @@ export default function GruposPage() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Excluir este grupo?')) return;
-
-    try {
-      const res = await fetch(`/api/config/groups?id=${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        alert('Grupo excluído!');
-        loadGroups();
-      } else {
-        const data = await res.json();
-        alert(data.error || 'Erro ao excluir');
-      }
-    } catch (err) {
-      alert('Erro ao excluir grupo');
-    }
-  }
+  const handleDelete = (id: string, name: string) => {
+    setGroupToDelete({ id, name });
+    setCascadeDeleteOpen(true);
+  };
 
   const filteredGroups = groups.filter(group => {
     if (!searchTerm) return true;
@@ -231,8 +222,7 @@ export default function GruposPage() {
   });
 
   return (
-    <MainLayout>
-      <div className="space-y-6 -mt-12">
+    <div className="space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -327,7 +317,7 @@ export default function GruposPage() {
                     </button>
                     {currentUser?.is_master && (
                     <button
-                      onClick={() => handleDelete(group.id)}
+                      onClick={() => handleDelete(group.id, group.name)}
                       className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     >
                       <Trash2 size={16} />
@@ -465,7 +455,30 @@ export default function GruposPage() {
             </div>
           </div>
         )}
+
+        {cascadeDeleteOpen && groupToDelete && (
+          <CascadeDeleteModal
+            isOpen={cascadeDeleteOpen}
+            onClose={() => {
+              setCascadeDeleteOpen(false);
+              setGroupToDelete(null);
+            }}
+            onSuccess={() => {
+              loadGroups();
+            }}
+            type="group"
+            id={groupToDelete.id}
+            name={groupToDelete.name}
+          />
+        )}
       </div>
+  );
+}
+
+export default function GruposPage() {
+  return (
+    <MainLayout>
+      <GruposContent />
     </MainLayout>
   );
 }

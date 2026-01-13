@@ -57,6 +57,8 @@ function OrdemAtualizacaoContent() {
   const [selectedItem, setSelectedItem] = useState<RefreshItem | null>(null);
   const [itemDetails, setItemDetails] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [userRole, setUserRole] = useState<string>('user');
+  const [accessDenied, setAccessDenied] = useState(false);
 
   const { activeGroup } = useMenu();
 
@@ -71,11 +73,41 @@ function OrdemAtualizacaoContent() {
   ];
 
   useEffect(() => {
-    if (activeGroup?.id) {
-      loadItems();
-      loadSchedules();
-    }
+    checkAccessAndLoad();
   }, [activeGroup?.id]);
+
+  async function checkAccessAndLoad() {
+    try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      
+      if (data.user) {
+        if (data.user.is_master) {
+          setUserRole('master');
+        } else if (data.user.is_developer) {
+          setUserRole('developer');
+        } else if (data.user.role === 'admin') {
+          setUserRole('admin');
+        } else {
+          setUserRole('user');
+          setAccessDenied(true);
+          setLoading(false);
+          return;
+        }
+        if (activeGroup?.id) {
+          loadItems();
+          loadSchedules();
+        }
+      } else {
+        setAccessDenied(true);
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Erro ao verificar acesso:', error);
+      setAccessDenied(true);
+      setLoading(false);
+    }
+  }
 
   async function loadItems() {
     setLoading(true);
@@ -451,8 +483,19 @@ function OrdemAtualizacaoContent() {
     );
   }
 
+  if (accessDenied) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Database className="w-16 h-16 text-gray-300 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700 mb-2">Acesso restrito</h2>
+        <p className="text-gray-500 mb-4">Este modulo nao esta disponivel para seu perfil.</p>
+        <p className="text-sm text-gray-400">Apenas administradores podem acessar.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6 -mt-12">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Ordem de Atualização</h1>

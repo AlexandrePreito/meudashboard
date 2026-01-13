@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
 import { useToast } from '@/contexts/ToastContext';
+import { useMenu } from '@/contexts/MenuContext';
 import {
   Smartphone,
   Plus,
@@ -41,9 +42,10 @@ interface Instance {
   }>;
 }
 
-export default function InstanciasPage() {
+function InstanciasContent() {
   const router = useRouter();
   const toast = useToast();
+  const { activeGroup } = useMenu();
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>('loading');
   const [userGroupIds, setUserGroupIds] = useState<string[]>([]);
@@ -79,6 +81,12 @@ export default function InstanciasPage() {
     checkAccessAndLoad();
   }, []);
 
+  useEffect(() => {
+    if (userRole !== 'user') {
+      loadInstances(activeGroup);
+    }
+  }, [activeGroup, userRole]);
+
   async function checkAccessAndLoad() {
     try {
       const res = await fetch('/api/auth/me');
@@ -95,16 +103,16 @@ export default function InstanciasPage() {
         setUserRole('master');
         // Carregar todos os grupos para Master
         loadAllGroups();
+      } else if (data.user.is_developer) {
+        setUserRole('developer');
       } else if (data.user.role === 'admin') {
         setUserRole('admin');
         setUserGroupIds(data.groupIds || []);
       } else {
-        // User sem acesso - redirecionar
-        router.push('/');
-        return;
+        setUserRole('user');
       }
       
-      loadInstances();
+      loadInstances(activeGroup);
     } catch (error) {
       console.error('Erro ao verificar acesso:', error);
       router.push('/login');
@@ -123,9 +131,13 @@ export default function InstanciasPage() {
     }
   }
 
-  async function loadInstances() {
+  async function loadInstances(currentGroup?: { id: string; name: string } | null) {
     try {
-      const res = await fetch('/api/whatsapp/instances');
+      const url = currentGroup
+        ? `/api/whatsapp/instances?group_id=${currentGroup.id}`
+        : '/api/whatsapp/instances';
+      
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setInstances(data.instances || []);
@@ -186,7 +198,7 @@ export default function InstanciasPage() {
       if (res.ok) {
         toast.success('Grupos vinculados com sucesso!');
         setLinkGroupsModal(false);
-        loadInstances();
+        loadInstances(activeGroup);
       } else {
         const error = await res.json();
         toast.error(error.error || 'Erro ao vincular grupos');
@@ -234,7 +246,7 @@ export default function InstanciasPage() {
         toast.success(editingInstance ? 'Instância atualizada!' : 'Instância criada!');
         setShowModal(false);
         resetForm();
-        loadInstances();
+        loadInstances(activeGroup);
       } else {
         const data = await res.json();
         toast.error(data.error || 'Erro ao salvar');
@@ -253,7 +265,7 @@ export default function InstanciasPage() {
       const res = await fetch(`/api/whatsapp/instances?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
         toast.success('Instância excluída!');
-        loadInstances();
+        loadInstances(activeGroup);
       } else {
         const data = await res.json();
         toast.error(data.error || 'Erro ao excluir');
@@ -268,7 +280,7 @@ export default function InstanciasPage() {
     try {
       const res = await fetch(`/api/whatsapp/instances/${id}?action=status`);
       if (res.ok) {
-        loadInstances();
+        loadInstances(activeGroup);
       }
     } catch (err) {
       console.error('Erro ao verificar status:', err);
@@ -308,7 +320,7 @@ export default function InstanciasPage() {
       });
       if (res.ok) {
         toast.success('Instância desconectada!');
-        loadInstances();
+        loadInstances(activeGroup);
       }
     } catch (err) {
       toast.error('Erro ao desconectar');
@@ -347,9 +359,19 @@ export default function InstanciasPage() {
     );
   }
 
+  // Acesso negado para usuários comuns (se necessário, mostrar mensagem)
+  if (userRole === 'user') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Smartphone className="w-16 h-16 text-gray-300 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700 mb-2">Acesso restrito</h2>
+        <p className="text-gray-500 mb-4">Este módulo não está disponível para seu perfil.</p>
+      </div>
+    );
+  }
+
   return (
-    <MainLayout>
-      <div className="space-y-6 -mt-12">
+    <div className="space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -706,6 +728,13 @@ export default function InstanciasPage() {
           </div>
         )}
       </div>
+  );
+}
+
+export default function InstanciasPage() {
+  return (
+    <MainLayout>
+      <InstanciasContent />
     </MainLayout>
   );
 }

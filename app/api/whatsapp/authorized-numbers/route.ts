@@ -1,39 +1,50 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
 
 // GET - Listar números autorizados
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const user = await getAuthUser();
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
+    const { searchParams } = new URL(request.url);
+    const groupId = searchParams.get('group_id');
+
     const supabase = createAdminClient();
 
-    // Buscar role e grupos do usuário
-    let userRole = 'user';
+    // Buscar grupos do usuario
+    const { getUserDeveloperId } = await import('@/lib/auth');
+    const developerId = await getUserDeveloperId(user.id);
+
     let userGroupIds: string[] = [];
-
-    if (user.is_master) {
-      userRole = 'master';
-    } else {
-      const { data: memberships } = await supabase
-        .from('user_group_membership')
-        .select('company_group_id, role')
-        .eq('user_id', user.id)
-        .eq('is_active', true);
-      
-      userGroupIds = memberships?.map(m => m.company_group_id) || [];
-      if (memberships?.some(m => m.role === 'admin')) {
-        userRole = 'admin';
+    if (!user.is_master) {
+      if (developerId) {
+        const { data: devGroups } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('developer_id', developerId)
+          .eq('status', 'active');
+        userGroupIds = devGroups?.map(g => g.id) || [];
+      } else {
+        const { data: memberships } = await supabase
+          .from('user_group_membership')
+          .select('company_group_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+        userGroupIds = memberships?.map(m => m.company_group_id) || [];
       }
-    }
+      
+      if (userGroupIds.length === 0) {
+        return NextResponse.json({ numbers: [] });
+      }
 
-    // User não tem acesso
-    if (userRole === 'user') {
-      return NextResponse.json({ error: 'Sem permissão para acessar este módulo' }, { status: 403 });
+      // SEGURANCA: Se passou group_id, validar acesso
+      if (groupId && !userGroupIds.includes(groupId)) {
+        return NextResponse.json({ error: 'Sem permissão para este grupo' }, { status: 403 });
+      }
     }
 
     // Buscar números com datasets vinculados
@@ -51,8 +62,10 @@ export async function GET() {
       `)
       .order('name', { ascending: true });
 
-    // Admin: filtrar por grupos
-    if (userRole === 'admin') {
+    // Filtrar por grupo
+    if (groupId) {
+      query = query.eq('company_group_id', groupId);
+    } else if (!user.is_master) {
       query = query.in('company_group_id', userGroupIds);
     }
 
@@ -97,43 +110,39 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient();
 
-    // Buscar role e grupos do usuário
-    let userRole = 'user';
-    let userGroupIds: string[] = [];
-
-    if (user.is_master) {
-      userRole = 'master';
-    } else {
-      const { data: memberships } = await supabase
-        .from('user_group_membership')
-        .select('company_group_id, role')
-        .eq('user_id', user.id)
-        .eq('is_active', true);
+    // Verificar permissão: master pode tudo, dev só seus grupos
+    if (!user.is_master) {
+      const { getUserDeveloperId } = await import('@/lib/auth');
+      const developerId = await getUserDeveloperId(user.id);
       
-      userGroupIds = memberships?.map(m => m.company_group_id) || [];
-      if (memberships?.some(m => m.role === 'admin')) {
-        userRole = 'admin';
+      if (!developerId) {
+        return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+      }
+      
+      // Verificar se o grupo pertence ao desenvolvedor
+      if (!company_group_id) {
+        return NextResponse.json({ error: 'company_group_id é obrigatório' }, { status: 400 });
+      }
+      
+      const { data: group } = await supabase
+        .from('company_groups')
+        .select('id')
+        .eq('id', company_group_id)
+        .eq('developer_id', developerId)
+        .single();
+        
+      if (!group) {
+        return NextResponse.json({ error: 'Grupo não pertence a você' }, { status: 403 });
       }
     }
 
-    if (userRole === 'user') {
-      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
-    }
-
     // Determinar company_group_id
-    let groupId = company_group_id;
-
-    if (userRole === 'admin') {
-      // Admin: forçar para ser do seu grupo (primeiro grupo)
-      groupId = userGroupIds[0] || null;
-    }
+    const groupId = company_group_id;
 
     console.log('GroupId determinado:', groupId);
 
     if (!groupId) {
       console.log('❌ Erro: Grupo não encontrado');
-      console.log('userRole:', userRole);
-      console.log('userGroupIds:', userGroupIds);
       console.log('company_group_id recebido:', company_group_id);
       return NextResponse.json({ error: 'Grupo não encontrado' }, { status: 400 });
     }
@@ -224,15 +233,30 @@ export async function PUT(request: Request) {
     if (user.is_master) {
       userRole = 'master';
     } else {
-      const { data: memberships } = await supabase
-        .from('user_group_membership')
-        .select('company_group_id, role')
-        .eq('user_id', user.id)
-        .eq('is_active', true);
+      // Verificar se é developer
+      const developerId = await getUserDeveloperId(user.id);
       
-      userGroupIds = memberships?.map(m => m.company_group_id) || [];
-      if (memberships?.some(m => m.role === 'admin')) {
-        userRole = 'admin';
+      if (developerId) {
+        userRole = 'developer';
+        const { data: devGroups } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('developer_id', developerId)
+          .eq('status', 'active');
+        
+        userGroupIds = devGroups?.map(g => g.id) || [];
+      } else {
+        // Usuário normal: buscar via membership
+        const { data: memberships } = await supabase
+          .from('user_group_membership')
+          .select('company_group_id, role')
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+        
+        userGroupIds = memberships?.map(m => m.company_group_id) || [];
+        if (memberships?.some(m => m.role === 'admin')) {
+          userRole = 'admin';
+        }
       }
     }
 
@@ -240,8 +264,8 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     }
 
-    // Admin: verificar se número pertence ao seu grupo
-    if (userRole === 'admin') {
+    // Admin e Developer: verificar se número pertence ao seu grupo
+    if (userRole === 'admin' || userRole === 'developer') {
       const { data: number } = await supabase
         .from('whatsapp_authorized_numbers')
         .select('company_group_id')
@@ -344,15 +368,30 @@ export async function DELETE(request: Request) {
     if (user.is_master) {
       userRole = 'master';
     } else {
-      const { data: memberships } = await supabase
-        .from('user_group_membership')
-        .select('company_group_id, role')
-        .eq('user_id', user.id)
-        .eq('is_active', true);
+      // Verificar se é developer
+      const developerId = await getUserDeveloperId(user.id);
       
-      userGroupIds = memberships?.map(m => m.company_group_id) || [];
-      if (memberships?.some(m => m.role === 'admin')) {
-        userRole = 'admin';
+      if (developerId) {
+        userRole = 'developer';
+        const { data: devGroups } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('developer_id', developerId)
+          .eq('status', 'active');
+        
+        userGroupIds = devGroups?.map(g => g.id) || [];
+      } else {
+        // Usuário normal: buscar via membership
+        const { data: memberships } = await supabase
+          .from('user_group_membership')
+          .select('company_group_id, role')
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+        
+        userGroupIds = memberships?.map(m => m.company_group_id) || [];
+        if (memberships?.some(m => m.role === 'admin')) {
+          userRole = 'admin';
+        }
       }
     }
 
@@ -360,8 +399,8 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     }
 
-    // Admin: verificar se número pertence ao seu grupo
-    if (userRole === 'admin') {
+    // Admin e Developer: verificar se número pertence ao seu grupo
+    if (userRole === 'admin' || userRole === 'developer') {
       const { data: number } = await supabase
         .from('whatsapp_authorized_numbers')
         .select('company_group_id')

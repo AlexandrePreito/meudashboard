@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
+import { useMenu } from '@/contexts/MenuContext';
 import { 
   Copy,
   Check,
@@ -15,8 +16,9 @@ import {
   Loader2
 } from 'lucide-react';
 
-export default function WebhookPage() {
+function WebhookContent() {
   const router = useRouter();
+  const { activeGroup } = useMenu();
   const [userRole, setUserRole] = useState<string>('loading');
   
   const [copied, setCopied] = useState(false);
@@ -78,8 +80,8 @@ export default function WebhookPage() {
   }
 
   return (
-    <MainLayout>
-      <div className="space-y-6 -mt-12">
+    <>
+      <div className="space-y-6">
         {/* Header */}
         <div>
           <div className="flex justify-between items-center mb-4">
@@ -272,6 +274,14 @@ export default function WebhookPage() {
           </div>
         )}
       </div>
+    </>
+  );
+}
+
+export default function WebhookPage() {
+  return (
+    <MainLayout>
+      <WebhookContent />
     </MainLayout>
   );
 }

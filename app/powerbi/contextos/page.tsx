@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
+import { useMenu } from '@/contexts/MenuContext';
 import { 
   Plus, 
   Edit, 
@@ -16,7 +17,8 @@ import {
   Upload,
   FileText,
   X,
-  Search
+  Search,
+  Database
 } from 'lucide-react';
 
 interface Context {
@@ -30,6 +32,11 @@ interface Context {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  company_group_id?: string;
+  company_group?: {
+    id: string;
+    name: string;
+  };
   connection?: { id: string; name: string };
 }
 
@@ -43,7 +50,9 @@ interface Dataset {
   name: string;
 }
 
-export default function ContextosPage() {
+// Componente interno que usa o contexto
+function ContextosContent() {
+  const { activeGroup } = useMenu();
   const [contexts, setContexts] = useState<Context[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +60,8 @@ export default function ContextosPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [loadingDatasets, setLoadingDatasets] = useState(false);
+  const [userRole, setUserRole] = useState<string>('user');
+  const [accessDenied, setAccessDenied] = useState(false);
 
   const [showModal, setShowModal] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -65,13 +76,53 @@ export default function ContextosPage() {
   });
 
   useEffect(() => {
-    loadContexts();
-    loadConnections();
+    checkAccessAndLoad();
   }, []);
 
-  async function loadContexts() {
+  useEffect(() => {
+    if (userRole !== 'user') {
+      loadContexts(activeGroup);
+    }
+  }, [activeGroup, userRole]);
+
+  async function checkAccessAndLoad() {
     try {
-      const res = await fetch('/api/ai/contexts');
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      
+      if (data.user) {
+        if (data.user.is_master) {
+          setUserRole('master');
+        } else if (data.user.is_developer) {
+          setUserRole('developer');
+        } else if (data.user.role === 'admin') {
+          setUserRole('admin');
+        } else {
+          setUserRole('user');
+          setAccessDenied(true);
+          setLoading(false);
+          return;
+        }
+        loadContexts(activeGroup);
+        loadConnections();
+      } else {
+        setAccessDenied(true);
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Erro ao verificar acesso:', error);
+      setAccessDenied(true);
+      setLoading(false);
+    }
+  }
+
+  async function loadContexts(currentGroup?: { id: string; name: string } | null) {
+    try {
+      const url = currentGroup
+        ? `/api/ai/contexts?group_id=${currentGroup.id}`
+        : '/api/ai/contexts';
+      
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setContexts(data.contexts || []);
@@ -230,7 +281,7 @@ export default function ContextosPage() {
         alert(editingContext ? 'Contexto atualizado!' : 'Contexto criado!');
         setShowModal(false);
         resetForm();
-        loadContexts();
+        loadContexts(activeGroup);
       } else {
         const data = await res.json();
         alert(data.error || 'Erro ao salvar');
@@ -253,7 +304,7 @@ export default function ContextosPage() {
 
       if (res.ok) {
         alert('Contexto excluído!');
-        loadContexts();
+        loadContexts(activeGroup);
       } else {
         const data = await res.json();
         alert(data.error || 'Erro ao excluir');
@@ -288,9 +339,20 @@ export default function ContextosPage() {
     );
   });
 
+  if (accessDenied) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Database className="w-16 h-16 text-gray-300 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700 mb-2">Acesso restrito</h2>
+        <p className="text-gray-500 mb-4">Este modulo nao esta disponivel para seu perfil.</p>
+        <p className="text-sm text-gray-400">Apenas administradores podem acessar.</p>
+      </div>
+    );
+  }
+
   return (
-    <MainLayout>
-      <div className="space-y-6 -mt-12">
+    <>
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -362,7 +424,7 @@ export default function ContextosPage() {
                         )}
                       </div>
                       <p className="text-sm text-gray-600 mb-1">
-                        Conexão: {context.connection?.name || '-'} • Dataset: {context.dataset_name || '-'} • {countLines(context.context_content)} linhas
+                        Conexão: {context.connection?.name || '-'} • Dataset: {context.dataset_name || '-'} • Grupo: {context.company_group?.name || '-'} • {countLines(context.context_content)} linhas
                       </p>
                       <p className="text-xs text-gray-500">
                         Atualizado em {formatDate(context.updated_at)}
@@ -543,6 +605,15 @@ export default function ContextosPage() {
           </div>
         )}
       </div>
+    </>
+  );
+}
+
+// Componente principal exportado
+export default function ContextosPage() {
+  return (
+    <MainLayout>
+      <ContextosContent />
     </MainLayout>
   );
 }

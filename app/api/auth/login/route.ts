@@ -1,152 +1,146 @@
-/**
- * API Route - Login
- * 
- * Endpoint POST para autenticação de usuários no sistema MeuDashboard.
- * 
- * Processo:
- * 1. Valida email e senha
- * 2. Verifica credenciais via RPC do Supabase
- * 3. Valida status do usuário
- * 4. Gera session_id único (sessão única: um login derruba o outro)
- * 5. Atualiza session_id no banco de dados
- * 6. Gera token JWT com session_id e salva em cookie
- * 7. Retorna dados do usuário autenticado
- */
-
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
-import { createToken } from '@/lib/auth';
-import type { AuthUser } from '@/types';
+import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
-import { logActivity, getUserGroupId } from '@/lib/activity-log';
+import jwt from 'jsonwebtoken';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
+
+function getSupabase() {
+  return createClient(supabaseUrl, supabaseKey);
+}
 
 export async function POST(request: NextRequest) {
   try {
-    // Parse do body da requisição
-    const body = await request.json();
-    const { email, password } = body;
+    const { email, password } = await request.json();
 
-    // Validação de campos obrigatórios
     if (!email || !password) {
       return NextResponse.json(
-        { success: false, message: 'Email e senha são obrigatórios' },
+        { error: 'Email e senha sao obrigatorios' },
         { status: 400 }
       );
     }
 
-    // Busca usuário por email
-    const { data: user, error: userError } = await supabase
+    const supabase = getSupabase();
+
+    // Buscar usuario com todos os campos necessarios
+    const { data: user, error } = await supabase
       .from('users')
-      .select('id, email, full_name, is_master, status, avatar_url, password_hash')
+      .select('id, email, full_name, password_hash, is_master, status, developer_id, is_developer_user')
       .eq('email', email.toLowerCase().trim())
       .single();
 
-    if (userError || !user) {
+    console.log('Usuario encontrado:', user ? 'SIM' : 'NAO', user?.email);
+
+    if (error || !user) {
       return NextResponse.json(
-        { success: false, message: 'Email ou senha inválidos' },
+        { error: 'Email ou senha incorretos' },
         { status: 401 }
       );
     }
 
-    // Verifica se o usuário não está suspenso
-    if (user.status === 'suspended') {
+    // Verificar se usuario esta ativo
+    if (user.status !== 'active') {
       return NextResponse.json(
-        { success: false, message: 'Usuário suspenso' },
-        { status: 403 }
-      );
-    }
-
-    // Verifica a senha com bcrypt
-    const passwordValid = await bcrypt.compare(password, user.password_hash);
-
-    if (!passwordValid) {
-      return NextResponse.json(
-        { success: false, message: 'Email ou senha inválidos' },
+        { error: 'Usuario inativo. Entre em contato com o administrador.' },
         { status: 401 }
       );
     }
 
-    // Atualiza last_login_at
-    await supabase
-      .from('users')
-      .update({ last_login_at: new Date().toISOString() })
-      .eq('id', user.id);
+    console.log('Status do usuario:', user.status);
 
-    // Registrar log de login
-    const groupId = await getUserGroupId(user.id);
-    await logActivity({
-      userId: user.id,
-      companyGroupId: groupId,
-      actionType: 'login',
-      module: 'auth',
-      description: `Login realizado: ${user.email}`,
-      entityType: 'user',
-      entityId: user.id
-    });
+    // Verificar senha
+    console.log('Verificando senha...');
+    console.log('Password hash existe:', !!user.password_hash);
+    const isValidPassword = await bcrypt.compare(password, user.password_hash);
+    console.log('Senha valida:', isValidPassword);
 
-    // Gera novo session_id único (sessão única: um login derruba o outro)
-    const sessionId = crypto.randomUUID();
-
-    // Atualiza o session_id no banco (isso invalida sessão anterior)
-    const { error: updateError } = await supabase
-      .from('users')
-      .update({ current_session_id: sessionId })
-      .eq('id', user.id);
-
-    if (updateError) {
-      console.error('Erro ao atualizar session_id:', updateError);
+    if (!isValidPassword) {
       return NextResponse.json(
-        { success: false, message: 'Erro ao criar sessão' },
-        { status: 500 }
+        { error: 'Email ou senha incorretos' },
+        { status: 401 }
       );
     }
 
-    // Cria token JWT com session_id
-    const token = await createToken({
+    // Criar token JWT
+    const tokenData = {
       id: user.id,
       email: user.email,
-      is_master: user.is_master || false,
-      session_id: sessionId,
-    });
-
-    // Prepara dados do usuário para retorno (sem dados sensíveis)
-    const userData: AuthUser = {
-      id: user.id,
-      email: user.email,
-      full_name: user.full_name || '',
-      is_master: user.is_master || false,
-      status: user.status,
-      avatar_url: user.avatar_url || undefined,
+      name: user.full_name,
+      role: user.is_master ? 'master' : 'user',
+      groupId: null,
+      developerId: user.developer_id,
+      isDeveloperUser: user.is_developer_user || false,
     };
 
-    // Configuração do cookie
-    const isProduction = process.env.NODE_ENV === 'production';
-    const cookieOptions = [
-      `auth_token=${token}`,
-      `Path=/`,
-      `Max-Age=${60 * 60 * 24 * 7}`, // 7 dias
-      `HttpOnly`,
-      `SameSite=Lax`,
-      isProduction ? `Secure` : '',
-      isProduction ? `Domain=.meudashboard.org` : '',
-    ].filter(Boolean).join('; ');
+    const token = jwt.sign(tokenData, jwtSecret, { expiresIn: '7d' });
 
-    // Retorna resposta de sucesso com cookie no header
+    // Buscar developer info para tema
+    let developerInfo = null;
+    let membershipData = null;
+    
+    if (!user.is_master && !user.is_developer_user) {
+      // Usuario comum: buscar developer do grupo
+      const { data: membership } = await supabase
+        .from('user_group_membership')
+        .select('company_group:company_groups(developer_id, primary_color, use_developer_colors)')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+      
+      membershipData = membership?.company_group;
+      
+      if (membershipData?.developer_id) {
+        const { data: devData } = await supabase
+          .from('developers')
+          .select('primary_color')
+          .eq('id', membershipData.developer_id)
+          .single();
+        developerInfo = devData;
+      }
+    } else if (user.is_developer_user && user.developer_id) {
+      // Desenvolvedor: buscar sua propria info
+      const { data: devData } = await supabase
+        .from('developers')
+        .select('primary_color')
+        .eq('id', user.developer_id)
+        .single();
+      developerInfo = devData;
+    }
+
+    // Criar resposta com cookie
     const response = NextResponse.json({
       success: true,
-      message: 'Login realizado',
-      user: userData,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.full_name,
+        role: user.is_master ? 'master' : 'user',
+        groupId: null,
+        developerId: user.developer_id,
+        isDeveloperUser: user.is_developer_user || false,
+        developer: developerInfo,
+        group: membershipData,
+      },
     });
 
-    response.headers.set('Set-Cookie', cookieOptions);
+    // Setar cookie
+    response.cookies.set('auth-token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7, // 7 dias
+      path: '/',
+    });
 
     return response;
-  } catch (error) {
-    console.error('Erro no login:', error);
+  } catch (error: any) {
+    console.error('Login error:', error);
     return NextResponse.json(
-      { success: false, message: 'Erro interno do servidor' },
+      { error: 'Erro interno do servidor' },
       { status: 500 }
     );
   }
 }
-

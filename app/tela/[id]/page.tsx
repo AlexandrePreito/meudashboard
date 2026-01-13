@@ -544,58 +544,59 @@ ${'='.repeat(50)}
         </div>
       )}
 
-      <div className="flex h-[calc(100vh-5.5rem)] -mt-12 -mx-6 px-6">
-        {/* Área do Dashboard */}
-        <div className="flex flex-col flex-1 transition-all duration-300">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl font-bold text-gray-900">
-                {embedConfig?.screenTitle || 'Dashboard'}
-              </h1>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleRefreshData}
-                disabled={refreshingData}
-                className="p-2 bg-white text-gray-600 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
-                title={refreshProgress || 'Atualizar Dados'}
-              >
-                <Database size={18} className={refreshingData ? 'animate-pulse' : ''} />
-              </button>
-              <button
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className="p-2 bg-white text-gray-600 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
-                title="Recarregar"
-              >
-                <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
-              </button>
-              <button
-                onClick={handleFullscreen}
-                className="p-2 bg-white text-gray-600 hover:bg-gray-50 rounded-lg transition-colors shadow-sm"
-                title="Tela cheia"
-              >
-                <Maximize2 size={18} />
-              </button>
-              <button
-                onClick={() => setChatOpen(!chatOpen)}
-                className={`relative p-2 rounded-lg transition-all shadow-md overflow-hidden ${
-                  chatOpen 
-                    ? 'bg-gradient-to-r from-blue-500 to-blue-700 text-white' 
-                    : 'bg-gradient-to-r from-blue-400 to-blue-600 text-white hover:from-blue-500 hover:to-blue-700'
-                }`}
-                title="Chat IA"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"></div>
-                <Asterisk size={18} className="relative z-10" />
-              </button>
-            </div>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {embedConfig?.screenTitle || 'Dashboard'}
+            </h1>
           </div>
 
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRefreshData}
+              disabled={refreshingData}
+              className="p-2 bg-white text-gray-600 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
+              title={refreshProgress || 'Atualizar Dados'}
+            >
+              <Database size={18} className={refreshingData ? 'animate-pulse' : ''} />
+            </button>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="p-2 bg-white text-gray-600 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
+              title="Recarregar"
+            >
+              <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
+            </button>
+            <button
+              onClick={handleFullscreen}
+              className="p-2 bg-white text-gray-600 hover:bg-gray-50 rounded-lg transition-colors shadow-sm"
+              title="Tela cheia"
+            >
+              <Maximize2 size={18} />
+            </button>
+            <button
+              onClick={() => setChatOpen(!chatOpen)}
+              className={`relative p-2 rounded-lg transition-all shadow-md overflow-hidden ${
+                chatOpen 
+                  ? 'bg-gradient-to-r from-blue-500 to-blue-700 text-white' 
+                  : 'bg-gradient-to-r from-blue-400 to-blue-600 text-white hover:from-blue-500 hover:to-blue-700'
+              }`}
+              title="Chat IA"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"></div>
+              <Asterisk size={18} className="relative z-10" />
+            </button>
+          </div>
+        </div>
+
+        {/* Container do Dashboard */}
+        <div className="h-[calc(100vh-16rem)] min-h-[600px]">
           <div
             ref={embedContainerRef}
-            className="flex-1 bg-white rounded-lg shadow-sm overflow-hidden relative"
+            className="h-full bg-white rounded-lg shadow-sm overflow-hidden relative"
           >
             {/* Botão para sair do fullscreen - aparece só em fullscreen */}
             {isFullscreen && (

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
 
 export async function POST(request: Request) {
   try {
@@ -12,6 +12,7 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const groupId = formData.get('group_id') as string;
+    const uploadType = formData.get('type') as string; // 'developer' ou 'group'
 
     if (!file) {
       return NextResponse.json({ error: 'Arquivo é obrigatório' }, { status: 400 });
@@ -30,9 +31,19 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient();
 
-    // Gerar nome único
-    const ext = file.name.split('.').pop();
-    const fileName = `${groupId || 'temp'}_${Date.now()}.${ext}`;
+    // Gerar nome único baseado no tipo
+    let fileName: string;
+    if (uploadType === 'developer') {
+      const developerId = await getUserDeveloperId(user.id);
+      if (!developerId) {
+        return NextResponse.json({ error: 'Usuario nao e desenvolvedor' }, { status: 403 });
+      }
+      const ext = file.name.split('.').pop();
+      fileName = `dev_${developerId}_${Date.now()}.${ext}`;
+    } else {
+      const ext = file.name.split('.').pop();
+      fileName = `${groupId || 'temp'}_${Date.now()}.${ext}`;
+    }
 
     // Converter para buffer
     const arrayBuffer = await file.arrayBuffer();

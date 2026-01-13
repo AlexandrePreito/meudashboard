@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
 import DatasetSelector from '@/components/whatsapp/DatasetSelector';
+import { useMenu } from '@/contexts/MenuContext';
 import {
   UsersRound,
   Plus,
@@ -40,8 +41,9 @@ interface Instance {
   name: string;
 }
 
-export default function GruposAutorizadosPage() {
+function GruposContent() {
   const router = useRouter();
+  const { activeGroup } = useMenu();
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>('loading');
   const [userGroupIds, setUserGroupIds] = useState<string[]>([]);
@@ -68,6 +70,12 @@ export default function GruposAutorizadosPage() {
     checkAccessAndLoad();
   }, []);
 
+  useEffect(() => {
+    if (userRole !== 'user') {
+      loadGroups(activeGroup);
+    }
+  }, [activeGroup, userRole]);
+
   async function checkAccessAndLoad() {
     try {
       const res = await fetch('/api/auth/me');
@@ -82,31 +90,35 @@ export default function GruposAutorizadosPage() {
       
       if (data.user.is_master) {
         setUserRole('master');
+      } else if (data.user.is_developer) {
+        setUserRole('developer');
       } else if (data.user.role === 'admin') {
         setUserRole('admin');
         setUserGroupIds(data.groupIds || []);
       } else {
-        // User sem acesso - redirecionar
-        router.push('/');
-        return;
+        setUserRole('user');
       }
       
-      loadData();
+      loadData(activeGroup);
     } catch (error) {
       console.error('Erro ao verificar acesso:', error);
       router.push('/login');
     }
   }
 
-  async function loadData() {
+  async function loadData(currentGroup?: { id: string; name: string } | null) {
     setLoading(true);
-    await Promise.all([loadGroups(), loadInstances()]);
+    await Promise.all([loadGroups(currentGroup), loadInstances()]);
     setLoading(false);
   }
 
-  async function loadGroups() {
+  async function loadGroups(currentGroup?: { id: string; name: string } | null) {
     try {
-      const res = await fetch('/api/whatsapp/groups');
+      const url = currentGroup
+        ? `/api/whatsapp/groups?group_id=${currentGroup.id}`
+        : '/api/whatsapp/groups';
+      
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setGroups(data.groups || []);
@@ -199,7 +211,7 @@ export default function GruposAutorizadosPage() {
         alert(editingGroup ? 'Grupo atualizado!' : 'Grupo autorizado!');
         setShowModal(false);
         resetForm();
-        loadGroups();
+        loadGroups(activeGroup);
       } else {
         const data = await res.json();
         alert(data.error || 'Erro ao salvar');
@@ -218,7 +230,7 @@ export default function GruposAutorizadosPage() {
       const res = await fetch(`/api/whatsapp/groups?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
         alert('Grupo removido!');
-        loadGroups();
+        loadGroups(activeGroup);
       } else {
         const data = await res.json();
         alert(data.error || 'Erro ao remover');
@@ -242,7 +254,7 @@ export default function GruposAutorizadosPage() {
       });
 
       if (res.ok) {
-        loadGroups();
+        loadGroups(activeGroup);
       }
     } catch (err) {
       console.error('Erro ao atualizar:', err);
@@ -267,9 +279,19 @@ export default function GruposAutorizadosPage() {
     );
   }
 
+  // Acesso negado para usuários comuns (se necessário, mostrar mensagem)
+  if (userRole === 'user') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <UsersRound className="w-16 h-16 text-gray-300 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700 mb-2">Acesso restrito</h2>
+        <p className="text-gray-500 mb-4">Este módulo não está disponível para seu perfil.</p>
+      </div>
+    );
+  }
+
   return (
-    <MainLayout>
-      <div className="space-y-6 -mt-12">
+    <div className="space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -502,6 +524,13 @@ export default function GruposAutorizadosPage() {
           </div>
         )}
       </div>
+  );
+}
+
+export default function GruposPage() {
+  return (
+    <MainLayout>
+      <GruposContent />
     </MainLayout>
   );
 }

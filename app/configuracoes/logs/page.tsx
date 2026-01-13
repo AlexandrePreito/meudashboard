@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
+import { useMenu } from '@/contexts/MenuContext';
 import {
   FileText,
   Search,
@@ -76,7 +77,8 @@ const MODULE_ICONS: Record<string, any> = {
   config: Settings
 };
 
-export default function LogsPage() {
+function LogsContent() {
+  const { activeGroup } = useMenu();
   const [activeTab, setActiveTab] = useState<'logs' | 'usage'>('logs');
   const [logs, setLogs] = useState<Log[]>([]);
   const [summary, setSummary] = useState<UserSummary[]>([]);
@@ -129,11 +131,11 @@ export default function LogsPage() {
 
   useEffect(() => {
     if (activeTab === 'logs') {
-      loadLogs();
+      loadLogs(activeGroup);
     } else {
       loadSummary();
     }
-  }, [activeTab, page, filters]);
+  }, [activeTab, page, filters, activeGroup]);
 
   async function loadUsers() {
     try {
@@ -147,7 +149,7 @@ export default function LogsPage() {
     }
   }
 
-  async function loadLogs() {
+  async function loadLogs(currentGroup?: { id: string; name: string } | null) {
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -160,6 +162,7 @@ export default function LogsPage() {
       if (filters.action_type) params.append('action_type', filters.action_type);
       if (filters.date_from) params.append('date_from', filters.date_from);
       if (filters.date_to) params.append('date_to', filters.date_to);
+      if (currentGroup) params.append('group_id', currentGroup.id);
 
       const res = await fetch(`/api/config/logs?${params}`);
       if (res.ok) {
@@ -231,8 +234,7 @@ export default function LogsPage() {
   }
 
   return (
-    <MainLayout>
-      <div className="space-y-6 -mt-12">
+    <div className="space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -243,7 +245,7 @@ export default function LogsPage() {
               {isRegularUser ? 'Histórico das suas ações no sistema' : 'Acompanhe as atividades e uso do sistema'}
             </p>
           </div>
-          <Button onClick={() => activeTab === 'logs' ? loadLogs() : loadSummary()} icon={<RefreshCw size={18} />}>
+          <Button onClick={() => activeTab === 'logs' ? loadLogs(activeGroup) : loadSummary()} icon={<RefreshCw size={18} />}>
             Atualizar
           </Button>
         </div>
@@ -494,6 +496,13 @@ export default function LogsPage() {
           </>
         )}
       </div>
+  );
+}
+
+export default function LogsPage() {
+  return (
+    <MainLayout>
+      <LogsContent />
     </MainLayout>
   );
 }

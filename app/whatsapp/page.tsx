@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
+import { useMenu } from '@/contexts/MenuContext';
 import {
   MessageSquare,
   Smartphone,
@@ -27,8 +28,9 @@ interface DashboardStats {
   messages: { total: number; sent: number; received: number; today: number };
 }
 
-export default function WhatsAppDashboardPage() {
+function WhatsAppDashboardContent() {
   const router = useRouter();
+  const { activeGroup } = useMenu();
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>('user');
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -42,6 +44,12 @@ export default function WhatsAppDashboardPage() {
     checkAccessAndLoad();
   }, []);
 
+  useEffect(() => {
+    if (userRole !== 'user') {
+      loadDashboard(activeGroup);
+    }
+  }, [activeGroup, userRole]);
+
   async function checkAccessAndLoad() {
     try {
       const res = await fetch('/api/auth/me');
@@ -50,14 +58,14 @@ export default function WhatsAppDashboardPage() {
         setUser(data.user);
         if (data.user.is_master) {
           setUserRole('master');
+        } else if (data.user.is_developer) {
+          setUserRole('developer');
         } else if (data.user.role === 'admin') {
           setUserRole('admin');
         } else {
-          // User sem acesso - redirecionar
-          router.push('/');
-          return;
+          setUserRole('user');
         }
-        loadDashboard();
+        loadDashboard(activeGroup);
       } else {
         router.push('/login');
       }
@@ -67,15 +75,29 @@ export default function WhatsAppDashboardPage() {
     }
   }
 
-  async function loadDashboard() {
+  async function loadDashboard(currentGroup?: { id: string; name: string } | null) {
     setLoading(true);
     try {
+      // Montar URLs com filtro de grupo se houver grupo ativo
+      const instancesUrl = currentGroup
+        ? `/api/whatsapp/instances?group_id=${currentGroup.id}`
+        : '/api/whatsapp/instances';
+      const numbersUrl = currentGroup
+        ? `/api/whatsapp/authorized-numbers?group_id=${currentGroup.id}`
+        : '/api/whatsapp/authorized-numbers';
+      const groupsUrl = currentGroup
+        ? `/api/whatsapp/groups?group_id=${currentGroup.id}`
+        : '/api/whatsapp/groups';
+      const messagesUrl = currentGroup
+        ? `/api/whatsapp/messages?limit=10&group_id=${currentGroup.id}`
+        : '/api/whatsapp/messages?limit=10';
+      
       // Carregar estatísticas
       const [instancesRes, numbersRes, groupsRes, messagesRes, usageRes] = await Promise.all([
-        fetch('/api/whatsapp/instances'),
-        fetch('/api/whatsapp/authorized-numbers'),
-        fetch('/api/whatsapp/groups'),
-        fetch('/api/whatsapp/messages?limit=10'),
+        fetch(instancesUrl),
+        fetch(numbersUrl),
+        fetch(groupsUrl),
+        fetch(messagesUrl),
         fetch('/api/whatsapp/usage')
       ]);
 
@@ -165,21 +187,30 @@ export default function WhatsAppDashboardPage() {
     });
   }
 
-  // Se ainda carregando ou sem permissão
-  if (!user || userRole === 'user' || loading) {
+  // Se ainda carregando
+  if (loading) {
     return (
-      <MainLayout>
-        <div className="flex items-center justify-center h-96">
-          <LoadingSpinner size={32} />
-          {userRole === 'user' && <p className="ml-3 text-gray-600">Redirecionando...</p>}
-        </div>
-      </MainLayout>
+      <div className="flex items-center justify-center h-96">
+        <LoadingSpinner size={32} />
+      </div>
+    );
+  }
+
+  // Se usuário comum (sem permissão de admin/master), mostrar tela de upgrade
+  if (userRole === 'user') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <MessageSquare className="w-16 h-16 text-gray-300 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700 mb-2">WhatsApp não disponível</h2>
+        <p className="text-gray-500 mb-4">Este módulo não está incluído no seu plano atual.</p>
+        <p className="text-sm text-gray-400">Entre em contato para fazer upgrade.</p>
+      </div>
     );
   }
 
   return (
-    <MainLayout>
-      <div className="space-y-6 -mt-12">
+    <>
+      <div className="space-y-6">
         {/* Header */}
         <div>
           <h1 className="text-2xl font-bold text-gray-900">WhatsApp</h1>
@@ -460,6 +491,14 @@ export default function WhatsAppDashboardPage() {
           </div>
         </>
       )}
+    </>
+  );
+}
+
+export default function WhatsAppDashboardPage() {
+  return (
+    <MainLayout>
+      <WhatsAppDashboardContent />
     </MainLayout>
   );
 }

@@ -194,7 +194,7 @@ export default function ModulosPage() {
   return (
     <MainLayout>
       <Notifications notifications={notifications} onRemove={removeNotification} />
-      <div className="space-y-6 -mt-12">
+      <div className="space-y-6">
         {/* Header */}
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Módulos do Sistema</h1>

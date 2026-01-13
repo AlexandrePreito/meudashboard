@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
+import { useMenu } from '@/contexts/MenuContext';
 import { 
   Plus, 
   Pencil, 
@@ -28,7 +29,8 @@ import {
   Package,
   Truck,
   Factory,
-  LucideIcon
+  LucideIcon,
+  Database
 } from 'lucide-react';
 
 interface Report {
@@ -94,7 +96,9 @@ function renderIcon(iconName: string, size: number = 20, className?: string) {
   return <IconComponent size={size} className={className} />;
 }
 
-export default function TelasPage() {
+// Componente interno que usa o contexto
+function TelasContent() {
+  const { activeGroup } = useMenu();
   const [screens, setScreens] = useState<Screen[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -105,6 +109,8 @@ export default function TelasPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterGroup, setFilterGroup] = useState('');
   const [userSearchTerm, setUserSearchTerm] = useState('');
+  const [userRole, setUserRole] = useState<string>('user');
+  const [accessDenied, setAccessDenied] = useState(false);
   
   const [form, setForm] = useState({
     report_id: '',
@@ -117,13 +123,54 @@ export default function TelasPage() {
   });
 
   useEffect(() => {
-    loadData();
+    checkAccessAndLoad();
   }, []);
 
-  async function loadData() {
+  useEffect(() => {
+    if (userRole !== 'user') {
+      loadData(activeGroup);
+    }
+  }, [activeGroup, userRole]);
+
+  async function checkAccessAndLoad() {
     try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      
+      if (data.user) {
+        if (data.user.is_master) {
+          setUserRole('master');
+        } else if (data.user.is_developer) {
+          setUserRole('developer');
+        } else if (data.user.role === 'admin') {
+          setUserRole('admin');
+        } else {
+          setUserRole('user');
+          setAccessDenied(true);
+          setLoading(false);
+          return;
+        }
+        loadData(activeGroup);
+      } else {
+        setAccessDenied(true);
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Erro ao verificar acesso:', error);
+      setAccessDenied(true);
+      setLoading(false);
+    }
+  }
+
+  async function loadData(currentGroup?: { id: string; name: string } | null) {
+    try {
+      // Montar URL com filtro de grupo se houver grupo ativo
+      const screensUrl = currentGroup
+        ? `/api/powerbi/screens?group_id=${currentGroup.id}`
+        : '/api/powerbi/screens';
+      
       const [screensRes, reportsRes, usersRes] = await Promise.all([
-        fetch('/api/powerbi/screens'),
+        fetch(screensUrl),
         fetch('/api/powerbi/reports'),
         fetch('/api/config/users')
       ]);
@@ -244,7 +291,7 @@ export default function TelasPage() {
 
       if (res.ok) {
         setShowModal(false);
-        loadData();
+        loadData(activeGroup);
       } else {
         const data = await res.json();
         alert(data.error || 'Erro ao salvar');
@@ -266,7 +313,7 @@ export default function TelasPage() {
       });
 
       if (res.ok) {
-        loadData();
+        loadData(activeGroup);
       } else {
         const data = await res.json();
         alert(data.error || 'Erro ao excluir');
@@ -285,7 +332,7 @@ export default function TelasPage() {
       });
 
       if (res.ok) {
-        loadData();
+        loadData(activeGroup);
       }
     } catch (error) {
       console.error('Erro ao alterar status:', error);
@@ -301,26 +348,35 @@ export default function TelasPage() {
       });
 
       if (res.ok) {
-        loadData();
+        loadData(activeGroup);
       }
     } catch (error) {
       console.error('Erro ao alterar destaque:', error);
     }
   }
 
+  if (accessDenied) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Database className="w-16 h-16 text-gray-300 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700 mb-2">Acesso restrito</h2>
+        <p className="text-gray-500 mb-4">Este modulo nao esta disponivel para seu perfil.</p>
+        <p className="text-sm text-gray-400">Apenas administradores podem acessar.</p>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
-      <MainLayout>
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-        </div>
-      </MainLayout>
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
     );
   }
 
   return (
-    <MainLayout>
-      <div className="space-y-6 -mt-12">
+    <>
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Telas</h1>
@@ -727,6 +783,15 @@ export default function TelasPage() {
           </div>
         </div>
       )}
+    </>
+  );
+}
+
+// Componente principal exportado
+export default function TelasPage() {
+  return (
+    <MainLayout>
+      <TelasContent />
     </MainLayout>
   );
 }

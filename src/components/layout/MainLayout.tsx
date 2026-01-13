@@ -14,6 +14,7 @@ interface User {
   email: string;
   full_name?: string;
   is_master?: boolean;
+  is_developer?: boolean;
   role?: string;
 }
 
@@ -29,6 +30,7 @@ function MainContent({ children, user }: MainLayoutProps & { user: User | null }
       setContextUser({
         id: user.id,
         is_master: user.is_master,
+        is_developer: user.is_developer,
         role: user.role
       });
     }
