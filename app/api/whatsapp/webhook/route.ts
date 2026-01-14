@@ -289,77 +289,112 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: 'error', reason: 'no instance' });
     }
 
-    // Buscar alerta configurado para este número
-    // O campo whatsapp_number é uma string separada por vírgula, não um array
-    console.log('Buscando alertas para o número:', phone);
+    // Verificar se é uma saudação genérica
+    const greetings = ['oi', 'olá', 'ola', 'hey', 'hi', 'hello', 'bom dia', 'boa tarde', 'boa noite', 'e aí', 'eai', 'opa', 'fala'];
+    const isGreeting = greetings.some(g => messageText.toLowerCase().trim() === g || messageText.toLowerCase().trim().startsWith(g + ' '));
 
-    const { data: alerts, error: alertError } = await supabase
+    // Buscar conexão Power BI do grupo
+    const { data: groupConnection } = await supabase
+      .from('powerbi_connections')
+      .select('id, name')
+      .eq('company_group_id', authorizedNumber.company_group_id)
+      .limit(1)
+      .maybeSingle();
+
+    // Buscar contexto AI do grupo (que tem connection_id e dataset_id)
+    const { data: aiContext } = await supabase
+      .from('ai_model_contexts')
+      .select('connection_id, dataset_id, context_content')
+      .eq('company_group_id', authorizedNumber.company_group_id)
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle();
+
+    // Também buscar alerta como fallback
+    const { data: alerts } = await supabase
       .from('ai_alerts')
       .select('*')
       .eq('company_group_id', authorizedNumber.company_group_id)
       .eq('is_enabled', true)
-      .order('updated_at', { ascending: false });
+      .order('updated_at', { ascending: false })
+      .limit(1);
 
-    if (alertError) {
-      console.error('Erro ao buscar alertas:', alertError);
-    }
+    const recentAlert = alerts?.[0] || null;
 
-    // Filtrar alertas que contêm o número de telefone
-    const recentAlert = alerts?.find(alert => {
-      const numbers = alert.whatsapp_number || '';
-      return numbers.includes(phone);
-    }) || null;
+    // Determinar connection_id e dataset_id (prioridade: contexto AI > alerta)
+    const connectionId = aiContext?.connection_id || recentAlert?.connection_id || null;
+    const datasetId = aiContext?.dataset_id || recentAlert?.dataset_id || null;
 
-    console.log('Alerta encontrado:', recentAlert ? recentAlert.name : 'NENHUM');
-    console.log('Connection ID:', recentAlert?.connection_id);
-    console.log('Dataset ID:', recentAlert?.dataset_id);
+    console.log('Conexão encontrada:', connectionId ? 'SIM' : 'NÃO');
+    console.log('Dataset encontrado:', datasetId ? 'SIM' : 'NÃO');
+    console.log('É saudação:', isGreeting);
 
-    // Se não tem conexão configurada, enviar mensagem de suporte
-    if (!recentAlert?.connection_id || !recentAlert?.dataset_id) {
-      console.log('Sem conexão/dataset configurado - enviando mensagem de suporte');
-      
-      const supportMessage = `Olá ${authorizedNumber.name || ''}! 👋
+    // Se é uma saudação, responder com boas-vindas
+    if (isGreeting) {
+      const welcomeMessage = connectionId && datasetId
+        ? `Olá ${authorizedNumber.name || ''}! 👋
+
+Sou o assistente IA da sua empresa. Posso te ajudar com análises e consultas sobre seus dados em tempo real! 📊
+
+*Como posso te ajudar hoje?*
+Exemplos do que você pode perguntar:
+- Qual o faturamento do mês?
+- Quais os produtos mais vendidos?
+- Como estão as vendas por região?`
+        : `Olá ${authorizedNumber.name || ''}! 👋
 
 Sou o assistente IA da sua empresa, mas ainda não tenho acesso aos seus dados configurado.
 
-📞 *Entre em contato com o suporte* para configurar:
-- Conexão com seus dados
-- Alertas personalizados
-- Consultas via WhatsApp
+📞 *Entre em contato com o suporte* para configurar a conexão com seus dados.`;
 
-Assim que estiver configurado, poderei te ajudar com análises e consultas em tempo real! 🚀`;
+      const sent = await sendWhatsAppMessage(instance, phone, welcomeMessage);
 
-      // Enviar mensagem de suporte
-      const sent = await sendWhatsAppMessage(instance, phone, supportMessage);
-      
       if (sent) {
         await supabase.from('whatsapp_messages').insert({
           company_group_id: authorizedNumber.company_group_id,
           phone_number: phone,
-          message_content: supportMessage,
+          message_content: welcomeMessage,
           direction: 'outgoing',
           sender_name: 'Assistente IA'
         });
       }
 
-      return NextResponse.json({ 
-        status: 'success', 
-        sent,
-        reason: 'no_connection_configured'
-      });
+      return NextResponse.json({ status: 'success', sent, reason: 'greeting_response' });
     }
 
-    // Buscar contexto do modelo (se houver alerta com conexão)
-    let modelContext = '';
-    if (recentAlert?.connection_id) {
+    // Se não tem conexão configurada para perguntas reais, responder educadamente
+    if (!connectionId || !datasetId) {
+      const noDataMessage = `Desculpe ${authorizedNumber.name || ''}, ainda não tenho acesso aos dados da sua empresa para responder essa pergunta.
+
+Entre em contato com o suporte para configurar a conexão! 📞`;
+
+      const sent = await sendWhatsAppMessage(instance, phone, noDataMessage);
+
+      if (sent) {
+        await supabase.from('whatsapp_messages').insert({
+          company_group_id: authorizedNumber.company_group_id,
+          phone_number: phone,
+          message_content: noDataMessage,
+          direction: 'outgoing',
+          sender_name: 'Assistente IA'
+        });
+      }
+
+      return NextResponse.json({ status: 'success', sent, reason: 'no_connection_configured' });
+    }
+
+    // Usar contexto já buscado ou buscar novamente
+    let modelContext = aiContext?.context_content?.slice(0, 6000) || '';
+
+    if (!modelContext && connectionId) {
       const { data: context } = await supabase
         .from('ai_model_contexts')
         .select('context_content')
-        .eq('connection_id', recentAlert.connection_id)
+        .eq('connection_id', connectionId)
         .eq('is_active', true)
         .limit(1)
         .maybeSingle();
-      
+
       if (context?.context_content) {
         modelContext = context.context_content.slice(0, 6000);
       }
@@ -407,7 +442,7 @@ ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', mon
 `;
 
     // Definir tools para o Claude
-    const tools: Anthropic.Tool[] = recentAlert?.connection_id && recentAlert?.dataset_id ? [
+    const tools: Anthropic.Tool[] = connectionId && datasetId ? [
       {
         name: 'execute_dax',
         description: 'Executa uma query DAX no Power BI para buscar dados.',
@@ -445,15 +480,15 @@ ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', mon
       const toolResults: any[] = [];
 
       for (const toolUse of toolUseBlocks) {
-        if (toolUse.type === 'tool_use' && toolUse.name === 'execute_dax' && recentAlert) {
+        if (toolUse.type === 'tool_use' && toolUse.name === 'execute_dax' && connectionId && datasetId) {
           const toolInput = toolUse.input as { query?: string };
           if (!toolInput.query) continue;
 
           console.log('Executando DAX via WhatsApp:', toolInput.query);
 
           const daxResult = await executeDaxQuery(
-            recentAlert.connection_id,
-            recentAlert.dataset_id,
+            connectionId,
+            datasetId,
             toolInput.query,
             supabase
           );
