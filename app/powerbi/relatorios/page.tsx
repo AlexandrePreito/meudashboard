@@ -369,21 +369,33 @@ function RelatoriosContent() {
                     <td className="px-6 py-4 text-right">
                       <button
                         onClick={() => openModal(report)}
-                        className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg mr-1"
+                        className={`p-2 rounded-lg mr-1 ${
+                          userRole === 'developer'
+                            ? 'text-gray-400 hover:bg-gray-100'
+                            : 'text-gray-600 hover:bg-gray-100'
+                        }`}
                         title="Editar"
                       >
                         <Pencil size={16} />
                       </button>
                       <button
                         onClick={() => handleCopy(report)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg mr-1"
+                        className={`p-2 rounded-lg mr-1 ${
+                          userRole === 'developer'
+                            ? 'text-gray-400 hover:bg-gray-100'
+                            : 'text-blue-600 hover:bg-blue-50'
+                        }`}
                         title="Copiar"
                       >
                         <Copy size={16} />
                       </button>
                       <button
                         onClick={() => handleDelete(report.id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                        className={`p-2 rounded-lg ${
+                          userRole === 'developer'
+                            ? 'text-gray-400 hover:bg-gray-100'
+                            : 'text-red-600 hover:bg-red-50'
+                        }`}
                         title="Excluir"
                       >
                         <Trash2 size={16} />

@@ -89,6 +89,7 @@ export async function GET(request: Request) {
 
     // Se onlyMine, filtra por permissoes especificas do usuario
     if (onlyMine && !user.is_master) {
+      // Buscar telas que o usuario tem acesso direto
       const { data: userScreens } = await supabase
         .from('powerbi_screen_users')
         .select('screen_id')
@@ -96,14 +97,24 @@ export async function GET(request: Request) {
 
       const userScreenIds = userScreens?.map(s => s.screen_id) || [];
 
+      // Buscar quais telas TEM usuarios vinculados (para saber quais sao restritas)
+      const { data: screensWithUsers } = await supabase
+        .from('powerbi_screen_users')
+        .select('screen_id');
+
+      const restrictedScreenIds = [...new Set(screensWithUsers?.map(s => s.screen_id) || [])];
+
       const filteredScreens = (screens || []).filter(screen => {
         // Se usuario tem acesso direto a tela
         if (userScreenIds.includes(screen.id)) {
           return true;
         }
-        // Tela sem restricao de usuario = todos do grupo veem
-        // (verificar se tela tem usuarios vinculados)
-        return false; // Por padrao, so mostra se tem acesso explicito
+        // Se a tela NAO tem restricao de usuarios, todos do grupo podem ver
+        if (!restrictedScreenIds.includes(screen.id)) {
+          return true;
+        }
+        // Tela tem restricao e usuario nao esta na lista
+        return false;
       });
 
       return NextResponse.json({ screens: filteredScreens });

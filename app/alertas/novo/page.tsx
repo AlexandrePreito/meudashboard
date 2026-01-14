@@ -895,7 +895,8 @@ export default function NovoAlertaPage() {
                                   if (selectedNumberToAdd) {
                                     setFormData(prev => ({
                                       ...prev,
-                                      whatsapp_numbers: [...prev.whatsapp_numbers, selectedNumberToAdd]
+                                      whatsapp_numbers: [...prev.whatsapp_numbers, selectedNumberToAdd],
+                                      notify_whatsapp: true
                                     }));
                                     setSelectedNumberToAdd('');
                                   }
@@ -953,7 +954,8 @@ export default function NovoAlertaPage() {
                                   if (selectedGroupToAdd) {
                                     setFormData(prev => ({
                                       ...prev,
-                                      whatsapp_group_ids: [...prev.whatsapp_group_ids, selectedGroupToAdd]
+                                      whatsapp_group_ids: [...prev.whatsapp_group_ids, selectedGroupToAdd],
+                                      notify_whatsapp: true
                                     }));
                                     setSelectedGroupToAdd('');
                                   }

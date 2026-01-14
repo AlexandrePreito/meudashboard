@@ -334,7 +334,7 @@ export default function Header({ user }: HeaderProps) {
         }
       `}</style>
       <header className="fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 z-40">
-        <div className="h-full max-w-screen-2xl mx-auto px-4 flex items-center">
+        <div className="h-full px-4 flex items-center">
           {/* Mobile: Menu à esquerda */}
           <div className="lg:hidden">
             <button

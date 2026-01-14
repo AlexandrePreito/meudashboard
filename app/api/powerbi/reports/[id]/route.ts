@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
 
 // GET - Buscar relatório por ID
 export async function GET(
@@ -48,13 +48,52 @@ export async function PUT(
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
+    const supabase = createAdminClient();
+
+    // Verificar permissão
     if (!user.is_master) {
-      return NextResponse.json({ error: 'Apenas master pode editar relatórios' }, { status: 403 });
+      const developerId = await getUserDeveloperId(user.id);
+      
+      if (!developerId) {
+        return NextResponse.json({ error: 'Sem permissão para editar relatórios' }, { status: 403 });
+      }
+
+      // Buscar o relatório e sua conexão
+      const { data: report } = await supabase
+        .from('powerbi_reports')
+        .select('connection_id')
+        .eq('id', id)
+        .single();
+
+      if (!report) {
+        return NextResponse.json({ error: 'Relatório não encontrado' }, { status: 404 });
+      }
+
+      // Buscar a conexão para verificar o grupo
+      const { data: connection } = await supabase
+        .from('powerbi_connections')
+        .select('company_group_id')
+        .eq('id', report.connection_id)
+        .single();
+
+      if (!connection) {
+        return NextResponse.json({ error: 'Conexão não encontrada' }, { status: 404 });
+      }
+
+      // Verificar se o grupo pertence ao developer
+      const { data: group } = await supabase
+        .from('company_groups')
+        .select('id')
+        .eq('id', connection.company_group_id)
+        .eq('developer_id', developerId)
+        .single();
+
+      if (!group) {
+        return NextResponse.json({ error: 'Sem permissão para editar este relatório' }, { status: 403 });
+      }
     }
 
     const body = await request.json();
-    const supabase = createAdminClient();
-
     const { data, error } = await supabase
       .from('powerbi_reports')
       .update(body)
@@ -86,11 +125,50 @@ export async function DELETE(
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    if (!user.is_master) {
-      return NextResponse.json({ error: 'Apenas master pode excluir relatórios' }, { status: 403 });
-    }
-
     const supabase = createAdminClient();
+
+    // Verificar permissão
+    if (!user.is_master) {
+      const developerId = await getUserDeveloperId(user.id);
+      
+      if (!developerId) {
+        return NextResponse.json({ error: 'Sem permissão para excluir relatórios' }, { status: 403 });
+      }
+
+      // Buscar o relatório e sua conexão
+      const { data: report } = await supabase
+        .from('powerbi_reports')
+        .select('connection_id')
+        .eq('id', id)
+        .single();
+
+      if (!report) {
+        return NextResponse.json({ error: 'Relatório não encontrado' }, { status: 404 });
+      }
+
+      // Buscar a conexão para verificar o grupo
+      const { data: connection } = await supabase
+        .from('powerbi_connections')
+        .select('company_group_id')
+        .eq('id', report.connection_id)
+        .single();
+
+      if (!connection) {
+        return NextResponse.json({ error: 'Conexão não encontrada' }, { status: 404 });
+      }
+
+      // Verificar se o grupo pertence ao developer
+      const { data: group } = await supabase
+        .from('company_groups')
+        .select('id')
+        .eq('id', connection.company_group_id)
+        .eq('developer_id', developerId)
+        .single();
+
+      if (!group) {
+        return NextResponse.json({ error: 'Sem permissão para excluir este relatório' }, { status: 403 });
+      }
+    }
 
     const { error } = await supabase
       .from('powerbi_reports')
@@ -108,7 +186,3 @@ export async function DELETE(
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }
-
-
-
-

@@ -132,7 +132,7 @@ export default function Sidebar() {
     { href: '/whatsapp/mensagens', icon: MessageSquare, label: 'Mensagens', requiresPermission: 'whatsapp' },
     { href: '/alertas', icon: Bell, label: 'Alertas', requiresPermission: 'alerts' },
     { href: '/alertas/historico', icon: History, label: 'Histórico', requiresPermission: 'alerts' },
-    { href: '/whatsapp/webhook', icon: Webhook, label: 'Webhook', requiresPermission: 'whatsapp' },
+    { href: '/whatsapp/webhook', icon: Webhook, label: 'Webhook', requiresPermission: 'whatsapp', hideForDeveloper: true },
   ];
 
   useEffect(() => {
@@ -146,7 +146,13 @@ export default function Sidebar() {
   async function loadScreens(groupId: string) {
     setLoading(true);
     try {
-      const res = await fetch(`/api/powerbi/screens?group_id=${groupId}`, {
+      // Usuário comum precisa filtrar por permissão (only_mine=true)
+      const needsFilter = !user?.is_master && !user?.is_developer && user?.role !== 'admin';
+      const url = needsFilter
+        ? `/api/powerbi/screens?group_id=${groupId}&only_mine=true`
+        : `/api/powerbi/screens?group_id=${groupId}`;
+      
+      const res = await fetch(url, {
         credentials: 'include'
       });
       if (res.ok) {
@@ -303,7 +309,9 @@ export default function Sidebar() {
                 </div>
               )}
               <nav className="px-2 pb-4 border-b border-gray-100 mb-2">
-                {whatsappMenuItems.map((item) => {
+                {whatsappMenuItems
+                  .filter(item => !(item.hideForDeveloper && user?.is_developer))
+                  .map((item) => {
                   const Icon = item.icon;
                   let isActive = pathname === item.href;
                   
