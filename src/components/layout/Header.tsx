@@ -52,7 +52,7 @@ function BrandName({ className = "", size = "text-xl" }: { className?: string; s
 interface CompanyGroup {
   id: string;
   name: string;
-  slug?: string;
+  slug: string;
   logo_url?: string | null;
   primary_color?: string | null;
   use_developer_logo?: boolean;
