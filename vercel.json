@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/alertas/cron?key=${CRON_SECRET}",
+      "path": "/api/alertas/cron",
       "schedule": "* * * * *"
     }
   ]
