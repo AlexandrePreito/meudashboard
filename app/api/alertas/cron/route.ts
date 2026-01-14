@@ -282,7 +282,9 @@ export async function GET(request: Request) {
 
       let message = alert.message_template || '🔔 {{nome_alerta}}\n📊 Valor: {{valor}}\n📅 {{data}} às {{hora}}';
       for (const [key, value] of Object.entries(variables)) {
-        message = message.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), value);
+        // Escapa todos os caracteres especiais de regex, não só {}
+        const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        message = message.split(key).join(value);
       }
 
       // Enviar para números
