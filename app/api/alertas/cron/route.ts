@@ -94,9 +94,28 @@ export async function GET(request: Request) {
 
     const supabase = createAdminClient();
     const now = new Date();
-    const currentTime = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
-    const currentDay = now.getDay(); // 0=Dom, 1=Seg...
-    const currentDayOfMonth = now.getDate();
+
+    // Converter para horário de Brasília usando Intl (mais confiável na Vercel)
+    const brasiliaFormatter = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    const currentTime = brasiliaFormatter.format(now);
+
+    const dayFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Sao_Paulo',
+      weekday: 'short'
+    });
+    const dayMap: Record<string, number> = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 };
+    const currentDay = dayMap[dayFormatter.format(now)];
+
+    const dateFormatter = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      day: '2-digit'
+    });
+    const currentDayOfMonth = parseInt(dateFormatter.format(now));
 
     console.log(`[CRON] Verificando alertas às ${currentTime}`);
 
