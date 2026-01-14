@@ -196,8 +196,10 @@ function NumerosContent() {
         datasets: formData.datasets
       };
 
-      // Se admin, forçar company_group_id
-      if (userRole === 'admin' && userGroupIds.length > 0) {
+      // Se admin ou developer, adicionar company_group_id
+      if ((userRole === 'admin' || userRole === 'developer') && activeGroup) {
+        payload.company_group_id = activeGroup.id;
+      } else if (userGroupIds.length > 0) {
         payload.company_group_id = userGroupIds[0];
       }
 

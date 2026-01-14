@@ -22,16 +22,32 @@ export async function GET(request: Request) {
     if (user.is_master) {
       userRole = 'master';
     } else {
-      const { data: memberships } = await supabase
-        .from('user_group_membership')
-        .select('company_group_id, role')
-        .eq('user_id', user.id)
-        .eq('is_active', true);
+      // Verificar se é desenvolvedor
+      const { getUserDeveloperId } = await import('@/lib/auth');
+      const developerId = await getUserDeveloperId(user.id);
 
-      userGroupIds = memberships?.map(m => m.company_group_id) || [];
-      
-      if (memberships?.some(m => m.role === 'admin')) {
-        userRole = 'admin';
+      if (developerId) {
+        userRole = 'developer';
+        // Buscar grupos do desenvolvedor
+        const { data: devGroups } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('developer_id', developerId)
+          .eq('status', 'active');
+        userGroupIds = devGroups?.map(g => g.id) || [];
+      } else {
+        // Usuário comum: buscar via membership
+        const { data: memberships } = await supabase
+          .from('user_group_membership')
+          .select('company_group_id, role')
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+
+        userGroupIds = memberships?.map(m => m.company_group_id) || [];
+        
+        if (memberships?.some(m => m.role === 'admin')) {
+          userRole = 'admin';
+        }
       }
     }
 
@@ -46,7 +62,7 @@ export async function GET(request: Request) {
     }
 
     // SEGURANCA: Se passou groupId, validar acesso
-    if (groupId && userRole !== 'master' && !userGroupIds.includes(groupId)) {
+    if (groupId && userRole !== 'master' && userRole !== 'developer' && !userGroupIds.includes(groupId)) {
       return NextResponse.json({ error: 'Sem permissao para este grupo' }, { status: 403 });
     }
 
@@ -111,19 +127,55 @@ export async function POST(request: Request) {
     const body = await request.json();
     const supabase = createAdminClient();
 
-    // Verificar role do usuario
+    // Verificar role e buscar grupo do usuário
     let userRole = 'user';
+    let companyGroupId: string | null = null;
+
     if (user.is_master) {
       userRole = 'master';
+      // Master precisa passar company_group_id no body
+      companyGroupId = body.company_group_id;
     } else {
-      const { data: memberships } = await supabase
-        .from('user_group_membership')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('is_active', true);
-      
-      if (memberships?.some(m => m.role === 'admin')) {
-        userRole = 'admin';
+      const { getUserDeveloperId } = await import('@/lib/auth');
+      const developerId = await getUserDeveloperId(user.id);
+
+      if (developerId) {
+        userRole = 'developer';
+        // Developer: usar company_group_id do body ou buscar primeiro grupo
+        if (body.company_group_id) {
+          // Verificar se grupo pertence ao developer
+          const { data: group } = await supabase
+            .from('company_groups')
+            .select('id')
+            .eq('id', body.company_group_id)
+            .eq('developer_id', developerId)
+            .single();
+          
+          if (group) {
+            companyGroupId = group.id;
+          }
+        } else {
+          // Buscar primeiro grupo do developer
+          const { data: devGroups } = await supabase
+            .from('company_groups')
+            .select('id')
+            .eq('developer_id', developerId)
+            .eq('status', 'active')
+            .limit(1);
+          companyGroupId = devGroups?.[0]?.id || null;
+        }
+      } else {
+        // Usuário comum: buscar via membership
+        const { data: memberships } = await supabase
+          .from('user_group_membership')
+          .select('company_group_id, role')
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+        
+        if (memberships?.some(m => m.role === 'admin')) {
+          userRole = 'admin';
+        }
+        companyGroupId = memberships?.[0]?.company_group_id || null;
       }
     }
 
@@ -131,15 +183,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Sem permissao para criar alertas' }, { status: 403 });
     }
 
-    // Buscar grupo do usuário
-    const { data: membership } = await supabase
-      .from('user_group_membership')
-      .select('company_group_id')
-      .eq('user_id', user.id)
-      .limit(1)
-      .maybeSingle();
-
-    const companyGroupId = membership?.company_group_id;
     if (!companyGroupId) {
       return NextResponse.json({ error: 'Grupo não encontrado' }, { status: 400 });
     }
