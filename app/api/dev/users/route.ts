@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
               email: user.email || '',
               full_name: user.user_metadata?.full_name || user.user_metadata?.name || '',
               avatar_url: user.user_metadata?.avatar_url || null,
-              is_active: !user.banned && (user.email_confirmed_at !== null),
+              is_active: (user as any).banned !== true && (user.email_confirmed_at !== null),
               created_at: user.created_at
             });
           }
