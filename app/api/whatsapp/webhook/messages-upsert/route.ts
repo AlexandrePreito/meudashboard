@@ -192,21 +192,69 @@ async function sendWhatsAppAudio(instance: any, phone: string, audioBase64: stri
 }
 
 // Função para transcrever áudio com Whisper
-async function transcribeAudio(audioUrl: string): Promise<string | null> {
+async function transcribeAudio(instance: any, messageData: any): Promise<string | null> {
   try {
-    const audioResponse = await fetch(audioUrl);
-    if (!audioResponse.ok) {
-      console.error('[transcribeAudio] Erro ao baixar áudio:', audioResponse.status);
-      return null;
+    // Tentar pegar base64 direto do payload (algumas versões da Evolution enviam)
+    const base64Audio = messageData?.message?.audioMessage?.base64;
+    
+    let audioBuffer: ArrayBuffer;
+    
+    if (base64Audio) {
+      // Se tem base64, usar direto
+      audioBuffer = Buffer.from(base64Audio, 'base64').buffer;
+      console.log('[transcribeAudio] Usando áudio base64 do payload');
+    } else {
+      // Usar endpoint da Evolution para baixar mídia descriptografada
+      const messageId = messageData?.key?.id;
+      const remoteJid = messageData?.key?.remoteJid;
+      
+      if (!messageId || !remoteJid) {
+        console.error('[transcribeAudio] Falta messageId ou remoteJid');
+        return null;
+      }
+      
+      // Endpoint da Evolution API para baixar mídia
+      const mediaUrl = `${instance.api_url}/chat/getBase64FromMediaMessage/${instance.instance_name}`;
+      console.log('[transcribeAudio] Baixando mídia de:', mediaUrl);
+      
+      const mediaResponse = await fetch(mediaUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': instance.api_key || ''
+        },
+        body: JSON.stringify({
+          message: {
+            key: {
+              remoteJid: remoteJid,
+              id: messageId
+            }
+          },
+          convertToMp4: false
+        })
+      });
+      
+      if (!mediaResponse.ok) {
+        const errorText = await mediaResponse.text();
+        console.error('[transcribeAudio] Erro ao baixar mídia:', errorText);
+        return null;
+      }
+      
+      const mediaData = await mediaResponse.json();
+      const base64 = mediaData.base64;
+      
+      if (!base64) {
+        console.error('[transcribeAudio] Base64 não encontrado na resposta');
+        return null;
+      }
+      
+      audioBuffer = Buffer.from(base64, 'base64').buffer;
+      console.log('[transcribeAudio] Áudio baixado com sucesso');
     }
     
-    const audioBuffer = await audioResponse.arrayBuffer();
-    
-    // WhatsApp envia áudio em formato OGG/OPUS
-    // Whisper aceita: flac, m4a, mp3, mp4, mpeg, mpga, oga, ogg, wav, webm
+    // Criar arquivo para enviar ao Whisper
     const file = new File([audioBuffer], 'audio.ogg', { type: 'audio/ogg' });
     
-    // Usar FormData para envio correto
     const formData = new FormData();
     formData.append('file', file);
     formData.append('model', 'whisper-1');
@@ -227,6 +275,7 @@ async function transcribeAudio(audioUrl: string): Promise<string | null> {
     }
     
     const data = await response.json();
+    console.log('[transcribeAudio] Transcrição:', data.text);
     return data.text;
   } catch (error) {
     console.error('[transcribeAudio] Erro:', error);
@@ -354,9 +403,9 @@ export async function POST(request: Request) {
     let finalMessageText = messageText;
     let respondWithAudio = false;
 
-    if (isAudioMessage && audioUrl) {
+    if (isAudioMessage) {
       console.log('🎤 Áudio recebido, transcrevendo...');
-      const transcription = await transcribeAudio(audioUrl as string);
+      const transcription = await transcribeAudio(instance, data);
       if (transcription) {
         finalMessageText = transcription;
         respondWithAudio = true;
