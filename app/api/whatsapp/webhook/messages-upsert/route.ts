@@ -283,16 +283,86 @@ async function transcribeAudio(instance: any, messageData: any): Promise<string 
   }
 }
 
-// Função para gerar áudio com TTS
+// Função para formatar texto para fala natural
+function formatTextForSpeech(text: string): string {
+  let formatted = text;
+  
+  // Remover emojis (não fazem sentido em áudio)
+  formatted = formatted.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[️⃣]/gu, '');
+  
+  // Remover linhas decorativas
+  formatted = formatted.replace(/[━─═]+/g, '');
+  
+  // Formatar valores monetários para fala natural
+  formatted = formatted.replace(/R\$\s*([\d.,]+)/g, (match, value) => {
+    const cleanValue = value.replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(cleanValue);
+    
+    if (isNaN(num)) return match;
+    
+    if (num >= 1000000000) {
+      const bilhoes = num / 1000000000;
+      return `${bilhoes.toFixed(1).replace('.', ' vírgula ')} bilhões de reais`;
+    } else if (num >= 1000000) {
+      const milhoes = num / 1000000;
+      if (milhoes === Math.floor(milhoes)) {
+        return `${Math.floor(milhoes)} ${milhoes === 1 ? 'milhão' : 'milhões'} de reais`;
+      }
+      return `${milhoes.toFixed(1).replace('.', ' vírgula ')} ${milhoes >= 2 ? 'milhões' : 'milhão'} de reais`;
+    } else if (num >= 1000) {
+      const milhares = num / 1000;
+      if (milhares === Math.floor(milhares)) {
+        return `${Math.floor(milhares)} mil reais`;
+      }
+      return `${milhares.toFixed(1).replace('.', ' vírgula ')} mil reais`;
+    } else {
+      return `${num.toFixed(2).replace('.', ' reais e ')} centavos`;
+    }
+  });
+  
+  // Formatar porcentagens
+  formatted = formatted.replace(/([\d.,]+)%/g, (match, value) => {
+    const num = parseFloat(value.replace(',', '.'));
+    if (isNaN(num)) return match;
+    return `${num.toString().replace('.', ' vírgula ')} por cento`;
+  });
+  
+  // Formatar números grandes sozinhos
+  formatted = formatted.replace(/\b(\d{1,3}(?:\.\d{3})+)\b/g, (match) => {
+    const num = parseInt(match.replace(/\./g, ''));
+    if (num >= 1000000) {
+      return `${(num / 1000000).toFixed(1).replace('.', ' vírgula ')} milhões`;
+    } else if (num >= 1000) {
+      return `${(num / 1000).toFixed(0)} mil`;
+    }
+    return match;
+  });
+  
+  // Limpar múltiplos espaços e quebras de linha
+  formatted = formatted.replace(/\n+/g, '. ');
+  formatted = formatted.replace(/\s+/g, ' ');
+  formatted = formatted.replace(/\.\s*\./g, '.');
+  
+  return formatted.trim();
+}
+
+// Função para gerar áudio com TTS - voz feminina natural brasileira
 async function generateAudio(text: string): Promise<string | null> {
   try {
-    const limitedText = text.slice(0, 4000);
+    // Formatar texto para fala mais natural
+    const speechText = formatTextForSpeech(text);
+    
+    // Limitar texto (máximo ~4000 caracteres)
+    const limitedText = speechText.slice(0, 4000);
+    
+    console.log('[generateAudio] Texto para fala:', limitedText.substring(0, 100) + '...');
     
     const response = await openai.audio.speech.create({
-      model: 'tts-1',
-      voice: 'nova',
+      model: 'tts-1-hd',  // Modelo HD para maior qualidade
+      voice: 'shimmer',    // Voz feminina mais natural e suave
       input: limitedText,
-      response_format: 'mp3'
+      response_format: 'mp3',
+      speed: 1.0           // Velocidade normal (pode ajustar 0.8-1.2)
     });
     
     const arrayBuffer = await response.arrayBuffer();
@@ -606,6 +676,19 @@ O usuário pediu uma análise complexa. Você deve:
 4. Fornecer insights acionáveis
 5. Sugerir possíveis causas para variações
 6. Ser mais detalhado na resposta (até 1500 caracteres)
+` : ''}
+
+${respondWithAudio ? `
+## RESPOSTA EM ÁUDIO - SEJA CONVERSACIONAL
+Como esta resposta será convertida em áudio, seja MUITO conversacional:
+- Fale como se estivesse conversando pessoalmente
+- Use frases curtas e naturais
+- Evite listas e bullet points
+- Diga os números de forma falada (ex: "trezentos e vinte mil" ao invés de "320.000")
+- Seja simpática e acolhedora
+- Use expressões naturais como "olha", "então", "veja bem"
+- NÃO use emojis, asteriscos ou formatação visual
+- Limite a resposta a no máximo 3 parágrafos curtos
 ` : ''}
 
 ## FORMATAÇÃO WHATSAPP
