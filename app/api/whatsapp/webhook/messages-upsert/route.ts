@@ -1,10 +1,52 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY || '',
 });
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY || '',
+});
+
+// Palavras que indicam análise complexa
+const COMPLEX_KEYWORDS = [
+  'analis', 'análise', 'analise', 'comparar', 'comparativo', 'comparação',
+  'tendência', 'tendencia', 'evolução', 'evolucao', 'por que', 'porque',
+  'motivo', 'explicar', 'explicação', 'detalhar', 'detalhado', 'profundo',
+  'investigar', 'diagnosticar', 'diagnóstico', 'problema', 'queda',
+  'crescimento', 'variação', 'variacao', 'diferença', 'diferenca',
+  'histórico', 'historico', 'período', 'periodo', 'trimestre', 'semestre',
+  'ano todo', 'últimos meses', 'ultimos meses', 'correlação', 'correlacao',
+  'impacto', 'causa', 'efeito', 'projeção', 'projecao', 'previsão', 'previsao'
+];
+
+// Função para detectar se é análise complexa
+function isComplexAnalysis(message: string): boolean {
+  const lowerMessage = message.toLowerCase();
+  return COMPLEX_KEYWORDS.some(keyword => lowerMessage.includes(keyword));
+}
+
+// Função para estimar tempo de análise
+function estimateAnalysisTime(message: string): number {
+  const lowerMessage = message.toLowerCase();
+  let complexity = 0;
+  
+  COMPLEX_KEYWORDS.forEach(keyword => {
+    if (lowerMessage.includes(keyword)) complexity++;
+  });
+  
+  if (lowerMessage.includes('vs') || lowerMessage.includes('versus')) complexity += 2;
+  if (/\d{4}/.test(message)) complexity++;
+  if (lowerMessage.includes('todos') || lowerMessage.includes('cada')) complexity += 2;
+  
+  if (complexity >= 5) return 3;
+  if (complexity >= 3) return 2;
+  if (complexity >= 1) return 1;
+  return 0;
+}
 
 // Função para buscar contexto do modelo
 async function getModelContext(supabase: any, connectionId: string): Promise<string | null> {
@@ -18,7 +60,7 @@ async function getModelContext(supabase: any, connectionId: string): Promise<str
       .maybeSingle();
 
     if (context?.context_content) {
-      return context.context_content.slice(0, 12000);
+      return context.context_content.slice(0, 15000);
     }
     return null;
   } catch (error) {
@@ -87,17 +129,10 @@ async function executeDaxQuery(connectionId: string, datasetId: string, query: s
   }
 }
 
-// Função para enviar mensagem via WhatsApp
+// Função para enviar mensagem de texto via WhatsApp
 async function sendWhatsAppMessage(instance: any, phone: string, message: string) {
   try {
-    console.log('[sendWhatsAppMessage] Iniciando envio...');
-    console.log('[sendWhatsAppMessage] Instância:', instance.instance_name);
-    console.log('[sendWhatsAppMessage] API URL:', instance.api_url);
-    console.log('[sendWhatsAppMessage] Número formatado:', phone.replace(/\D/g, ''));
-    
     const url = `${instance.api_url}/message/sendText/${instance.instance_name}`;
-    console.log('[sendWhatsAppMessage] URL completa:', url);
-    
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -109,23 +144,134 @@ async function sendWhatsAppMessage(instance: any, phone: string, message: string
         text: message
       })
     });
-    
-    console.log('[sendWhatsAppMessage] Status HTTP:', response.status);
-    console.log('[sendWhatsAppMessage] Response OK:', response.ok);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[sendWhatsAppMessage] Erro da Evolution API:', errorText);
-    } else {
-      const responseData = await response.json();
-      console.log('[sendWhatsAppMessage] Resposta da API:', JSON.stringify(responseData));
-    }
-    
     return response.ok;
   } catch (error) {
-    console.error('[sendWhatsAppMessage] EXCEÇÃO ao enviar mensagem:', error);
+    console.error('[sendWhatsAppMessage] Erro:', error);
     return false;
   }
+}
+
+// Função para enviar áudio via WhatsApp
+async function sendWhatsAppAudio(instance: any, phone: string, audioBase64: string) {
+  try {
+    const url = `${instance.api_url}/message/sendWhatsAppAudio/${instance.instance_name}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': instance.api_key || ''
+      },
+      body: JSON.stringify({
+        number: phone.replace(/\D/g, ''),
+        audio: audioBase64
+      })
+    });
+    
+    if (!response.ok) {
+      const url2 = `${instance.api_url}/message/sendMedia/${instance.instance_name}`;
+      const response2 = await fetch(url2, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': instance.api_key || ''
+        },
+        body: JSON.stringify({
+          number: phone.replace(/\D/g, ''),
+          mediatype: 'audio',
+          media: `data:audio/mp3;base64,${audioBase64}`,
+          fileName: 'audio.mp3'
+        })
+      });
+      return response2.ok;
+    }
+    return true;
+  } catch (error) {
+    console.error('[sendWhatsAppAudio] Erro:', error);
+    return false;
+  }
+}
+
+// Função para transcrever áudio com Whisper
+async function transcribeAudio(audioUrl: string): Promise<string | null> {
+  try {
+    const audioResponse = await fetch(audioUrl);
+    if (!audioResponse.ok) return null;
+    
+    const audioBuffer = await audioResponse.arrayBuffer();
+    const audioBlob = new Blob([audioBuffer], { type: 'audio/ogg' });
+    const file = new File([audioBlob], 'audio.ogg', { type: 'audio/ogg' });
+    
+    const transcription = await openai.audio.transcriptions.create({
+      file: file,
+      model: 'whisper-1',
+      language: 'pt'
+    });
+    
+    return transcription.text;
+  } catch (error) {
+    console.error('[transcribeAudio] Erro:', error);
+    return null;
+  }
+}
+
+// Função para gerar áudio com TTS
+async function generateAudio(text: string): Promise<string | null> {
+  try {
+    const limitedText = text.slice(0, 4000);
+    
+    const response = await openai.audio.speech.create({
+      model: 'tts-1',
+      voice: 'nova',
+      input: limitedText,
+      response_format: 'mp3'
+    });
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    return base64;
+  } catch (error) {
+    console.error('[generateAudio] Erro:', error);
+    return null;
+  }
+}
+
+// Função para verificar/obter contexto do usuário
+async function getUserContext(supabase: any, phone: string) {
+  const { data: context } = await supabase
+    .from('whatsapp_user_context')
+    .select('*')
+    .eq('phone_number', phone)
+    .gt('expires_at', new Date().toISOString())
+    .maybeSingle();
+  
+  return context;
+}
+
+// Função para salvar contexto do usuário
+async function saveUserContext(supabase: any, phone: string, datasetId: string, connectionId: string, datasetName: string, companyGroupId: string) {
+  const expiresAt = new Date();
+  expiresAt.setHours(23, 59, 59, 999);
+  
+  await supabase
+    .from('whatsapp_user_context')
+    .upsert({
+      phone_number: phone,
+      dataset_id: datasetId,
+      connection_id: connectionId,
+      dataset_name: datasetName,
+      company_group_id: companyGroupId,
+      selected_at: new Date().toISOString(),
+      expires_at: expiresAt.toISOString(),
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'phone_number' });
+}
+
+// Função para limpar contexto do usuário
+async function clearUserContext(supabase: any, phone: string) {
+  await supabase
+    .from('whatsapp_user_context')
+    .delete()
+    .eq('phone_number', phone);
 }
 
 // POST - Webhook do Evolution API
@@ -133,42 +279,34 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     console.log('Webhook recebido:', JSON.stringify(body).substring(0, 500));
-    console.log('Evento:', body.event);
-    console.log('Data keys:', Object.keys(body.data || {}));
 
     const supabase = createAdminClient();
-
-    // Extrair dados da mensagem (formato Evolution API v2)
     const event = body.event;
     const data = body.data;
-    
-    // Só processa mensagens recebidas
+
     if (event !== 'messages.upsert') {
       return NextResponse.json({ status: 'ignored', reason: 'not a message event' });
     }
 
-    // Extrair informações da mensagem - Evolution v2 usa data.key
     const remoteJid = data?.key?.remoteJid;
     const fromMe = data?.key?.fromMe || false;
-    const messageText = data?.message?.conversation || 
+    
+    const isAudioMessage = !!(data?.message?.audioMessage);
+    const messageText = data?.message?.conversation ||
                         data?.message?.extendedTextMessage?.text ||
                         '';
+    const audioUrl = data?.message?.audioMessage?.url || null;
 
-    console.log('remoteJid:', remoteJid);
-    console.log('fromMe:', fromMe);
-    console.log('messageText:', messageText);
-
-    // Ignora mensagens enviadas por mim ou vazias
-    if (fromMe || !messageText.trim()) {
-      return NextResponse.json({ status: 'ignored', reason: 'fromMe or empty' });
+    if (fromMe) {
+      return NextResponse.json({ status: 'ignored', reason: 'fromMe' });
     }
 
-    // Extrair número do telefone
-    const phone = remoteJid?.replace('@s.whatsapp.net', '').replace('@g.us', '') || '';
-    
-    console.log('phone extraído:', phone);
+    if (!messageText.trim() && !isAudioMessage) {
+      return NextResponse.json({ status: 'ignored', reason: 'empty or unsupported' });
+    }
 
-    // Verificar se o número é autorizado e buscar instância vinculada
+    const phone = remoteJid?.replace('@s.whatsapp.net', '').replace('@g.us', '') || '';
+
     const { data: authorizedNumber, error: authError } = await supabase
       .from('whatsapp_authorized_numbers')
       .select(`
@@ -187,375 +325,284 @@ export async function POST(request: Request) {
       .eq('is_active', true)
       .single();
 
-    if (authError || !authorizedNumber) {
-      console.log('Número não autorizado:', phone);
-      return NextResponse.json({ status: 'ignored', reason: 'unauthorized number' });
+    if (authError || !authorizedNumber || !authorizedNumber.instance) {
+      console.log('Número não autorizado ou sem instância:', phone);
+      return NextResponse.json({ status: 'ignored', reason: 'unauthorized' });
     }
 
-    // Verificar se número tem instância vinculada
-    if (!authorizedNumber.instance) {
-      console.error('❌ Número autorizado não tem instância vinculada!');
-      return NextResponse.json({ status: 'error', reason: 'no instance linked to number' });
+    const instance = authorizedNumber.instance;
+    let finalMessageText = messageText;
+    let respondWithAudio = false;
+
+    if (isAudioMessage && audioUrl) {
+      console.log('🎤 Áudio recebido, transcrevendo...');
+      const transcription = await transcribeAudio(audioUrl as string);
+      if (transcription) {
+        finalMessageText = transcription;
+        respondWithAudio = true;
+        console.log('✅ Transcrição:', transcription);
+      } else {
+        await sendWhatsAppMessage(instance, phone, '❌ Não consegui entender o áudio. Pode tentar novamente ou digitar sua pergunta?');
+        return NextResponse.json({ status: 'audio_transcription_failed' });
+      }
     }
 
-    console.log('━━━━━━━━━ INSTÂNCIA VINCULADA AO NÚMERO ━━━━━━━━━');
-    console.log('Instância:', authorizedNumber.instance.name);
-    console.log('Instance Name:', authorizedNumber.instance.instance_name);
-    console.log('API URL:', authorizedNumber.instance.api_url);
-    console.log('Conectada?', authorizedNumber.instance.is_connected ? '✅ SIM' : '❌ NÃO');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    await supabase.from('whatsapp_messages').insert({
+      company_group_id: authorizedNumber.company_group_id,
+      phone_number: phone,
+      message_content: isAudioMessage ? `🎤 [Áudio]: ${finalMessageText}` : finalMessageText,
+      direction: 'incoming',
+      sender_name: authorizedNumber.name || phone
+    });
 
-    // Buscar histórico de mensagens recentes deste número (últimas 20 mensagens)
+    const trimmedMessage = finalMessageText.trim().toLowerCase();
+    if (['0', 'menu', 'sair', 'trocar'].includes(trimmedMessage)) {
+      await clearUserContext(supabase, phone);
+      
+      const { data: numberDatasets } = await supabase
+        .from('whatsapp_number_datasets')
+        .select('connection_id, dataset_id, dataset_name')
+        .eq('authorized_number_id', authorizedNumber.id);
+
+      if (!numberDatasets || numberDatasets.length === 0) {
+        await sendWhatsAppMessage(instance, phone, '📊 Você não tem dashboards configurados.');
+        return NextResponse.json({ status: 'no_datasets' });
+      }
+
+      if (numberDatasets.length === 1) {
+        await saveUserContext(supabase, phone, numberDatasets[0].dataset_id, numberDatasets[0].connection_id, numberDatasets[0].dataset_name, authorizedNumber.company_group_id);
+        await sendWhatsAppMessage(instance, phone, `✅ Você está no dashboard: ${numberDatasets[0].dataset_name}\n\nPode fazer suas perguntas!`);
+        return NextResponse.json({ status: 'single_dataset_selected' });
+      }
+
+      let menuMessage = '📊 *Selecione o dashboard:*\n\n';
+      const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'];
+      numberDatasets.forEach((ds, idx) => {
+        menuMessage += `${emojis[idx] || `${idx + 1}.`} ${ds.dataset_name || 'Dashboard'}\n`;
+      });
+      menuMessage += '\n_Digite o número para selecionar._\n_Digite "0" ou "menu" para trocar._';
+
+      await sendWhatsAppMessage(instance, phone, menuMessage);
+      await supabase.from('whatsapp_messages').insert({
+        company_group_id: authorizedNumber.company_group_id,
+        phone_number: phone,
+        message_content: menuMessage,
+        direction: 'outgoing',
+        sender_name: 'Assistente IA'
+      });
+
+      return NextResponse.json({ status: 'menu_shown' });
+    }
+
+    let userContext = await getUserContext(supabase, phone);
+    
+    const { data: numberDatasets } = await supabase
+      .from('whatsapp_number_datasets')
+      .select('connection_id, dataset_id, dataset_name')
+      .eq('authorized_number_id', authorizedNumber.id);
+
+    let connectionId: string | null = userContext?.connection_id || null;
+    let datasetId: string | null = userContext?.dataset_id || null;
+    let datasetName: string | null = userContext?.dataset_name || null;
+
+    if (!userContext) {
+      if (!numberDatasets || numberDatasets.length === 0) {
+        const { data: firstConnection } = await supabase
+          .from('powerbi_connections')
+          .select('id')
+          .limit(1)
+          .maybeSingle();
+        
+        if (firstConnection) {
+          connectionId = firstConnection.id;
+          const { data: report } = await supabase
+            .from('powerbi_reports')
+            .select('dataset_id')
+            .eq('connection_id', connectionId)
+            .limit(1)
+            .maybeSingle();
+          datasetId = report?.dataset_id || null;
+        }
+      } else if (numberDatasets.length === 1) {
+        connectionId = numberDatasets[0].connection_id;
+        datasetId = numberDatasets[0].dataset_id;
+        datasetName = numberDatasets[0].dataset_name;
+        if (datasetId && connectionId && datasetName) {
+          await saveUserContext(supabase, phone, datasetId, connectionId, datasetName, authorizedNumber.company_group_id);
+        }
+      } else {
+        const isNumericSelection = /^[1-9]$/.test(trimmedMessage);
+        
+        if (isNumericSelection) {
+          const selectedIndex = parseInt(trimmedMessage) - 1;
+          if (selectedIndex >= 0 && selectedIndex < numberDatasets.length) {
+            connectionId = numberDatasets[selectedIndex].connection_id;
+            datasetId = numberDatasets[selectedIndex].dataset_id;
+            datasetName = numberDatasets[selectedIndex].dataset_name;
+            if (datasetId && connectionId && datasetName) {
+              await saveUserContext(supabase, phone, datasetId, connectionId, datasetName, authorizedNumber.company_group_id);
+            }
+            
+            const confirmMsg = `✅ *${datasetName}* selecionado!\n\nAgora pode fazer suas perguntas.\n_Digite "0" ou "menu" para trocar de dashboard._`;
+            await sendWhatsAppMessage(instance, phone, confirmMsg);
+            await supabase.from('whatsapp_messages').insert({
+              company_group_id: authorizedNumber.company_group_id,
+              phone_number: phone,
+              message_content: confirmMsg,
+              direction: 'outgoing',
+              sender_name: 'Assistente IA'
+            });
+            return NextResponse.json({ status: 'dataset_selected' });
+          }
+        }
+
+        let menuMessage = '📊 *Selecione o dashboard:*\n\n';
+        const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'];
+        numberDatasets.forEach((ds, idx) => {
+          menuMessage += `${emojis[idx] || `${idx + 1}.`} ${ds.dataset_name || 'Dashboard'}\n`;
+        });
+        menuMessage += '\n_Digite o número para selecionar._';
+
+        await sendWhatsAppMessage(instance, phone, menuMessage);
+        await supabase.from('whatsapp_messages').insert({
+          company_group_id: authorizedNumber.company_group_id,
+          phone_number: phone,
+          message_content: menuMessage,
+          direction: 'outgoing',
+          sender_name: 'Assistente IA'
+        });
+        return NextResponse.json({ status: 'asking_dataset_selection' });
+      }
+    }
+
+    const isComplex = isComplexAnalysis(finalMessageText);
+    const estimatedMinutes = estimateAnalysisTime(finalMessageText);
+
+    if (isComplex && estimatedMinutes > 0) {
+      const waitMessages = [
+        '🔍 Análise complexa detectada! Aguarde enquanto processo os dados...',
+        '🧠 Estou analisando profundamente os dados. Isso pode levar alguns instantes...',
+        '📊 Preparando uma análise detalhada para você. Um momento...'
+      ];
+      const waitMsg = waitMessages[Math.floor(Math.random() * waitMessages.length)];
+      await sendWhatsAppMessage(instance, phone, waitMsg);
+      console.log('⏳ Análise complexa detectada, estimativa:', estimatedMinutes, 'min');
+    }
+
+    let modelContext = '';
+    if (connectionId) {
+      const context = await getModelContext(supabase, connectionId);
+      if (context) {
+        modelContext = context;
+      }
+    }
+
+    const historyLimit = isComplex ? 15 : 10;
     const { data: messageHistory } = await supabase
       .from('whatsapp_messages')
       .select('direction, message_content, created_at')
       .eq('phone_number', phone)
       .order('created_at', { ascending: false })
-      .limit(20);
+      .limit(historyLimit);
 
-    // Montar contexto de conversa
     let conversationContext = '';
     if (messageHistory && messageHistory.length > 0) {
       const reversedHistory = messageHistory.reverse();
-      conversationContext = '\n## HISTÓRICO DA CONVERSA\n';
+      conversationContext = '\n## HISTÓRICO RECENTE DA CONVERSA\n';
       for (const msg of reversedHistory) {
         const role = msg.direction === 'incoming' ? 'Usuário' : 'Assistente';
         conversationContext += `${role}: ${msg.message_content}\n`;
       }
     }
 
-    // Salvar mensagem recebida
-    await supabase.from('whatsapp_messages').insert({
-      company_group_id: authorizedNumber.company_group_id,
-      phone_number: phone,
-      message_content: messageText,
-      direction: 'incoming',
-      sender_name: authorizedNumber.name || phone
-    });
-
-    // Usar a instância vinculada ao número autorizado
-    const instance = authorizedNumber.instance;
-    
-    // Verificar se a instância está conectada
-    if (!instance.is_connected) {
-      console.warn('⚠️ AVISO: Instância não está conectada:', instance.name);
-      // Continua mesmo assim, pois pode ter desconectado temporariamente
-    }
-
-    // Buscar datasets vinculados ao número
-    const { data: numberDatasets } = await supabase
-      .from('whatsapp_number_datasets')
-      .select('connection_id, dataset_id, dataset_name')
-      .eq('authorized_number_id', authorizedNumber.id);
-
-    console.log('━━━━━━━━━ DATASETS VINCULADOS ━━━━━━━━━');
-    console.log('Número autorizado ID:', authorizedNumber.id);
-    console.log('Datasets encontrados:', numberDatasets?.length || 0);
-    if (numberDatasets && numberDatasets.length > 0) {
-      console.log('Datasets:', JSON.stringify(numberDatasets, null, 2));
-    } else {
-      console.log('⚠️ NENHUM dataset vinculado - usando fallback');
-    }
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-    let modelContext = '';
-    let connectionId: string | null = null;
-    let datasetId: string | null = null;
-
-    // LÓGICA DE SELEÇÃO DE DATASET
-    if (!numberDatasets || numberDatasets.length === 0) {
-      // Comportamento atual: buscar por alerta ou primeira conexão
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const { data: recentAlert } = await supabase
-        .from('ai_alerts')
-        .select('*')
-        .contains('whatsapp_number', [phone])
-        .gte('last_triggered_at', oneDayAgo)
-        .order('last_triggered_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      connectionId = recentAlert?.connection_id || null;
-      datasetId = recentAlert?.dataset_id || null;
-      
-      if (!connectionId) {
-        const { data: firstConnection } = await supabase
-          .from('powerbi_connections')
-          .select('id')
-          .limit(1)
-          .maybeSingle();
-        connectionId = firstConnection?.id || null;
-      }
-      
-      if (connectionId && !datasetId) {
-        const { data: report } = await supabase
-          .from('powerbi_reports')
-          .select('dataset_id')
-          .eq('connection_id', connectionId)
-          .limit(1)
-          .maybeSingle();
-        
-        if (report?.dataset_id) {
-          datasetId = report.dataset_id;
-        }
-      }
-      
-      if (!datasetId) {
-        const { data: anyAlert } = await supabase
-          .from('ai_alerts')
-          .select('dataset_id, connection_id')
-          .not('dataset_id', 'is', null)
-          .limit(1)
-          .maybeSingle();
-        
-        if (anyAlert?.dataset_id) {
-          datasetId = anyAlert.dataset_id;
-          if (!connectionId && anyAlert.connection_id) {
-            connectionId = anyAlert.connection_id;
-          }
-        }
-      }
-    } 
-    else if (numberDatasets.length === 1) {
-      // Se tem apenas 1 dataset, usar diretamente
-      connectionId = numberDatasets[0].connection_id;
-      datasetId = numberDatasets[0].dataset_id;
-      console.log('✅ Usando dataset único vinculado:', numberDatasets[0].dataset_name);
-    } 
-    else {
-      // Se tem múltiplos datasets
-      console.log('🔀 Múltiplos datasets encontrados:', numberDatasets.length);
-      const trimmedMessage = messageText.trim();
-      const isSelectingDataset = /^[1-9]$/.test(trimmedMessage);
-      console.log('Mensagem é seleção numérica?', isSelectingDataset, '(mensagem:', trimmedMessage, ')');
-      
-      // Buscar última mensagem do sistema
-      const { data: lastBotMessage } = await supabase
-        .from('whatsapp_messages')
-        .select('message_content')
-        .eq('phone_number', phone)
-        .eq('direction', 'outgoing')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      const wasAskingForDataset = lastBotMessage?.message_content?.includes('Sobre qual base você quer consultar?');
-      console.log('Última mensagem do bot perguntava sobre dataset?', wasAskingForDataset);
-      
-      if (isSelectingDataset && wasAskingForDataset) {
-        // Usuário está selecionando um dataset
-        const selectedIndex = parseInt(trimmedMessage) - 1;
-        console.log('👆 Usuário selecionou opção:', selectedIndex + 1);
-        if (selectedIndex >= 0 && selectedIndex < numberDatasets.length) {
-          connectionId = numberDatasets[selectedIndex].connection_id;
-          datasetId = numberDatasets[selectedIndex].dataset_id;
-          console.log('✅ Dataset selecionado:', numberDatasets[selectedIndex].dataset_name);
-        } else {
-          // Índice inválido
-          console.log('❌ Seleção inválida:', trimmedMessage);
-          const invalidMessage = `❌ Opção inválida. Digite um número de 1 a ${numberDatasets.length}.`;
-          await sendWhatsAppMessage(instance, phone, invalidMessage);
-          return NextResponse.json({ status: 'invalid_selection' });
-        }
-      } else if (!wasAskingForDataset) {
-        // Perguntar qual dataset usar
-        console.log('❓ Perguntando ao usuário qual dataset usar...');
-        let datasetMenu = '📊 Sobre qual base você quer consultar?\n\n';
-        const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'];
-        numberDatasets.forEach((ds, idx) => {
-          const emoji = emojis[idx] || `${idx + 1}.`;
-          datasetMenu += `${emoji} ${ds.dataset_name || ds.dataset_id}\n`;
-        });
-        datasetMenu += '\nDigite o número da opção.';
-        
-        console.log('📤 Enviando menu de seleção...');
-        await sendWhatsAppMessage(instance, phone, datasetMenu);
-        
-        // Salvar pergunta do usuário
-        await supabase.from('whatsapp_messages').insert({
-          company_group_id: authorizedNumber.company_group_id,
-          phone_number: phone,
-          message_content: messageText,
-          direction: 'incoming',
-          sender_name: authorizedNumber.name || phone
-        });
-        
-        // Salvar resposta do bot
-        await supabase.from('whatsapp_messages').insert({
-          company_group_id: authorizedNumber.company_group_id,
-          phone_number: phone,
-          message_content: datasetMenu,
-          direction: 'outgoing',
-          sender_name: 'Assistente IA'
-        });
-        
-        console.log('✅ Menu de seleção enviado e salvo');
-        return NextResponse.json({ status: 'asking_dataset_selection' });
-      } else {
-        // wasAskingForDataset mas não é seleção válida - usar primeiro dataset
-        console.log('⚠️ Não é seleção válida, usando primeiro dataset (fallback)');
-        connectionId = numberDatasets[0].connection_id;
-        datasetId = numberDatasets[0].dataset_id;
-        console.log('Usando primeiro dataset (fallback):', numberDatasets[0].dataset_name);
-      }
-    }
-    
-    if (connectionId) {
-      const context = await getModelContext(supabase, connectionId);
-      if (context) {
-        modelContext = context;
-        console.log('Contexto do modelo carregado:', modelContext.substring(0, 200) + '...');
-      } else {
-        console.log('⚠️ AVISO: Nenhum contexto encontrado para connectionId:', connectionId);
-      }
-    }
-
-    // Se não tem contexto, avisar no log
-    if (!modelContext) {
-      console.log('⚠️ AVISO: Assistente vai responder SEM contexto do modelo');
-    }
-
-    // Construir prompt para a IA
-    const systemPrompt = `Você é um Assistente de BI via WhatsApp, especializado em consultar dados e responder perguntas sobre indicadores de negócio.
+    const systemPrompt = `Você é um Assistente de BI via WhatsApp, especializado em consultar e ANALISAR dados.
 
 ## REGRA DE CONFIDENCIALIDADE
-⚠️ NUNCA mencione nomes de empresas, grupos ou sistemas internos (como Aquarius, Hospcom, Vion, VionFlow, etc).
-⚠️ Se os dados contiverem nomes de empresas do grupo, apresente apenas os valores sem revelar que são empresas relacionadas.
-⚠️ Você é apenas "Assistente de BI" - não tem nome específico.
-⚠️ Se perguntarem quem é você ou para quem trabalha, diga apenas: "Sou um assistente de BI que ajuda a consultar dados e indicadores."
+⚠️ NUNCA mencione nomes de empresas, grupos ou sistemas internos.
+⚠️ Se perguntarem quem é você, diga: "Sou um assistente de BI que ajuda a consultar dados."
 
 ## REGRA MAIS IMPORTANTE
 ⚠️ NUNCA invente valores! Use SEMPRE a função execute_dax para buscar dados reais.
-⚠️ Se não conseguir executar a query, diga que não encontrou os dados.
-⚠️ SEMPRE consulte a seção "DOCUMENTAÇÃO DO MODELO" abaixo para saber os nomes EXATOS das tabelas, colunas e medidas. NUNCA adivinhe nomes.
-
-## COMO USAR A DOCUMENTAÇÃO
-1. Leia a documentação do modelo ANTES de criar qualquer query
-2. Use EXATAMENTE os nomes de tabelas, colunas e medidas documentados
-3. Aplique os filtros obrigatórios indicados (ex: Intercompany = "N")
-4. Se uma coluna/medida não estiver na documentação, NÃO USE
-
-## FORMATAÇÃO DAS MENSAGENS WHATSAPP
-- NÃO use asteriscos (*) para negrito
-- Use emojis de forma limpa e organizada
-- Separe seções com linha: ━━━━━━━━━━━━━━━━━
-- Seja conciso (máximo 1200 caracteres)
-
-## FORMATO PARA VALORES/FATURAMENTO
-📊 [Título do que foi pedido]
-
-💰 R$ X.XXX.XXX,XX
-
-📈 Comparativo se relevante
-
-━━━━━━━━━━━━━━━━━
-💡 Quer saber mais?
-1️⃣ Opção 1
-2️⃣ Opção 2
-3️⃣ Opção 3
-
-## FORMATO PARA RANKINGS/TOP N
-🏆 [Título]
-
-🥇 Primeiro: R$ X.XXX,XX
-🥈 Segundo: R$ X.XXX,XX
-🥉 Terceiro: R$ X.XXX,XX
-4️⃣ Quarto: R$ X.XXX,XX
-5️⃣ Quinto: R$ X.XXX,XX
-
-━━━━━━━━━━━━━━━━━
-💡 Quer saber mais?
-1️⃣ Opção 1
-2️⃣ Opção 2
+⚠️ SEMPRE consulte a DOCUMENTAÇÃO DO MODELO para saber os nomes EXATOS das tabelas, colunas e medidas.
 
 ## INTERPRETAÇÃO DE NÚMEROS
-Se usuário digitar apenas 1, 2, 3 ou 4, interprete como a opção sugerida anteriormente.
+Se o usuário digitar apenas "1", "2", "3" ou "4", verifique no HISTÓRICO qual foi a última pergunta e quais opções foram oferecidas. O número corresponde à opção sugerida anteriormente.
 
-## HISTÓRICO DA CONVERSA
-${conversationContext || 'Início da conversa'}
+${isComplex ? `
+## MODO ANÁLISE PROFUNDA ATIVADO
+O usuário pediu uma análise complexa. Você deve:
+1. Executar MÚLTIPLAS queries DAX para coletar dados de diferentes ângulos
+2. Comparar períodos diferentes se relevante
+3. Identificar padrões, tendências e anomalias
+4. Fornecer insights acionáveis
+5. Sugerir possíveis causas para variações
+6. Ser mais detalhado na resposta (até 1500 caracteres)
+` : ''}
 
-${modelContext ? `## DOCUMENTAÇÃO DO MODELO (USE EXATAMENTE COMO ESTÁ AQUI)
-${modelContext}
-` : `## SEM DOCUMENTAÇÃO
-Não há documentação do modelo disponível. Informe ao usuário que não foi possível acessar os dados.`}
+## FORMATAÇÃO WHATSAPP
+- NÃO use asteriscos (*) para negrito
+- Use emojis organizados
+- Separe seções com: ━━━━━━━━━━━━━━━━━
+- ${isComplex ? 'Seja detalhado (máximo 1500 caracteres)' : 'Seja conciso (máximo 1000 caracteres)'}
+- Sempre ofereça 2-3 opções de continuidade numeradas
+
+${conversationContext}
+
+${modelContext ? `## DOCUMENTAÇÃO DO MODELO\n${modelContext}` : '## SEM DOCUMENTAÇÃO\nInforme que não foi possível acessar os dados.'}
+
+## DASHBOARD ATUAL
+${datasetName || 'Não especificado'}
 
 ## DATA ATUAL
 ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
 Mês atual: ${new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-Mês número: ${new Date().getMonth() + 1}
-Ano: ${new Date().getFullYear()}
 `;
 
-    // Definir tools para o Claude
     const tools: Anthropic.Tool[] = connectionId && datasetId ? [
       {
         name: 'execute_dax',
-        description: 'Executa uma query DAX no Power BI para buscar dados.',
+        description: 'Executa uma query DAX no Power BI para buscar dados. Para análises complexas, execute múltiplas queries.',
         input_schema: {
           type: 'object' as const,
           properties: {
-            query: {
-              type: 'string',
-              description: 'A query DAX a ser executada'
-            }
+            query: { type: 'string', description: 'A query DAX a ser executada' }
           },
           required: ['query']
         }
       }
     ] : [];
 
-    console.log('=== DEBUG TOOLS ===');
-    console.log('connectionId:', connectionId || 'NENHUM');
-    console.log('datasetId:', datasetId || 'NENHUM');
-    console.log('Tools configuradas:', tools.length);
-    console.log('==================');
+    const maxTokens = isComplex ? 1500 : 800;
+    const maxIterations = isComplex ? 5 : 2;
 
-    // Chamar Claude
     let response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 800,
+      max_tokens: maxTokens,
       system: systemPrompt,
-      messages: [{ role: 'user', content: messageText }],
+      messages: [{ role: 'user', content: finalMessageText }],
       tools: tools.length > 0 ? tools : undefined
     });
 
-    // Processar tool calls
     let iterations = 0;
-    const maxIterations = 2;
-    const messages: any[] = [{ role: 'user', content: messageText }];
-
-    console.log('Stop reason:', response.stop_reason);
-    console.log('Content blocks:', response.content.map((b: any) => b.type));
+    const messages: any[] = [{ role: 'user', content: finalMessageText }];
 
     while (response.stop_reason === 'tool_use' && iterations < maxIterations) {
       iterations++;
-      
       const toolUseBlocks = response.content.filter((block: any) => block.type === 'tool_use');
       const toolResults: any[] = [];
 
       for (const toolUse of toolUseBlocks) {
-        console.log('Processando tool:', (toolUse as any).name);
         if (toolUse.type === 'tool_use' && (toolUse as any).name === 'execute_dax' && connectionId && datasetId) {
           const toolInput = toolUse.input as { query?: string };
           if (!toolInput.query) continue;
 
-          console.log('=== QUERY DAX EXECUTADA ===');
-          console.log(toolInput.query);
-          console.log('===========================');
+          console.log(`=== QUERY DAX (${iterations}/${maxIterations}) ===\n`, toolInput.query);
 
-          const daxResult = await executeDaxQuery(
-            connectionId,
-            datasetId,
-            toolInput.query,
-            supabase
-          );
-
+          const daxResult = await executeDaxQuery(connectionId, datasetId, toolInput.query, supabase);
           toolResults.push({
             type: 'tool_result',
             tool_use_id: toolUse.id,
-            content: daxResult.success
-              ? JSON.stringify(daxResult.results, null, 2)
-              : `Erro: ${daxResult.error}`
+            content: daxResult.success ? JSON.stringify(daxResult.results, null, 2) : `Erro: ${daxResult.error}`
           });
         }
       }
@@ -567,14 +614,13 @@ Ano: ${new Date().getFullYear()}
 
       response = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 800,
+        max_tokens: maxTokens,
         system: systemPrompt,
         messages,
         tools: tools.length > 0 ? tools : undefined
       });
     }
 
-    // Extrair resposta final
     let assistantMessage = '';
     for (const block of response.content) {
       if (block.type === 'text') {
@@ -582,110 +628,69 @@ Ano: ${new Date().getFullYear()}
       }
     }
 
-    // Limpar resposta - remover código, erros e texto técnico
     assistantMessage = assistantMessage
-      // Remover blocos de código DAX
       .replace(/```dax[\s\S]*?```/gi, '')
       .replace(/```[\s\S]*?```/g, '')
-      // Remover tags XML
-      .replace(/<execute_dax>[\s\S]*?<\/execute_dax>/gi, '')
       .replace(/<[^>]+>/g, '')
-      // Remover queries DAX expostas
       .replace(/EVALUATE[\s\S]*?(?=\n\n|\n📊|$)/gi, '')
-      .replace(/DAX\([^)]+\)/gi, '')
-      // Remover mensagens de erro
       .replace(/Error:.*?(?=\n|$)/gi, '')
-      .replace(/Deixe-me ajustar.*?(?=\n|$)/gi, '')
-      .replace(/Para consultar.*?sistema\.?\n?/gi, '')
-      .replace(/Deixe-me buscar.*?(?=\n|$)/gi, '')
-      // Remover informações técnicas de tabela
-      .replace(/Table with \d+ rows.*?(?=\n|$)/gi, '')
-      .replace(/[A-Za-z_ ]+: [\d.]+\n/g, '')
-      // Limpar linhas vazias múltiplas
       .replace(/\n{3,}/g, '\n\n')
       .trim();
 
-    // Se a resposta ficou muito curta ou vazia, dar mensagem mais útil
     if (!assistantMessage || assistantMessage.length < 20) {
-      if (!modelContext) {
-        assistantMessage = '⚠️ Não foi possível acessar os dados. Por favor, verifique se o contexto do modelo está configurado.';
-      } else {
-        assistantMessage = '📊 Não consegui processar essa consulta. Pode reformular a pergunta?';
+      assistantMessage = '📊 Não consegui processar essa consulta. Pode reformular a pergunta?';
+    }
+
+    const maxLength = isComplex ? 1500 : 1000;
+    if (assistantMessage.length > maxLength) {
+      assistantMessage = assistantMessage.substring(0, maxLength - 3) + '...';
+    }
+
+    let sent = false;
+    
+    if (respondWithAudio) {
+      console.log('🔊 Gerando resposta em áudio...');
+      const audioBase64 = await generateAudio(assistantMessage);
+      if (audioBase64) {
+        sent = await sendWhatsAppAudio(instance, phone, audioBase64);
+        console.log('🔊 Áudio enviado:', sent ? 'SIM' : 'NÃO');
       }
-    }
-
-    // Garantir que começa com emoji se não começar
-    if (!assistantMessage.startsWith('📊') && !assistantMessage.startsWith('🎯') && !assistantMessage.startsWith('💰')) {
-      // Encontrar onde começa o conteúdo útil (geralmente com emoji)
-      const emojiStart = assistantMessage.search(/[📊🎯💰🏪🥇✨]/);
-      if (emojiStart > 0) {
-        assistantMessage = assistantMessage.substring(emojiStart);
+      
+      if (!sent) {
+        sent = await sendWhatsAppMessage(instance, phone, assistantMessage);
       }
+    } else {
+      sent = await sendWhatsAppMessage(instance, phone, assistantMessage);
     }
 
-    console.log('Resposta limpa:', assistantMessage.substring(0, 200));
-
-    // Limitar tamanho da mensagem
-    if (assistantMessage.length > 1200) {
-      assistantMessage = assistantMessage.substring(0, 1197) + '...';
-    }
-
-    console.log('━━━━━━━━━ ENVIANDO MENSAGEM ━━━━━━━━━');
-    console.log('Para:', phone);
-    console.log('Instância:', instance.instance_name);
-    console.log('URL:', `${instance.api_url}/message/sendText/${instance.instance_name}`);
-    console.log('Tamanho da mensagem:', assistantMessage.length, 'caracteres');
-    console.log('Primeiros 100 chars:', assistantMessage.substring(0, 100));
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-    // Enviar resposta
-    const sent = await sendWhatsAppMessage(instance, phone, assistantMessage);
-
-    console.log('━━━━━━━━━ RESULTADO DO ENVIO ━━━━━━━━━');
-    console.log('Status de envio:', sent ? '✅ SUCESSO' : '❌ FALHOU');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-    // Salvar mensagem enviada
     if (sent) {
       await supabase.from('whatsapp_messages').insert({
         company_group_id: authorizedNumber.company_group_id,
         phone_number: phone,
-        message_content: assistantMessage,
+        message_content: respondWithAudio ? `🔊 [Áudio]: ${assistantMessage}` : assistantMessage,
         direction: 'outgoing',
         sender_name: 'Assistente IA'
       });
-      console.log('✅ Mensagem salva no banco de dados');
-    } else {
-      console.error('❌ ERRO: Mensagem NÃO foi enviada e NÃO foi salva!');
     }
-
-    console.log('━━━━━━━━━ WEBHOOK FINALIZADO ━━━━━━━━━');
-    console.log('Status final:', sent ? 'SUCESSO' : 'FALHA');
-    console.log('Mensagem foi enviada?', sent);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     return NextResponse.json({ 
       status: 'success', 
       sent,
-      response: assistantMessage.substring(0, 100) + '...'
+      complex_analysis: isComplex,
+      iterations_used: iterations
     });
 
   } catch (error: any) {
-    console.error('━━━━━━━━━ ERRO NO WEBHOOK ━━━━━━━━━');
-    console.error('Tipo:', error.name);
-    console.error('Mensagem:', error.message);
-    console.error('Stack:', error.stack);
-    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('Erro no webhook:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
 // GET - Verificação do webhook
-export async function GET(request: Request) {
-  return NextResponse.json({ 
-    status: 'ok', 
+export async function GET() {
+  return NextResponse.json({
+    status: 'ok',
     message: 'Webhook WhatsApp ativo',
     timestamp: new Date().toISOString()
   });
 }
-
