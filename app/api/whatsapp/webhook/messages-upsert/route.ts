@@ -195,19 +195,39 @@ async function sendWhatsAppAudio(instance: any, phone: string, audioBase64: stri
 async function transcribeAudio(audioUrl: string): Promise<string | null> {
   try {
     const audioResponse = await fetch(audioUrl);
-    if (!audioResponse.ok) return null;
+    if (!audioResponse.ok) {
+      console.error('[transcribeAudio] Erro ao baixar áudio:', audioResponse.status);
+      return null;
+    }
     
     const audioBuffer = await audioResponse.arrayBuffer();
-    const audioBlob = new Blob([audioBuffer], { type: 'audio/ogg' });
-    const file = new File([audioBlob], 'audio.ogg', { type: 'audio/ogg' });
     
-    const transcription = await openai.audio.transcriptions.create({
-      file: file,
-      model: 'whisper-1',
-      language: 'pt'
+    // WhatsApp envia áudio em formato OGG/OPUS
+    // Whisper aceita: flac, m4a, mp3, mp4, mpeg, mpga, oga, ogg, wav, webm
+    const file = new File([audioBuffer], 'audio.ogg', { type: 'audio/ogg' });
+    
+    // Usar FormData para envio correto
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('model', 'whisper-1');
+    formData.append('language', 'pt');
+    
+    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: formData
     });
     
-    return transcription.text;
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[transcribeAudio] Erro da OpenAI:', errorText);
+      return null;
+    }
+    
+    const data = await response.json();
+    return data.text;
   } catch (error) {
     console.error('[transcribeAudio] Erro:', error);
     return null;
