@@ -510,15 +510,17 @@ export default function DevGroupsPage() {
               >
                 {/* Header do Card */}
                 <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3 flex-1">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
                     {group.logo_url ? (
-                      <img
-                        src={group.logo_url}
-                        alt=""
-                        className="w-12 h-12 rounded-lg object-cover"
-                      />
+                      <div className="w-16 h-16 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                        <img
+                          src={group.logo_url}
+                          alt={group.name}
+                          className="max-w-full max-h-full object-contain p-1"
+                        />
+                      </div>
                     ) : (
-                      <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
+                      <div className="w-16 h-16 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
                         <Building2 className="w-6 h-6 text-blue-600" />
                       </div>
                     )}
@@ -572,7 +574,7 @@ export default function DevGroupsPage() {
                 <div className="flex items-center justify-between gap-2 pt-4 border-t border-gray-100">
                   <button
                     onClick={() => router.push(`/dev/groups/${group.id}`)}
-                    className="flex items-center justify-center gap-2 px-3 py-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                    className="flex items-center justify-center gap-2 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                   >
                     <LogIn className="w-4 h-4" />
                     Entrar

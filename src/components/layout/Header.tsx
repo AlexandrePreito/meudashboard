@@ -88,19 +88,16 @@ function getNavItems(user: HeaderProps['user']) {
   if (user.is_developer) {
     items.push({ href: '/dev', label: 'Desenvolvedor' });
   }
-
-  // Dashboards: master, dev e admin
-  if (user.is_master || user.is_developer || user.role === 'admin') {
-    items.push({ href: '/dashboard', label: 'Dashboards' });
-  }
-
-  // Power BI: master, dev e admin
-  if (user.is_master || user.is_developer || user.role === 'admin') {
+  
+  // Para developer: Power BI e WhatsApp vêm antes de Dashboards
+  if (user.is_developer && !user.is_master) {
     items.push({ href: '/powerbi', label: 'Power BI' });
-  }
-
-  // WhatsApp: master, dev e admin
-  if (user.is_master || user.is_developer || user.role === 'admin') {
+    items.push({ href: '/whatsapp', label: 'WhatsApp' });
+    items.push({ href: '/dashboard', label: 'Dashboards' });
+  } else if (user.is_master || user.role === 'admin') {
+    // Para master e admin: ordem original
+    items.push({ href: '/dashboard', label: 'Dashboards' });
+    items.push({ href: '/powerbi', label: 'Power BI' });
     items.push({ href: '/whatsapp', label: 'WhatsApp' });
   }
 

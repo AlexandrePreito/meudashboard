@@ -66,6 +66,28 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [usageInfo, setUsageInfo] = useState<{ used: number; limit: number } | null>(null);
+  const [userPermissions, setUserPermissions] = useState<{ can_use_ai: boolean; can_refresh: boolean }>({ can_use_ai: false, can_refresh: false });
+
+  async function fetchUserPermissions() {
+    try {
+      const res = await fetch('/api/auth/me');
+      if (res.ok) {
+        const data = await res.json();
+        // Se for master ou developer, tem todas as permissões
+        if (data.user?.is_master || data.user?.is_developer) {
+          setUserPermissions({ can_use_ai: true, can_refresh: true });
+        } else {
+          // Buscar permissões do membership
+          setUserPermissions({
+            can_use_ai: data.user?.can_use_ai ?? false,
+            can_refresh: data.user?.can_refresh ?? false
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao buscar permissões:', error);
+    }
+  }
 
   const renderReport = useCallback(() => {
     if (!embedConfig || !embedContainerRef.current || !window.powerbi) {
@@ -138,6 +160,8 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
       if (!mounted) return;
 
       try {
+        fetchUserPermissions();
+        
         const res = await fetch('/api/powerbi/embed', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -554,14 +578,16 @@ ${'='.repeat(50)}
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleRefreshData}
-              disabled={refreshingData}
-              className="p-2 bg-white text-gray-600 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
-              title={refreshProgress || 'Atualizar Dados'}
-            >
-              <Database size={18} className={refreshingData ? 'animate-pulse' : ''} />
-            </button>
+            {userPermissions.can_refresh && (
+              <button
+                onClick={handleRefreshData}
+                disabled={refreshingData}
+                className="p-2 bg-white text-gray-600 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
+                title={refreshProgress || 'Atualizar Dados'}
+              >
+                <Database size={18} className={refreshingData ? 'animate-pulse' : ''} />
+              </button>
+            )}
             <button
               onClick={handleRefresh}
               disabled={refreshing}
@@ -577,18 +603,20 @@ ${'='.repeat(50)}
             >
               <Maximize2 size={18} />
             </button>
-            <button
-              onClick={() => setChatOpen(!chatOpen)}
-              className={`relative p-2 rounded-lg transition-all shadow-md overflow-hidden ${
-                chatOpen 
-                  ? 'bg-gradient-to-r from-blue-500 to-blue-700 text-white' 
-                  : 'bg-gradient-to-r from-blue-400 to-blue-600 text-white hover:from-blue-500 hover:to-blue-700'
-              }`}
-              title="Chat IA"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"></div>
-              <Asterisk size={18} className="relative z-10" />
-            </button>
+            {userPermissions.can_use_ai && (
+              <button
+                onClick={() => setChatOpen(!chatOpen)}
+                className={`relative p-2 rounded-lg transition-all shadow-md overflow-hidden ${
+                  chatOpen
+                    ? 'bg-gradient-to-r from-blue-500 to-blue-700 text-white'
+                    : 'bg-gradient-to-r from-blue-400 to-blue-600 text-white hover:from-blue-500 hover:to-blue-700'
+                }`}
+                title="Chat IA"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"></div>
+                <Asterisk size={18} className="relative z-10" />
+              </button>
+            )}
           </div>
         </div>
 

@@ -31,19 +31,25 @@ export async function GET() {
       isDeveloper = !!developerId;
     }
     
+    let canUseAi = false;
+    let canRefresh = false;
+
     if (!user.is_master && !isDeveloper) {
       const supabase = createAdminClient();
       
       // Buscar memberships do usuário
       const { data: memberships } = await supabase
         .from('user_group_membership')
-        .select('company_group_id, role')
+        .select('company_group_id, role, can_use_ai, can_refresh')
         .eq('user_id', user.id)
         .eq('is_active', true);
 
       groupIds = memberships?.map(m => m.company_group_id) || [];
       const userRole = memberships?.some(m => m.role === 'admin') ? 'admin' : 'user';
       role = userRole;
+      // Verificar permissões - se qualquer membership tiver, o usuário tem
+      canUseAi = memberships?.some(m => m.can_use_ai) || false;
+      canRefresh = memberships?.some(m => m.can_refresh) || false;
     }
 
     // Se tiver usuário, retorna 200 com os dados
@@ -56,9 +62,11 @@ export async function GET() {
         is_developer: isDeveloper,
         status: user.status,
         role: user.is_master ? 'master' : (isDeveloper ? 'developer' : role),
+        can_use_ai: user.is_master || isDeveloper || canUseAi,
+        can_refresh: user.is_master || isDeveloper || canRefresh,
       },
       role: user.is_master ? 'master' : (isDeveloper ? 'developer' : role),
-      groupIds: groupIds  // GARANTIR QUE ISSO ESTÁ SENDO RETORNADO
+      groupIds: groupIds
     });
   } catch (error) {
     console.error('Erro ao buscar usuário:', error);

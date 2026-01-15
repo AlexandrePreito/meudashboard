@@ -49,10 +49,11 @@ const adminMenuItems = [
 
 const devMenuItems = [
   { href: '/dev', icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/dev/relatorios', icon: BarChart3, label: 'Relatorios' },
-  { href: '/dev/groups', icon: Building2, label: 'Meus Grupos' },
-  { href: '/dev/quotas', icon: ArrowUpDown, label: 'Distribuir Quotas' },
-  { href: '/dev/perfil', icon: Settings, label: 'Meu Perfil' },
+  { href: '/dev/groups', icon: Building2, label: 'Grupos' },
+  { href: '/dev/usuarios', icon: Users, label: 'Usuários' },
+  { href: '/dev/quotas', icon: ArrowUpDown, label: 'Distribuir Cotas' },
+  { href: '/dev/relatorios', icon: BarChart3, label: 'Relatórios' },
+  { href: '/dev/perfil', icon: Settings, label: 'Configurações' },
 ];
 
 interface Screen {
@@ -99,7 +100,7 @@ export default function Sidebar() {
     { href: '/powerbi', icon: Activity, label: 'Dashboard' },
     { href: '/powerbi/conexoes', icon: LinkIcon, label: 'Conexões' },
     { href: '/powerbi/relatorios', icon: FileText, label: 'Relatórios' },
-    { href: '/powerbi/telas', icon: Layers, label: 'Telas', hideForDeveloper: true },
+    { href: '/powerbi/telas', icon: Monitor, label: 'Telas' },
     { href: '/powerbi/contextos', icon: Brain, label: 'Contextos IA', requiresPermission: 'ai' },
     { href: '/powerbi/ordem-atualizacao', icon: ArrowUpDown, label: 'Ordem Atualização' },
   ];
@@ -418,10 +419,19 @@ export default function Sidebar() {
           {showScreens && (
             <>
               {!isCollapsed && (
-                <div className="px-4 pb-2 mb-2 border-b border-gray-100">
+                <div className="px-4 pb-2 mb-2 border-b border-gray-100 flex items-center justify-between">
                   <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
                     Telas
                   </h3>
+                  {(user?.is_developer || user?.is_master) && activeGroup?.id && (
+                    <Link
+                      href={`/dev/groups/${activeGroup.id}`}
+                      className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                      title="Nova Tela"
+                    >
+                      <Plus size={16} />
+                    </Link>
+                  )}
                 </div>
               )}
 
