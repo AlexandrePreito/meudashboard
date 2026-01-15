@@ -129,7 +129,7 @@ export default function Sidebar() {
     { href: '/whatsapp', icon: LayoutDashboard, label: 'Dashboard', requiresPermission: 'whatsapp' },
     { href: '/whatsapp/instancias', icon: Smartphone, label: 'Instâncias', requiresPermission: 'whatsapp' },
     { href: '/whatsapp/numeros', icon: User, label: 'Números Autorizados', requiresPermission: 'whatsapp' },
-    { href: '/whatsapp/grupos', icon: UsersRound, label: 'Grupos Autorizados', requiresPermission: 'whatsapp' },
+    { href: '/whatsapp/grupos', icon: UsersRound, label: 'Grupos Autorizados', requiresPermission: 'whatsapp', hideForDeveloper: true },
     { href: '/whatsapp/mensagens', icon: MessageSquare, label: 'Mensagens', requiresPermission: 'whatsapp' },
     { href: '/alertas', icon: Bell, label: 'Alertas', requiresPermission: 'alerts' },
     { href: '/alertas/historico', icon: History, label: 'Histórico', requiresPermission: 'alerts' },

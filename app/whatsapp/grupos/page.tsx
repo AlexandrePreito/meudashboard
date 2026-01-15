@@ -191,9 +191,13 @@ function GruposContent() {
         datasets: formData.datasets
       };
 
-      // Se admin, forçar company_group_id
+      // Se admin ou developer, adicionar company_group_id
       if (userRole === 'admin' && userGroupIds.length > 0) {
         payload.company_group_id = userGroupIds[0];
+      } else if (userRole === 'developer' && activeGroup) {
+        payload.company_group_id = activeGroup.id;
+      } else if (activeGroup) {
+        payload.company_group_id = activeGroup.id;
       }
 
       if (editingGroup) {
@@ -486,7 +490,13 @@ function GruposContent() {
 
                 {/* DatasetSelector */}
                 <DatasetSelector
-                  companyGroupId={userRole === 'admin' ? userGroupIds[0] : undefined}
+                  companyGroupId={
+                    userRole === 'admin' && userGroupIds.length > 0
+                      ? userGroupIds[0]
+                      : userRole === 'developer' && activeGroup
+                      ? activeGroup.id
+                      : activeGroup?.id
+                  }
                   selectedDatasets={formData.datasets}
                   onChange={(datasets) => setFormData({...formData, datasets})}
                 />

@@ -446,7 +446,8 @@ export async function POST(request: Request) {
 
     const phone = remoteJid?.replace('@s.whatsapp.net', '').replace('@g.us', '') || '';
 
-    const { data: authorizedNumber, error: authError } = await supabase
+    // Buscar TODAS as instâncias onde o número está cadastrado
+    const { data: allAuthorizedNumbers, error: authError } = await supabase
       .from('whatsapp_authorized_numbers')
       .select(`
         *,
@@ -461,15 +462,102 @@ export async function POST(request: Request) {
         )
       `)
       .eq('phone_number', phone)
-      .eq('is_active', true)
-      .single();
+      .eq('is_active', true);
 
-    if (authError || !authorizedNumber || !authorizedNumber.instance) {
-      console.log('Número não autorizado ou sem instância:', phone);
+    if (authError || !allAuthorizedNumbers || allAuthorizedNumbers.length === 0) {
+      console.log('Número não autorizado:', phone);
       return NextResponse.json({ status: 'ignored', reason: 'unauthorized' });
     }
 
-    const instance = authorizedNumber.instance;
+    // Verificar contexto do usuário (instância já selecionada)
+    let userContext = await getUserContext(supabase, phone);
+    let authorizedNumber: any = null;
+    let instance: any = null;
+
+    // Se só tem 1 instância, usa direto
+    if (allAuthorizedNumbers.length === 1) {
+      authorizedNumber = allAuthorizedNumbers[0];
+      instance = authorizedNumber.instance;
+      console.log('[Webhook] Única instância:', instance?.name);
+    } 
+    // Se tem múltiplas e já tem contexto de instância
+    else if (userContext?.instance_id) {
+      authorizedNumber = allAuthorizedNumbers.find(an => an.instance?.id === userContext.instance_id);
+      if (authorizedNumber) {
+        instance = authorizedNumber.instance;
+        console.log('[Webhook] Instância do contexto:', instance?.name);
+      }
+    }
+
+    // Se não tem instância definida ainda, mostrar menu ou processar seleção
+    if (!instance) {
+      // Pegar qualquer instância para enviar mensagem
+      const anyInstance = allAuthorizedNumbers[0]?.instance;
+      if (!anyInstance) {
+        return NextResponse.json({ status: 'error', reason: 'no_instance' });
+      }
+
+      // Verificar se está selecionando uma instância (1, 2, 3...)
+      const trimmed = messageText.trim();
+      const isNumericSelection = /^[1-9]$/.test(trimmed);
+
+      if (isNumericSelection) {
+        const selectedIndex = parseInt(trimmed) - 1;
+        if (selectedIndex >= 0 && selectedIndex < allAuthorizedNumbers.length) {
+          authorizedNumber = allAuthorizedNumbers[selectedIndex];
+          instance = authorizedNumber.instance;
+          
+          // Salvar contexto com a instância escolhida
+          await supabase
+            .from('whatsapp_user_context')
+            .upsert({
+              phone_number: phone,
+              instance_id: instance.id,
+              instance_name: instance.name,
+              company_group_id: authorizedNumber.company_group_id,
+              selected_at: new Date().toISOString(),
+              expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'phone_number' });
+
+          // Enviar confirmação
+          const confirmMsg = `✅ *${instance.name}* selecionado!\n\nAgora pode fazer suas perguntas.\n\n_Digite "trocar" para mudar de agente._`;
+          await sendWhatsAppMessage(anyInstance, phone, confirmMsg);
+          
+          await supabase.from('whatsapp_messages').insert({
+            company_group_id: authorizedNumber.company_group_id,
+            phone_number: phone,
+            message_content: confirmMsg,
+            direction: 'outgoing',
+            sender_name: 'Assistente IA'
+          });
+
+          return NextResponse.json({ status: 'instance_selected' });
+        }
+      }
+
+      // Mostrar menu de instâncias
+      let menuMessage = '👋 Olá! Você tem acesso a vários agentes:\n\n';
+      const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'];
+      allAuthorizedNumbers.forEach((an, idx) => {
+        menuMessage += `${emojis[idx] || `${idx + 1}.`} ${an.instance?.name || 'Agente'}\n`;
+      });
+      menuMessage += '\n_Digite o número para selecionar._';
+
+      await sendWhatsAppMessage(anyInstance, phone, menuMessage);
+      
+      // Salvar mensagem no histórico
+      await supabase.from('whatsapp_messages').insert({
+        company_group_id: allAuthorizedNumbers[0].company_group_id,
+        phone_number: phone,
+        message_content: menuMessage,
+        direction: 'outgoing',
+        sender_name: 'Assistente IA'
+      });
+
+      return NextResponse.json({ status: 'asking_instance_selection' });
+    }
+
     let finalMessageText = messageText;
     let respondWithAudio = false;
 
@@ -486,6 +574,43 @@ export async function POST(request: Request) {
       }
     }
 
+    // Verificar comando para trocar de agente
+    const trimmedLower = finalMessageText.trim().toLowerCase();
+    if (['trocar', 'mudar', 'sair', 'agente', 'agentes'].includes(trimmedLower) && allAuthorizedNumbers.length > 1) {
+      // Limpar contexto de instância
+      await supabase
+        .from('whatsapp_user_context')
+        .update({ instance_id: null, instance_name: null })
+        .eq('phone_number', phone);
+
+      // Mostrar menu
+      let menuMessage = '📋 Escolha o agente:\n\n';
+      const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'];
+      allAuthorizedNumbers.forEach((an, idx) => {
+        menuMessage += `${emojis[idx] || `${idx + 1}.`} ${an.instance?.name || 'Agente'}\n`;
+      });
+      menuMessage += '\n_Digite o número para selecionar._';
+
+      await sendWhatsAppMessage(instance, phone, menuMessage);
+      
+      await supabase.from('whatsapp_messages').insert({
+        company_group_id: authorizedNumber.company_group_id,
+        phone_number: phone,
+        message_content: menuMessage,
+        direction: 'outgoing',
+        sender_name: 'Assistente IA'
+      });
+
+      return NextResponse.json({ status: 'showing_instance_menu' });
+    }
+
+    if (!authorizedNumber || !instance) {
+      console.log('Número sem instância válida:', phone);
+      return NextResponse.json({ status: 'ignored', reason: 'no_valid_instance' });
+    }
+
+    console.log('[Webhook] Usando instância:', instance.name);
+
     await supabase.from('whatsapp_messages').insert({
       company_group_id: authorizedNumber.company_group_id,
       phone_number: phone,
@@ -493,6 +618,11 @@ export async function POST(request: Request) {
       direction: 'incoming',
       sender_name: authorizedNumber.name || phone
     });
+
+    // Log para debug - ver exatamente o que foi transcrito
+    if (isAudioMessage) {
+      console.log('[ÁUDIO TRANSCRITO]:', finalMessageText);
+    }
 
     const trimmedMessage = finalMessageText.trim().toLowerCase();
     if (['0', 'menu', 'sair', 'trocar'].includes(trimmedMessage)) {
@@ -533,7 +663,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: 'menu_shown' });
     }
 
-    let userContext = await getUserContext(supabase, phone);
+    // Atualizar contexto do usuário (pode ter mudado após seleção de instância)
+    userContext = await getUserContext(supabase, phone);
     
     const { data: numberDatasets } = await supabase
       .from('whatsapp_number_datasets')
@@ -654,60 +785,49 @@ export async function POST(request: Request) {
       }
     }
 
-    const systemPrompt = `Você é um Assistente de BI via WhatsApp, especializado em consultar e ANALISAR dados.
+    const systemPrompt = `Você é uma assistente de BI simpática e prestativa via WhatsApp. Seu nome é Mia.
 
-## REGRA DE CONFIDENCIALIDADE
+## SUA PERSONALIDADE
+- Seja amigável, natural e conversacional
+- Use um tom profissional mas acolhedor
+- Responda como se estivesse conversando com um colega de trabalho
+
+## REGRAS CRÍTICAS
+⚠️ NUNCA invente dados! Use SEMPRE a função execute_dax para buscar informações reais.
 ⚠️ NUNCA mencione nomes de empresas, grupos ou sistemas internos.
-⚠️ Se perguntarem quem é você, diga: "Sou um assistente de BI que ajuda a consultar dados."
+⚠️ Consulte a DOCUMENTAÇÃO DO MODELO para os nomes corretos de tabelas e medidas.
 
-## REGRA MAIS IMPORTANTE
-⚠️ NUNCA invente valores! Use SEMPRE a função execute_dax para buscar dados reais.
-⚠️ SEMPRE consulte a DOCUMENTAÇÃO DO MODELO para saber os nomes EXATOS das tabelas, colunas e medidas.
-
-## INTERPRETAÇÃO DE NÚMEROS
-Se o usuário digitar apenas "1", "2", "3" ou "4", verifique no HISTÓRICO qual foi a última pergunta e quais opções foram oferecidas. O número corresponde à opção sugerida anteriormente.
+## INTERPRETAÇÃO DE RESPOSTAS NUMÉRICAS
+Se o usuário responder apenas "1", "2", "3" ou "4", verifique no histórico qual foi a última pergunta e quais opções foram oferecidas.
 
 ${isComplex ? `
-## MODO ANÁLISE PROFUNDA ATIVADO
-O usuário pediu uma análise complexa. Você deve:
-1. Executar MÚLTIPLAS queries DAX para coletar dados de diferentes ângulos
-2. Comparar períodos diferentes se relevante
-3. Identificar padrões, tendências e anomalias
-4. Fornecer insights acionáveis
-5. Sugerir possíveis causas para variações
-6. Ser mais detalhado na resposta (até 1500 caracteres)
+## ANÁLISE PROFUNDA
+Execute múltiplas queries DAX para uma análise completa:
+- Compare períodos diferentes
+- Identifique padrões e tendências
+- Forneça insights acionáveis
 ` : ''}
 
-${respondWithAudio ? `
-## RESPOSTA EM ÁUDIO - SEJA CONVERSACIONAL
-Como esta resposta será convertida em áudio, seja MUITO conversacional:
-- Fale como se estivesse conversando pessoalmente
-- Use frases curtas e naturais
-- Evite listas e bullet points
-- Diga os números de forma falada (ex: "trezentos e vinte mil" ao invés de "320.000")
-- Seja simpática e acolhedora
-- Use expressões naturais como "olha", "então", "veja bem"
-- NÃO use emojis, asteriscos ou formatação visual
-- Limite a resposta a no máximo 3 parágrafos curtos
-` : ''}
+## FORMATO DAS RESPOSTAS
+- Seja direto e objetivo
+- Use emojis com moderação para organizar (📊 💰 📈)
+- Separe seções com linha: ━━━━━━━━━━━━━━━━━
+- Ofereça 2-3 sugestões de próximas perguntas numeradas
+- Máximo ${isComplex ? '1500' : '1000'} caracteres
 
-## FORMATAÇÃO WHATSAPP
-- NÃO use asteriscos (*) para negrito
-- Use emojis organizados
-- Separe seções com: ━━━━━━━━━━━━━━━━━
-- ${isComplex ? 'Seja detalhado (máximo 1500 caracteres)' : 'Seja conciso (máximo 1000 caracteres)'}
-- Sempre ofereça 2-3 opções de continuidade numeradas
+## O QUE VOCÊ NÃO FAZ
+- NÃO gera gráficos, imagens ou PDFs
+- NÃO cria planilhas ou arquivos
+- NÃO faz previsões ou projeções futuras
+- Apenas consulta e analisa dados existentes
 
 ${conversationContext}
 
-${modelContext ? `## DOCUMENTAÇÃO DO MODELO\n${modelContext}` : '## SEM DOCUMENTAÇÃO\nInforme que não foi possível acessar os dados.'}
+${modelContext ? `## DOCUMENTAÇÃO DO MODELO\n${modelContext}` : '## ATENÇÃO\nSem documentação disponível. Informe que não foi possível acessar os dados.'}
 
-## DASHBOARD ATUAL
-${datasetName || 'Não especificado'}
-
-## DATA ATUAL
-${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-Mês atual: ${new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+## CONTEXTO
+- Dashboard: ${datasetName || 'Não especificado'}
+- Data: ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
 `;
 
     const tools: Anthropic.Tool[] = connectionId && datasetId ? [
@@ -724,7 +844,7 @@ Mês atual: ${new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'num
       }
     ] : [];
 
-    const maxTokens = isComplex ? 1500 : 800;
+    const maxTokens = isComplex ? 2000 : 1200;
     const maxIterations = isComplex ? 5 : 2;
 
     let response = await anthropic.messages.create({
@@ -793,7 +913,7 @@ Mês atual: ${new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'num
       assistantMessage = '📊 Não consegui processar essa consulta. Pode reformular a pergunta?';
     }
 
-    const maxLength = isComplex ? 1500 : 1000;
+    const maxLength = isComplex ? 2000 : 1500;
     if (assistantMessage.length > maxLength) {
       assistantMessage = assistantMessage.substring(0, maxLength - 3) + '...';
     }

@@ -475,14 +475,6 @@ function PowerBIDashboardContent() {
             <p className="text-gray-500 text-sm mt-1">Monitoramento de atualizações e status dos recursos</p>
           </div>
           <div className="flex items-center gap-2">
-            {(userRole === 'developer' || userRole === 'master') && (
-              <Button
-                onClick={openNewScreenModal}
-                icon={<Plus size={16} />}
-              >
-                Nova Tela
-              </Button>
-            )}
             <Button
               onClick={() => loadData(activeGroup)}
               disabled={loading}
