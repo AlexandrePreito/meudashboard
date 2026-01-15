@@ -373,7 +373,7 @@ export default function Sidebar() {
               )}
               <nav className="px-2 pb-4 border-b border-gray-100 mb-2">
                   {powerBIMenuItems
-                    .filter(item => !(item.hideForDeveloper && user?.is_developer))
+                    .filter(item => !((item as any).hideForDeveloper && user?.is_developer))
                     .map((item) => {
                     const Icon = item.icon;
                     const isActive = pathname === item.href;
