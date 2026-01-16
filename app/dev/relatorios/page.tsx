@@ -705,7 +705,7 @@ export default function DevRelatoriosPage() {
                   <p className="text-sm text-gray-700">
                     {(() => {
                       // Calcular tempo baseado em logs próximos do mesmo usuário
-                      const sessionTime = data.userSessions
+                      const sessionTime = (data?.userSessions || [])
                         .filter(s => s.userId === selectedSession.userId)
                         .sort((a, b) => new Date(a.accessDate).getTime() - new Date(b.accessDate).getTime());
                       
@@ -733,7 +733,7 @@ export default function DevRelatoriosPage() {
                   <p className="text-sm text-gray-700">
                     {(() => {
                       // Calcular tempo total no sistema (primeiro acesso até último)
-                      const userSessions = data.userSessions
+                      const userSessions = (data?.userSessions || [])
                         .filter(s => s.userId === selectedSession.userId)
                         .sort((a, b) => new Date(a.accessDate).getTime() - new Date(b.accessDate).getTime());
                       
