@@ -166,22 +166,28 @@ export async function POST(request: Request) {
     // Verificar se o número é autorizado
     console.log('Buscando número autorizado...');
     let authorizedNumber = null;
+    let allGroupIds: string[] = [];
     try {
-      const { data, error } = await supabase
+      // Buscar TODOS os registros do número (pode ter múltiplos grupos)
+      const { data: allAuthorizedRecords, error } = await supabase
         .from('whatsapp_authorized_numbers')
         .select('*, company_group_id')
         .eq('phone_number', phone)
         .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1);
+        .order('created_at', { ascending: false });
       
       if (error) {
         console.error('Erro ao buscar número autorizado:', error);
         return NextResponse.json({ status: 'error', reason: 'db_error', error: error.message }, { status: 500 });
       }
       
-      authorizedNumber = data?.[0] || null;
+      // Usar o primeiro registro para informações básicas (nome, etc)
+      authorizedNumber = allAuthorizedRecords?.[0] || null;
+      
+      // Extrair TODOS os company_group_ids
+      allGroupIds = allAuthorizedRecords?.map(record => record.company_group_id) || [];
       console.log('Número autorizado encontrado:', authorizedNumber ? 'SIM' : 'NÃO', authorizedNumber?.name);
+      console.log('Grupos encontrados para o número:', allGroupIds.length);
     } catch (dbError: any) {
       console.error('Exceção ao buscar número:', dbError.message);
       return NextResponse.json({ status: 'error', reason: 'exception', error: dbError.message }, { status: 500 });
@@ -302,22 +308,24 @@ export async function POST(request: Request) {
       .limit(1)
       .maybeSingle();
 
-    // Buscar TODOS os contextos disponíveis do grupo
+    // Buscar contextos de TODOS os grupos vinculados ao número
     const { data: allContexts } = await supabase
       .from('ai_model_contexts')
-      .select('id, connection_id, dataset_id, context_content, context_name, dataset_name')
-      .eq('company_group_id', authorizedNumber.company_group_id)
+      .select('id, connection_id, dataset_id, context_content, context_name, dataset_name, company_group_id')
+      .in('company_group_id', allGroupIds.length > 0 ? allGroupIds : [authorizedNumber?.company_group_id || ''])
       .eq('is_active', true);
 
     console.log('Contextos encontrados:', allContexts?.length || 0);
 
-    // Verificar se usuário já tem uma seleção ativa (últimas 24h)
+    // Buscar seleção do usuário (pode ser de qualquer grupo)
     const { data: userSelection } = await supabase
       .from('whatsapp_user_selections')
       .select('*')
       .eq('phone_number', phone)
-      .eq('company_group_id', authorizedNumber.company_group_id)
+      .in('company_group_id', allGroupIds.length > 0 ? allGroupIds : [authorizedNumber?.company_group_id || ''])
       .gte('created_at', new Date(Date.now() - 24*60*60*1000).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     console.log('Seleção do usuário:', userSelection ? 'SIM' : 'NÃO');
@@ -325,12 +333,12 @@ export async function POST(request: Request) {
     // Comando "trocar" para resetar seleção (verificar ANTES de processar cenários)
     if (messageText.toLowerCase().trim() === 'trocar') {
       if (allContexts && allContexts.length > 1) {
-        // Deletar seleção atual
+        // Deletar seleção atual (de todos os grupos)
         await supabase
           .from('whatsapp_user_selections')
           .delete()
           .eq('phone_number', phone)
-          .eq('company_group_id', authorizedNumber.company_group_id);
+          .in('company_group_id', allGroupIds.length > 0 ? allGroupIds : [authorizedNumber?.company_group_id || '']);
 
         // Mostrar opções novamente
         let optionsList = '🔄 *Vamos escolher novamente!*\n\n';
@@ -392,12 +400,12 @@ export async function POST(request: Request) {
         // Usuário escolheu um dataset
         const selectedContext = allContexts[choice - 1];
 
-        // SALVAR a escolha
+        // SALVAR a escolha (usar company_group_id do contexto selecionado)
         const { error: insertError } = await supabase
           .from('whatsapp_user_selections')
           .insert({
             phone_number: phone,
-            company_group_id: authorizedNumber.company_group_id,
+            company_group_id: selectedContext.company_group_id,
             selected_connection_id: selectedContext.connection_id,
             selected_dataset_id: selectedContext.dataset_id
           });
@@ -513,7 +521,7 @@ Digite "trocar" para mudar de agente.`;
         .from('whatsapp_messages')
         .update({ archived: true })
         .eq('phone_number', phone)
-        .eq('company_group_id', authorizedNumber.company_group_id);
+        .in('company_group_id', allGroupIds.length > 0 ? allGroupIds : [authorizedNumber?.company_group_id || '']);
 
       const clearMessage = `🗑️ *Histórico limpo!*
 
@@ -643,13 +651,13 @@ Entre em contato com o suporte para configurar a conexão! 📞`;
     }
 
     // ============================================
-    // BUSCAR HISTÓRICO DE CONVERSAÇÃO (últimas 10 mensagens)
+    // BUSCAR HISTÓRICO DE CONVERSAÇÃO (últimas 10 mensagens de todos os grupos)
     // ============================================
     const { data: recentMessages } = await supabase
       .from('whatsapp_messages')
       .select('message_content, direction, created_at')
       .eq('phone_number', phone)
-      .eq('company_group_id', authorizedNumber.company_group_id)
+      .in('company_group_id', allGroupIds.length > 0 ? allGroupIds : [authorizedNumber?.company_group_id || ''])
       .eq('archived', false)
       .order('created_at', { ascending: false })
       .limit(10);
@@ -733,6 +741,22 @@ Nome: ${recentAlert.name}
 Dataset: ${recentAlert.dataset_id}
 Conexão: ${recentAlert.connection_id}
 ` : ''}
+
+## REGRAS PARA PERÍODOS E DATAS
+**IMPORTANTE:** Quando o usuário perguntar sobre dados SEM especificar período:
+- "Qual o faturamento?" → Considere o MÊS ATUAL (${new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })})
+- "Quantas vendas?" → Considere o MÊS ATUAL
+- "Top produtos" → Considere o MÊS ATUAL
+- "Inadimplência" → Considere dados ATUAIS do mês
+
+**Sempre que aplicar filtro de data por padrão, INFORME ao usuário:**
+"📅 Dados de ${new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}"
+
+**Períodos explícitos do usuário têm prioridade:**
+- "faturamento de janeiro" → Use janeiro do ano atual
+- "vendas do ano" → Use o ano completo atual
+- "último trimestre" → Use os últimos 3 meses
+- "ontem", "semana passada", "mês passado" → Calcule a partir da data atual
 
 ## DATA E HORA ATUAL
 ${new Date().toLocaleString('pt-BR', { 
