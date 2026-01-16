@@ -629,11 +629,21 @@ Sou o assistente IA da sua empresa, mas ainda não tenho acesso aos seus dados c
 
     // Comando: /limpar
     if (userCommand === '/limpar' || userCommand === 'limpar') {
+      // Arquivar mensagens
       await supabase
         .from('whatsapp_messages')
         .update({ archived: true })
         .eq('phone_number', phone)
-        .in('company_group_id', allGroupIds.length > 0 ? allGroupIds : [authorizedNumber?.company_group_id || '']);
+        .in('company_group_id', allGroupIds);
+
+      // DELETAR seleção de dataset
+      await supabase
+        .from('whatsapp_user_selections')
+        .delete()
+        .eq('phone_number', phone)
+        .in('company_group_id', allGroupIds);
+
+      console.log('✅ Histórico e seleção de dataset limpos');
 
       const clearMessage = `🗑️ *Histórico limpo!*
 
