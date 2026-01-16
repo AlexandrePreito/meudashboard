@@ -139,8 +139,16 @@ export async function POST(request: Request) {
                         messageContent.imageMessage?.caption ||
                         messageContent.videoMessage?.caption ||
                         messageContent.documentMessage?.caption ||
+                        messageContent.audioMessage?.caption ||
+                        messageContent.audioMessage?.text ||
                         messageData.body ||
                         '';
+
+    // Log para debug de áudio
+    if (messageContent.audioMessage) {
+      console.log('🎤 [AUDIO] Mensagem de áudio detectada');
+      console.log('Audio data:', JSON.stringify(messageContent.audioMessage, null, 2));
+    }
 
     // Log detalhado para debug
     console.log('Dados extraídos:', {
@@ -306,6 +314,32 @@ export async function POST(request: Request) {
     if (!instance) {
       console.log('Nenhuma instância conectada');
       return NextResponse.json({ status: 'error', reason: 'no instance' });
+    }
+
+    // Ignorar mensagens de áudio sem transcrição
+    if (messageContent.audioMessage && !messageText.trim()) {
+      console.log('⚠️ Áudio sem transcrição - ignorando');
+      const audioMessage = `Desculpe ${authorizedNumber?.name || ''}, não consigo processar mensagens de áudio ainda. 🎤
+
+Por favor, envie sua pergunta como *texto* para que eu possa ajudar! 😊`;
+      
+      // Responder que não processa áudio
+      const sent = await sendWhatsAppMessage(instance, phone, audioMessage);
+      
+      if (sent) {
+        await supabase.from('whatsapp_messages').insert({
+          company_group_id: authorizedNumber?.company_group_id,
+          phone_number: phone,
+          message_content: audioMessage,
+          direction: 'outgoing',
+          sender_name: 'Assistente IA'
+        });
+      }
+      
+      return NextResponse.json({ 
+        status: 'ignored', 
+        reason: 'audio message without transcription' 
+      });
     }
 
     // ============================================
