@@ -206,7 +206,7 @@ export default function Sidebar() {
             if (!a.is_first && b.is_first) return 1;
             return a.title.localeCompare(b.title);
           });
-        console.log('Telas processadas:', activeScreens.map(s => ({ title: s.title, icon: s.icon })));
+        console.log('Telas processadas:', activeScreens.map((s: any) => ({ title: s.title, icon: s.icon })));
         setScreens(activeScreens);
       }
     } catch (error) {
