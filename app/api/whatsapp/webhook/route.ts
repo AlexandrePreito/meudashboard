@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY || '',
+});
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY || '',
 });
 
 // Função para executar DAX
@@ -63,6 +68,182 @@ async function executeDaxQuery(connectionId: string, datasetId: string, query: s
     return { success: true, results };
   } catch (e: any) {
     return { success: false, error: e.message };
+  }
+}
+
+// Função para formatar texto para fala
+function formatTextForSpeech(text: string): string {
+  let formatted = text;
+  
+  // Remover emojis (não fazem sentido em áudio)
+  formatted = formatted.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[️⃣]/gu, '');
+  
+  // Remover linhas decorativas
+  formatted = formatted.replace(/[━─═]+/g, '');
+  
+  // Formatar valores monetários para fala natural
+  formatted = formatted.replace(/R\$\s*([\d.,]+)/g, (match, value) => {
+    const cleanValue = value.replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(cleanValue);
+    
+    if (isNaN(num)) return match;
+    
+    if (num >= 1000000000) {
+      const bilhoes = num / 1000000000;
+      return `${bilhoes.toFixed(1).replace('.', ' vírgula ')} bilhões de reais`;
+    } else if (num >= 1000000) {
+      const milhoes = num / 1000000;
+      if (milhoes === Math.floor(milhoes)) {
+        return `${Math.floor(milhoes)} ${milhoes === 1 ? 'milhão' : 'milhões'} de reais`;
+      }
+      return `${milhoes.toFixed(1).replace('.', ' vírgula ')} ${milhoes >= 2 ? 'milhões' : 'milhão'} de reais`;
+    } else if (num >= 1000) {
+      const milhares = num / 1000;
+      if (milhares === Math.floor(milhares)) {
+        return `${Math.floor(milhares)} mil reais`;
+      }
+      return `${milhares.toFixed(1).replace('.', ' vírgula ')} mil reais`;
+    } else {
+      return `${num.toFixed(2).replace('.', ' reais e ')} centavos`;
+    }
+  });
+  
+  // Formatar porcentagens
+  formatted = formatted.replace(/([\d.,]+)%/g, (match, value) => {
+    const num = parseFloat(value.replace(',', '.'));
+    if (isNaN(num)) return match;
+    return `${num.toString().replace('.', ' vírgula ')} por cento`;
+  });
+  
+  // Formatar números grandes sozinhos
+  formatted = formatted.replace(/\b(\d{1,3}(?:\.\d{3})+)\b/g, (match) => {
+    const num = parseInt(match.replace(/\./g, ''));
+    if (num >= 1000000) {
+      return `${(num / 1000000).toFixed(1).replace('.', ' vírgula ')} milhões`;
+    } else if (num >= 1000) {
+      return `${(num / 1000).toFixed(0)} mil`;
+    }
+    return match;
+  });
+  
+  // Limpar múltiplos espaços e quebras de linha
+  formatted = formatted.replace(/\n+/g, '. ');
+  formatted = formatted.replace(/\s+/g, ' ');
+  formatted = formatted.replace(/\.\s*\./g, '.');
+  
+  return formatted.trim();
+}
+
+// Função para gerar áudio com TTS
+async function generateAudio(text: string): Promise<string | null> {
+  try {
+    console.log('━━━━ INICIANDO GERAÇÃO DE ÁUDIO ━━━━');
+    console.log('[generateAudio] Texto original length:', text.length);
+    
+    // Formatar texto para fala mais natural
+    const speechText = formatTextForSpeech(text);
+    console.log('[generateAudio] Texto formatado length:', speechText.length);
+    
+    // Limitar texto (máximo ~4000 caracteres)
+    const limitedText = speechText.slice(0, 4000);
+    console.log('[generateAudio] Texto limitado:', limitedText.substring(0, 100) + '...');
+    
+    if (!process.env.OPENAI_API_KEY) {
+      console.error('[generateAudio] ❌ OPENAI_API_KEY não configurada!');
+      return null;
+    }
+    
+    console.log('[generateAudio] 🔊 Chamando OpenAI TTS...');
+    const response = await openai.audio.speech.create({
+      model: 'tts-1-hd',
+      voice: 'shimmer',
+      input: limitedText,
+      response_format: 'mp3',
+      speed: 1.0
+    });
+    
+    console.log('[generateAudio] ✅ OpenAI respondeu');
+    const arrayBuffer = await response.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    console.log('[generateAudio] ✅ Base64 gerado, length:', base64.length);
+    console.log('━━━━ ÁUDIO GERADO COM SUCESSO ━━━━');
+    return base64;
+  } catch (error: any) {
+    console.error('━━━━ ERRO NA GERAÇÃO DE ÁUDIO ━━━━');
+    console.error('[generateAudio] Erro completo:', error);
+    console.error('[generateAudio] Mensagem:', error.message);
+    console.error('[generateAudio] Stack:', error.stack);
+    return null;
+  }
+}
+
+// Função para enviar áudio via WhatsApp
+async function sendWhatsAppAudio(instance: any, phone: string, audioBase64: string) {
+  try {
+    console.log('━━━━ ENVIANDO ÁUDIO WHATSAPP ━━━━');
+    console.log('[sendWhatsAppAudio] Instance:', instance?.instance_name);
+    console.log('[sendWhatsAppAudio] Phone:', phone);
+    console.log('[sendWhatsAppAudio] Base64 length:', audioBase64?.length || 0);
+    
+    // Tentativa 1: sendWhatsAppAudio
+    const url = `${instance.api_url}/message/sendWhatsAppAudio/${instance.instance_name}`;
+    console.log('[sendWhatsAppAudio] Tentativa 1 - URL:', url);
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': instance.api_key || ''
+      },
+      body: JSON.stringify({
+        number: phone.replace(/\D/g, ''),
+        audio: audioBase64
+      })
+    });
+    
+    console.log('[sendWhatsAppAudio] Resposta status:', response.status);
+    
+    if (response.ok) {
+      console.log('[sendWhatsAppAudio] ✅ Áudio enviado com sucesso (tentativa 1)');
+      return true;
+    }
+    
+    const errorText = await response.text();
+    console.log('[sendWhatsAppAudio] ❌ Tentativa 1 falhou:', errorText);
+    
+    // Tentativa 2: sendMedia
+    const url2 = `${instance.api_url}/message/sendMedia/${instance.instance_name}`;
+    console.log('[sendWhatsAppAudio] Tentativa 2 - URL:', url2);
+    
+    const response2 = await fetch(url2, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': instance.api_key || ''
+      },
+      body: JSON.stringify({
+        number: phone.replace(/\D/g, ''),
+        mediatype: 'audio',
+        media: `data:audio/mp3;base64,${audioBase64}`,
+        fileName: 'audio.mp3'
+      })
+    });
+    
+    console.log('[sendWhatsAppAudio] Resposta 2 status:', response2.status);
+    
+    if (response2.ok) {
+      console.log('[sendWhatsAppAudio] ✅ Áudio enviado com sucesso (tentativa 2)');
+      return true;
+    }
+    
+    const errorText2 = await response2.text();
+    console.log('[sendWhatsAppAudio] ❌ Tentativa 2 falhou:', errorText2);
+    console.log('━━━━ FALHA NO ENVIO DE ÁUDIO ━━━━');
+    return false;
+  } catch (error) {
+    console.error('━━━━ ERRO NO ENVIO DE ÁUDIO ━━━━');
+    console.error('[sendWhatsAppAudio] Erro:', error);
+    return false;
   }
 }
 
@@ -316,8 +497,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: 'error', reason: 'no instance' });
     }
 
-    // Ignorar mensagens de áudio sem transcrição
-    if (messageContent.audioMessage && !messageText.trim()) {
+    // Verificar se é mensagem de áudio e se deve responder com áudio
+    const isAudioMessage = !!messageContent.audioMessage;
+    let respondWithAudio = false;
+    
+    if (isAudioMessage && !messageText.trim()) {
       console.log('⚠️ Áudio sem transcrição - ignorando');
       const audioMessage = `Desculpe ${authorizedNumber?.name || ''}, não consigo processar mensagens de áudio ainda. 🎤
 
@@ -340,6 +524,12 @@ Por favor, envie sua pergunta como *texto* para que eu possa ajudar! 😊`;
         status: 'ignored', 
         reason: 'audio message without transcription' 
       });
+    }
+    
+    // Se recebeu áudio com transcrição, responder com áudio
+    if (isAudioMessage && messageText.trim()) {
+      respondWithAudio = true;
+      console.log('🎤 Mensagem de áudio recebida com transcrição - responderá com áudio');
     }
 
     // ============================================
@@ -1038,8 +1228,31 @@ Estou aqui para ajudar! 💪`;
       is_connected: instance.is_connected
     });
 
-    // Enviar resposta normal (não dividida)
-    const sent = await sendWhatsAppMessage(instance, phone, assistantMessage);
+    let sent = false;
+    
+    if (respondWithAudio) {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🔊 MODO ÁUDIO ATIVADO - Gerando resposta em áudio...');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      const audioBase64 = await generateAudio(assistantMessage);
+      
+      if (audioBase64) {
+        console.log('✅ Áudio gerado, enviando...');
+        sent = await sendWhatsAppAudio(instance, phone, audioBase64);
+        console.log('🔊 Resultado do envio de áudio:', sent ? '✅ SUCESSO' : '❌ FALHOU');
+      } else {
+        console.log('❌ Falha ao gerar áudio, enviando como texto');
+      }
+      
+      if (!sent) {
+        console.log('📝 Fallback: Enviando como mensagem de texto');
+        sent = await sendWhatsAppMessage(instance, phone, assistantMessage);
+      }
+    } else {
+      console.log('📝 Enviando mensagem de texto (áudio não solicitado)');
+      sent = await sendWhatsAppMessage(instance, phone, assistantMessage);
+    }
 
     console.log('Mensagem enviada:', sent);
 
@@ -1048,7 +1261,7 @@ Estou aqui para ajudar! 💪`;
       await supabase.from('whatsapp_messages').insert({
         company_group_id: authorizedNumber.company_group_id,
         phone_number: phone,
-        message_content: assistantMessage,
+        message_content: respondWithAudio ? `🔊 [Áudio]: ${assistantMessage}` : assistantMessage,
         direction: 'outgoing',
         sender_name: 'Assistente IA'
       });
