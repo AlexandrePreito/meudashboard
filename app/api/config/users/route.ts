@@ -176,6 +176,33 @@ export async function POST(request: Request) {
       }
     }
 
+    // Validar limite de usuários (se tiver grupo)
+    if (company_group_id) {
+      const { data: groupData } = await supabase
+        .from('company_groups')
+        .select('quota_users')
+        .eq('id', company_group_id)
+        .single();
+
+      const userLimit = groupData?.quota_users || 10;
+
+      // Contar usuários ativos do grupo
+      const { count: usersCount } = await supabase
+        .from('user_group_memberships')
+        .select('*', { count: 'exact', head: true })
+        .eq('company_group_id', company_group_id)
+        .eq('is_active', true);
+
+      // Bloquear se limite atingido
+      if (usersCount !== null && usersCount >= userLimit) {
+        return NextResponse.json({
+          error: `Limite de ${userLimit} usuários atingido. Entre em contato com o administrador.`,
+          current: usersCount,
+          max: userLimit
+        }, { status: 403 });
+      }
+    }
+
     // Verificar se email já existe
     const { data: existingUser } = await supabase
       .from('users')

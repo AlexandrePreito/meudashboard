@@ -6,11 +6,10 @@ import MainLayout from '@/components/layout/MainLayout';
 import {
   Building2,
   Users,
-  Monitor,
+  MonitorPlay,
   Bell,
-  MessageSquare,
-  Sparkles,
-  Zap,
+  MessageCircle,
+  RefreshCw,
   AlertCircle,
   ArrowRight,
   Loader2
@@ -31,8 +30,7 @@ interface DashboardData {
     max_screens: number;
     max_alerts: number;
     max_whatsapp_per_day: number;
-    max_ai_per_day: number;
-    max_executions_per_day: number;
+    max_refreshes_per_day: number;
   } | null;
   stats: {
     groups: { used: number; limit: number };
@@ -42,8 +40,7 @@ interface DashboardData {
   };
   usage_today: {
     whatsapp: { used: number; limit: number };
-    ai: { used: number; limit: number };
-    executions: { used: number; limit: number };
+    refreshes: { used: number; limit: number };
   };
   groups: Array<{
     id: string;
@@ -53,18 +50,31 @@ interface DashboardData {
     quotas: any;
     usage_today: {
       whatsapp: number;
-      ai: number;
-      executions: number;
+      refreshes: number;
     };
   }>;
 }
 
-function ProgressBar({ used, limit, color = 'blue' }: { used: number; limit: number; color?: string }) {
+function ProgressBar({ used, limit, iconColor }: { used: number; limit: number; iconColor: string }) {
   const percentage = limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
   const isWarning = percentage >= 80;
   const isDanger = percentage >= 95;
   
-  const barColor = isDanger ? 'bg-red-500' : isWarning ? 'bg-yellow-500' : `bg-${color}-500`;
+  // Determinar cor da barra baseado na cor do ícone ou estado de alerta
+  const getBarColor = () => {
+    if (isDanger) return 'bg-red-500';
+    if (isWarning) return 'bg-yellow-500';
+    
+    // Mapear cor do ícone para cor da barra
+    if (iconColor === 'text-blue-600') return 'bg-blue-500';
+    if (iconColor === 'text-indigo-600') return 'bg-indigo-500';
+    if (iconColor === 'text-green-600') return 'bg-green-500';
+    if (iconColor === 'text-purple-600') return 'bg-purple-500';
+    if (iconColor === 'text-red-600') return 'bg-red-500';
+    if (iconColor === 'text-orange-600') return 'bg-orange-500';
+    
+    return 'bg-blue-500'; // fallback
+  };
   
   return (
     <div className="w-full">
@@ -74,7 +84,7 @@ function ProgressBar({ used, limit, color = 'blue' }: { used: number; limit: num
       </div>
       <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
         <div 
-          className={`h-full transition-all duration-500 ${isDanger ? 'bg-red-500' : isWarning ? 'bg-yellow-500' : 'bg-blue-500'}`}
+          className={`h-full transition-all duration-500 ${getBarColor()}`}
           style={{ width: `${percentage}%` }}
         />
       </div>
@@ -82,35 +92,37 @@ function ProgressBar({ used, limit, color = 'blue' }: { used: number; limit: num
   );
 }
 
-function StatCard({ icon: Icon, label, used, limit, color }: { 
+function StatCard({ icon: Icon, label, used, limit, iconColor, bgColor }: { 
   icon: any; 
   label: string; 
   used: number; 
   limit: number;
-  color: string;
+  iconColor: string;
+  bgColor: string;
 }) {
   const percentage = limit > 0 ? Math.round((used / limit) * 100) : 0;
   
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5">
       <div className="flex items-center gap-3 mb-3">
-        <div className={`w-10 h-10 rounded-lg bg-${color}-100 flex items-center justify-center`}>
-          <Icon className={`w-5 h-5 text-${color}-600`} />
+        <div className={`w-10 h-10 rounded-lg ${bgColor} flex items-center justify-center`}>
+          <Icon className={`w-5 h-5 ${iconColor}`} />
         </div>
         <span className="text-gray-600 font-medium">{label}</span>
       </div>
-      <ProgressBar used={used} limit={limit} color={color} />
+      <ProgressBar used={used} limit={limit} iconColor={iconColor} />
       <p className="text-xs text-gray-500 mt-2">{percentage}% utilizado</p>
     </div>
   );
 }
 
-function UsageCard({ icon: Icon, label, used, limit, color, daily = false }: { 
+function UsageCard({ icon: Icon, label, used, limit, iconColor, bgColor, daily = false }: { 
   icon: any; 
   label: string; 
   used: number; 
   limit: number;
-  color: string;
+  iconColor: string;
+  bgColor: string;
   daily?: boolean;
 }) {
   const percentage = limit > 0 ? Math.round((used / limit) * 100) : 0;
@@ -121,7 +133,9 @@ function UsageCard({ icon: Icon, label, used, limit, color, daily = false }: {
     <div className={`bg-white rounded-xl border p-5 ${isDanger ? 'border-red-300 bg-red-50' : isWarning ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'}`}>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <Icon className={`w-5 h-5 ${isDanger ? 'text-red-600' : isWarning ? 'text-yellow-600' : `text-${color}-600`}`} />
+          <div className={`p-2 rounded-lg ${isDanger ? 'bg-red-50' : isWarning ? 'bg-yellow-50' : bgColor}`}>
+            <Icon className={`w-5 h-5 ${isDanger ? 'text-red-600' : isWarning ? 'text-yellow-600' : iconColor}`} />
+          </div>
           <span className="font-medium text-gray-900">{label}</span>
         </div>
         {daily && <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">Hoje</span>}
@@ -134,7 +148,13 @@ function UsageCard({ icon: Icon, label, used, limit, color, daily = false }: {
       </div>
       <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mt-2">
         <div 
-          className={`h-full transition-all duration-500 ${isDanger ? 'bg-red-500' : isWarning ? 'bg-yellow-500' : `bg-${color}-500`}`}
+          className={`h-full transition-all duration-500 ${
+            isDanger ? 'bg-red-500' : 
+            isWarning ? 'bg-yellow-500' : 
+            iconColor === 'text-green-600' ? 'bg-green-500' : 
+            iconColor === 'text-orange-600' ? 'bg-orange-500' : 
+            'bg-blue-500'
+          }`}
           style={{ width: `${percentage}%` }}
         />
       </div>
@@ -211,37 +231,28 @@ export default function DevDashboardPage() {
           <h1 className="text-2xl font-bold text-gray-900">
             {data.developer.name}
           </h1>
-          <p className="text-gray-500 mt-1">
-            Plano: {data.plan?.name || 'Sem plano'}
-          </p>
         </div>
 
         {/* Uso Diário */}
         <div>
           <h2 className="text-lg font-medium text-gray-900 mb-3">Consumo de Hoje</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <UsageCard
-              icon={MessageSquare}
-              label="WhatsApp"
+              icon={MessageCircle}
+              label="Mensagens WhatsApp"
               used={data.usage_today.whatsapp.used}
               limit={data.usage_today.whatsapp.limit}
-              color="green"
+              iconColor="text-green-600"
+              bgColor="bg-green-50"
               daily
             />
             <UsageCard
-              icon={Sparkles}
-              label="Créditos IA"
-              used={data.usage_today.ai.used}
-              limit={data.usage_today.ai.limit}
-              color="purple"
-              daily
-            />
-            <UsageCard
-              icon={Zap}
-              label="Execuções de Alerta"
-              used={data.usage_today.executions.used}
-              limit={data.usage_today.executions.limit}
-              color="orange"
+              icon={RefreshCw}
+              label="Atualizações de Dados"
+              used={data.usage_today.refreshes.used}
+              limit={data.usage_today.refreshes.limit}
+              iconColor="text-orange-600"
+              bgColor="bg-orange-50"
               daily
             />
           </div>
@@ -256,28 +267,32 @@ export default function DevDashboardPage() {
               label="Grupos"
               used={data.stats.groups.used}
               limit={data.stats.groups.limit}
-              color="blue"
+              iconColor="text-blue-600"
+              bgColor="bg-blue-50"
             />
             <StatCard
               icon={Users}
               label="Usuários"
               used={data.stats.users.used}
               limit={data.stats.users.limit}
-              color="indigo"
+              iconColor="text-indigo-600"
+              bgColor="bg-indigo-50"
             />
             <StatCard
-              icon={Monitor}
+              icon={MonitorPlay}
               label="Telas"
               used={data.stats.screens.used}
               limit={data.stats.screens.limit}
-              color="cyan"
+              iconColor="text-purple-600"
+              bgColor="bg-purple-50"
             />
             <StatCard
               icon={Bell}
               label="Alertas"
               used={data.stats.alerts.used}
               limit={data.stats.alerts.limit}
-              color="amber"
+              iconColor="text-red-600"
+              bgColor="bg-red-50"
             />
           </div>
         </div>
@@ -338,11 +353,11 @@ export default function DevDashboardPage() {
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-500">WhatsApp hoje</span>
-                      <span className="font-medium">{group.usage_today.whatsapp} / {group.quotas.whatsapp_per_day || '∞'}</span>
+                      <span className="font-medium">{group.usage_today.whatsapp}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-500">IA hoje</span>
-                      <span className="font-medium">{group.usage_today.ai} / {group.quotas.ai_per_day || '∞'}</span>
+                      <span className="text-gray-500">Atualizações hoje</span>
+                      <span className="font-medium">{group.usage_today.refreshes}</span>
                     </div>
                   </div>
                 </div>

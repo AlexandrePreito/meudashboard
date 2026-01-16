@@ -165,21 +165,28 @@ export async function POST(request: Request) {
       }
     }
 
-    const { data: group } = await supabase
+    // Validar limite de telas
+    const { data: groupData } = await supabase
       .from('company_groups')
-      .select('plan:powerbi_plans(max_powerbi_screens)')
+      .select('developer:developers(max_powerbi_screens)')
       .eq('id', company_group_id)
       .single();
 
-    const maxScreens = (group?.plan as any)?.max_powerbi_screens || 10;
+    const screenLimit = groupData?.developer?.max_powerbi_screens || 10;
 
-    const { count } = await supabase
+    // Contar telas existentes
+    const { count: screensCount } = await supabase
       .from('powerbi_dashboard_screens')
-      .select('id', { count: 'exact' })
+      .select('*', { count: 'exact', head: true })
       .eq('company_group_id', company_group_id);
 
-    if ((count || 0) >= maxScreens) {
-      return NextResponse.json({ error: `Limite de ${maxScreens} telas atingido para o plano atual` }, { status: 400 });
+    // Bloquear se limite atingido
+    if (screensCount && screensCount >= screenLimit) {
+      return NextResponse.json({
+        error: `Limite de ${screenLimit} telas atingido. Entre em contato com o administrador.`,
+        current: screensCount,
+        max: screenLimit
+      }, { status: 403 });
     }
 
     if (is_first) {

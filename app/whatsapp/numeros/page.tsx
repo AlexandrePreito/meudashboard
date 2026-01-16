@@ -308,16 +308,8 @@ function NumerosContent() {
     );
   }
 
-  // Acesso negado para usuários comuns (se necessário, mostrar mensagem)
-  if (userRole === 'user') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <Phone className="w-16 h-16 text-gray-300 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-700 mb-2">Acesso restrito</h2>
-        <p className="text-gray-500 mb-4">Este módulo não está disponível para seu perfil.</p>
-      </div>
-    );
-  }
+  // Módulos removidos - sempre disponível
+  // Verificação de módulo removida
 
   return (
     <div className="space-y-6">

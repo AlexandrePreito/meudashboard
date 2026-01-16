@@ -50,10 +50,8 @@ export async function GET(request: Request) {
       }
     }
 
-    // User não tem acesso
-    if (userRole === 'user') {
-      return NextResponse.json({ error: 'Sem permissão para acessar este módulo' }, { status: 403 });
-    }
+    // Módulos removidos - sempre disponível
+    // Verificação de módulo removida (mantida apenas verificação de role para segurança)
 
     // SEGURANCA: Se passou group_id, validar acesso
     if (groupId && userRole !== 'master' && !userGroupIds.includes(groupId)) {

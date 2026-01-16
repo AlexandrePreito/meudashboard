@@ -27,8 +27,17 @@ export async function GET(request: NextRequest) {
     const { data: developer, error: devError } = await supabase
       .from('developers')
       .select(`
-        *,
-        plan:developer_plans(*)
+        id,
+        name,
+        logo_url,
+        primary_color,
+        max_companies,
+        max_users,
+        max_powerbi_screens,
+        max_daily_refreshes,
+        max_chat_messages_per_day,
+        max_alerts,
+        monthly_price
       `)
       .eq('id', developerId)
       .single();
@@ -46,7 +55,6 @@ export async function GET(request: NextRequest) {
         status,
         logo_url,
         quota_whatsapp_per_day,
-        quota_ai_credits_per_day,
         quota_alert_executions_per_day,
         quota_users,
         quota_screens,
@@ -100,69 +108,64 @@ export async function GET(request: NextRequest) {
     }
 
     // Calcular uso total de hoje
-    const usageTodayTotal = usageToday.reduce(
-      (acc, u) => ({
-        whatsapp: acc.whatsapp + (u.whatsapp_messages_sent || 0),
-        ai: acc.ai + (u.ai_credits_used || 0),
-        executions: acc.executions + (u.alert_executions || 0),
-      }),
-      { whatsapp: 0, ai: 0, executions: 0 }
-    );
+    const whatsappUsedToday = usageToday.reduce((acc, u) => acc + (u.whatsapp_messages_sent || 0), 0);
+    
+    // Contar refreshes de hoje
+    let refreshesUsedToday = 0;
+    if (groupIds.length > 0) {
+      const { count: refreshesCount } = await supabase
+        .from('powerbi_daily_refresh_count')
+        .select('*', { count: 'exact', head: true })
+        .in('company_group_id', groupIds)
+        .eq('refresh_date', today);
+      refreshesUsedToday = refreshesCount || 0;
+    }
+
+    // Contar grupos
+    const groupCount = groups?.length || 0;
+    const userCount = totalUsers;
+    const screenCount = totalScreens;
+    const alertCount = totalAlerts;
 
     // Montar resposta
-    const plan = developer.plan;
     const response = {
       developer: {
         id: developer.id,
         name: developer.name,
-        email: developer.email,
+        email: user.email,
         logo_url: developer.logo_url,
-        status: developer.status,
+        status: 'active'
       },
-      plan: plan ? {
-        name: plan.name,
-        max_groups: plan.max_groups,
-        max_users: plan.max_users,
-        max_screens: plan.max_screens,
-        max_alerts: plan.max_alerts,
-        max_whatsapp_per_day: plan.max_whatsapp_messages_per_day,
-        max_ai_per_day: plan.max_ai_credits_per_day,
-        max_executions_per_day: plan.max_alert_executions_per_day,
-      } : null,
+      plan: {
+        name: 'Plano Personalizado',
+        max_groups: developer.max_companies || 5,
+        max_users: developer.max_users || 50,
+        max_screens: developer.max_powerbi_screens || 10,
+        max_alerts: developer.max_alerts || 20,
+        max_whatsapp_per_day: developer.max_chat_messages_per_day || 1000,
+        max_refreshes_per_day: developer.max_daily_refreshes || 20
+      },
       stats: {
-        groups: {
-          used: groups?.length || 0,
-          limit: plan?.max_groups || 0,
-        },
-        users: {
-          used: totalUsers,
-          limit: plan?.max_users || 0,
-        },
-        screens: {
-          used: totalScreens,
-          limit: plan?.max_screens || 0,
-        },
-        alerts: {
-          used: totalAlerts,
-          limit: plan?.max_alerts || 0,
-        },
+        groups: { used: groupCount, limit: developer.max_companies || 5 },
+        users: { used: userCount, limit: developer.max_users || 50 },
+        screens: { used: screenCount, limit: developer.max_powerbi_screens || 10 },
+        alerts: { used: alertCount, limit: developer.max_alerts || 20 }
       },
       usage_today: {
-        whatsapp: {
-          used: usageTodayTotal.whatsapp,
-          limit: plan?.max_whatsapp_messages_per_day || 0,
-        },
-        ai: {
-          used: usageTodayTotal.ai,
-          limit: plan?.max_ai_credits_per_day || 0,
-        },
-        executions: {
-          used: usageTodayTotal.executions,
-          limit: plan?.max_alert_executions_per_day || 0,
-        },
+        whatsapp: { used: whatsappUsedToday, limit: developer.max_chat_messages_per_day || 1000 },
+        refreshes: { used: refreshesUsedToday, limit: developer.max_daily_refreshes || 20 }
       },
-      groups: (groups || []).map(g => {
+      groups: await Promise.all((groups || []).map(async (g) => {
         const groupUsage = usageToday.find(u => u.company_group_id === g.id);
+        
+        // Contar refreshes do grupo de hoje
+        const { count: groupRefreshesCount } = await supabase
+          .from('powerbi_daily_refresh_count')
+          .select('*', { count: 'exact', head: true })
+          .eq('company_group_id', g.id)
+          .eq('refresh_date', today);
+        const groupRefreshesToday = groupRefreshesCount || 0;
+        
         return {
           id: g.id,
           name: g.name,
@@ -173,16 +176,14 @@ export async function GET(request: NextRequest) {
             screens: g.quota_screens,
             alerts: g.quota_alerts,
             whatsapp_per_day: g.quota_whatsapp_per_day,
-            ai_per_day: g.quota_ai_credits_per_day,
-            executions_per_day: g.quota_alert_executions_per_day,
+            refreshes_per_day: g.quota_alert_executions_per_day,
           },
           usage_today: {
             whatsapp: groupUsage?.whatsapp_messages_sent || 0,
-            ai: groupUsage?.ai_credits_used || 0,
-            executions: groupUsage?.alert_executions || 0,
+            refreshes: groupRefreshesToday,
           },
         };
-      }),
+      }))
     };
 
     return NextResponse.json(response);

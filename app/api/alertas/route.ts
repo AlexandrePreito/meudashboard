@@ -187,6 +187,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Grupo não encontrado' }, { status: 400 });
     }
 
+    // Validar limite de alertas
+    const { data: quotaData } = await supabase
+      .from('company_groups')
+      .select('quota_alerts')
+      .eq('id', companyGroupId)
+      .single();
+
+    const alertLimit = quotaData?.quota_alerts || 20;
+
+    // Contar alertas ativos do grupo
+    const { count: alertsCount } = await supabase
+      .from('ai_alerts')
+      .select('*', { count: 'exact', head: true })
+      .eq('company_group_id', companyGroupId)
+      .eq('is_enabled', true);
+
+    // Bloquear se limite atingido
+    if (alertsCount !== null && alertsCount >= alertLimit) {
+      return NextResponse.json({
+        error: `Limite de ${alertLimit} alertas atingido. Entre em contato com o administrador.`,
+        current: alertsCount,
+        max: alertLimit
+      }, { status: 403 });
+    }
+
     // Verificar limite de alertas do mês
     const now = new Date();
     const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];

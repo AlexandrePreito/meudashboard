@@ -6,10 +6,9 @@ import { useToast } from '@/contexts/ToastContext';
 import {
   ArrowUpDown,
   Users,
-  Monitor,
+  MonitorPlay,
   Bell,
-  MessageSquare,
-  Sparkles,
+  MessageCircle,
   RefreshCw,
   Save,
   AlertCircle,
@@ -24,18 +23,17 @@ interface Group {
   quota_screens: number | null;
   quota_alerts: number | null;
   quota_whatsapp_per_day: number | null;
-  quota_ai_credits_per_day: number | null;
+  quota_alert_executions_per_day: number | null;
   used_users: number;
   used_screens: number;
 }
 
 interface DeveloperPlan {
   max_users: number;
-  max_screens: number;
+  max_powerbi_screens: number;
   max_alerts: number;
-  max_whatsapp_messages_per_day: number;
-  max_ai_credits_per_day: number;
-  ai_enabled: boolean;
+  max_chat_messages_per_day: number;
+  max_daily_refreshes: number;
 }
 
 interface QuotaSummary {
@@ -43,7 +41,7 @@ interface QuotaSummary {
   screens: { total: number; allocated: number; available: number };
   alerts: { total: number; allocated: number; available: number };
   whatsapp: { total: number; allocated: number; available: number };
-  ai: { total: number; allocated: number; available: number };
+  atualizacoes: { total: number; allocated: number; available: number };
 }
 
 export default function DevQuotasPage() {
@@ -68,15 +66,38 @@ export default function DevQuotasPage() {
 
   async function loadData() {
     try {
-      const res = await fetch('/api/dev/quotas');
-      if (res.status === 403) {
+      // Buscar dados do developer
+      const devRes = await fetch('/api/user/groups');
+      if (devRes.status === 403) {
         router.push('/dashboard');
         return;
       }
+      
+      const devData = await devRes.json();
+      const dev = devData.developer;
+      
+      if (!dev) {
+        showToast('Desenvolvedor não encontrado', 'error');
+        setLoading(false);
+        return;
+      }
+
+      // Usar limites do plano do developer
+      const planLimits = {
+        max_users: dev.max_users || 50,
+        max_powerbi_screens: dev.max_powerbi_screens || 10,
+        max_alerts: dev.max_alerts || 20,
+        max_chat_messages_per_day: dev.max_chat_messages_per_day || 1000,
+        max_daily_refreshes: dev.max_daily_refreshes || 20
+      };
+      
+      setPlan(planLimits);
+
+      // Buscar grupos
+      const res = await fetch('/api/dev/quotas');
       if (res.ok) {
         const data = await res.json();
         setGroups(data.groups || []);
-        setPlan(data.plan);
         
         // Inicializar quotas com valores atuais
         const initialQuotas: Record<string, any> = {};
@@ -86,7 +107,7 @@ export default function DevQuotasPage() {
             quota_screens: g.quota_screens || 0,
             quota_alerts: g.quota_alerts || 0,
             quota_whatsapp_per_day: g.quota_whatsapp_per_day || 0,
-            quota_ai_credits_per_day: g.quota_ai_credits_per_day || 0,
+            quota_alert_executions_per_day: g.quota_alert_executions_per_day || 0,
           };
         });
         setQuotas(initialQuotas);
@@ -102,28 +123,44 @@ export default function DevQuotasPage() {
   function calculateSummary() {
     if (!plan) return;
 
-    const allocated = {
-      users: 0,
-      screens: 0,
-      alerts: 0,
-      whatsapp: 0,
-      ai: 0,
-    };
-
-    Object.values(quotas).forEach((q: any) => {
-      allocated.users += q.quota_users || 0;
-      allocated.screens += q.quota_screens || 0;
-      allocated.alerts += q.quota_alerts || 0;
-      allocated.whatsapp += q.quota_whatsapp_per_day || 0;
-      allocated.ai += q.quota_ai_credits_per_day || 0;
-    });
+    // Calcular totais alocados
+    const totalUsuarios = groups.reduce((sum: number, g: Group) => 
+      sum + (quotas[g.id]?.quota_users || 0), 0);
+    const totalTelas = groups.reduce((sum: number, g: Group) => 
+      sum + (quotas[g.id]?.quota_screens || 0), 0);
+    const totalAlertas = groups.reduce((sum: number, g: Group) => 
+      sum + (quotas[g.id]?.quota_alerts || 0), 0);
+    const totalChat = groups.reduce((sum: number, g: Group) => 
+      sum + (quotas[g.id]?.quota_whatsapp_per_day || 0), 0);
+    const totalRefreshes = groups.reduce((sum: number, g: Group) => 
+      sum + (quotas[g.id]?.quota_alert_executions_per_day || 0), 0);
 
     setSummary({
-      users: { total: plan.max_users, allocated: allocated.users, available: plan.max_users - allocated.users },
-      screens: { total: plan.max_screens, allocated: allocated.screens, available: plan.max_screens - allocated.screens },
-      alerts: { total: plan.max_alerts, allocated: allocated.alerts, available: plan.max_alerts - allocated.alerts },
-      whatsapp: { total: plan.max_whatsapp_messages_per_day, allocated: allocated.whatsapp, available: plan.max_whatsapp_messages_per_day - allocated.whatsapp },
-      ai: { total: plan.max_ai_credits_per_day, allocated: allocated.ai, available: plan.max_ai_credits_per_day - allocated.ai },
+      users: { 
+        total: plan.max_users, 
+        allocated: totalUsuarios, 
+        available: plan.max_users - totalUsuarios 
+      },
+      screens: { 
+        total: plan.max_powerbi_screens, 
+        allocated: totalTelas, 
+        available: plan.max_powerbi_screens - totalTelas 
+      },
+      alerts: { 
+        total: plan.max_alerts, 
+        allocated: totalAlertas, 
+        available: plan.max_alerts - totalAlertas 
+      },
+      whatsapp: { 
+        total: plan.max_chat_messages_per_day, 
+        allocated: totalChat, 
+        available: plan.max_chat_messages_per_day - totalChat 
+      },
+      atualizacoes: { 
+        total: plan.max_daily_refreshes, 
+        allocated: totalRefreshes, 
+        available: plan.max_daily_refreshes - totalRefreshes 
+      }
     });
   }
 
@@ -156,8 +193,8 @@ export default function DevQuotasPage() {
         showToast('Quota de WhatsApp excede o limite do plano', 'error');
         return;
       }
-      if (summary.ai.available < 0) {
-        showToast('Quota de IA excede o limite do plano', 'error');
+      if (summary.atualizacoes.available < 0) {
+        showToast('Quota de atualizações excede o limite do plano', 'error');
         return;
       }
     }
@@ -256,10 +293,10 @@ export default function DevQuotasPage() {
         {summary && (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <QuotaCard icon={Users} label="Usuarios" data={summary.users} color="bg-blue-500" />
-            <QuotaCard icon={Monitor} label="Telas" data={summary.screens} color="bg-purple-500" />
+            <QuotaCard icon={MonitorPlay} label="Telas" data={summary.screens} color="bg-purple-500" />
             <QuotaCard icon={Bell} label="Alertas" data={summary.alerts} color="bg-yellow-500" />
-            <QuotaCard icon={MessageSquare} label="WhatsApp/dia" data={summary.whatsapp} color="bg-green-500" />
-            <QuotaCard icon={Sparkles} label="IA/dia" data={summary.ai} color="bg-pink-500" />
+            <QuotaCard icon={MessageCircle} label="WhatsApp/dia" data={summary.whatsapp} color="bg-green-500" />
+            <QuotaCard icon={RefreshCw} label="Atualizações/dia" data={summary.atualizacoes} color="bg-orange-500" />
           </div>
         )}
 
@@ -284,7 +321,7 @@ export default function DevQuotasPage() {
                     </th>
                     <th className="text-center px-4 py-3 text-sm font-medium text-gray-700 w-24">
                       <div className="flex items-center justify-center gap-1">
-                        <Monitor className="w-4 h-4" /> Telas
+                        <MonitorPlay className="w-4 h-4" /> Telas
                       </div>
                     </th>
                     <th className="text-center px-4 py-3 text-sm font-medium text-gray-700 w-24">
@@ -294,12 +331,12 @@ export default function DevQuotasPage() {
                     </th>
                     <th className="text-center px-4 py-3 text-sm font-medium text-gray-700 w-24">
                       <div className="flex items-center justify-center gap-1">
-                        <MessageSquare className="w-4 h-4" /> WhatsApp
+                        <MessageCircle className="w-4 h-4" /> WhatsApp
                       </div>
                     </th>
                     <th className="text-center px-4 py-3 text-sm font-medium text-gray-700 w-24">
                       <div className="flex items-center justify-center gap-1">
-                        <Sparkles className="w-4 h-4" /> IA
+                        <RefreshCw className="w-4 h-4" /> Atualizações
                       </div>
                     </th>
                   </tr>
@@ -364,8 +401,8 @@ export default function DevQuotasPage() {
                           <input
                             type="number"
                             min="0"
-                            value={quotas[group.id]?.quota_ai_credits_per_day || 0}
-                            onChange={(e) => updateQuota(group.id, 'quota_ai_credits_per_day', parseInt(e.target.value) || 0)}
+                            value={quotas[group.id]?.quota_alert_executions_per_day || 0}
+                            onChange={(e) => updateQuota(group.id, 'quota_alert_executions_per_day', parseInt(e.target.value) || 0)}
                             className="w-20 px-2 py-1 text-center border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           />
                         </div>

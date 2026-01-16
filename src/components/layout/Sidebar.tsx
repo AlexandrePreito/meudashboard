@@ -38,7 +38,8 @@ import {
   ShoppingCart,
   Package,
   Truck,
-  Factory
+  Factory,
+  CreditCard
 } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
 import { usePlanPermissions } from '@/hooks/usePlanPermissions';
@@ -59,6 +60,7 @@ const devMenuItems = [
   { href: '/dev/quotas', icon: ArrowUpDown, label: 'Distribuir Cotas' },
   { href: '/dev/relatorios', icon: BarChart3, label: 'Relatórios' },
   { href: '/dev/perfil', icon: Settings, label: 'Configurações' },
+  { href: '/dev/plano', icon: CreditCard, label: 'Meu Plano' },
 ];
 
 interface Screen {
@@ -110,7 +112,8 @@ function getIconComponent(iconName?: string | null) {
 export default function Sidebar() {
   const pathname = usePathname();
   const { isCollapsed, setIsCollapsed, activeGroup, user } = useMenu();
-  const { canUseAI, canUseAlerts, canUseWhatsApp, isStarterPlan } = usePlanPermissions();
+  // Módulos removidos - sempre disponível
+  // const { canUseAI, canUseAlerts, canUseWhatsApp, isStarterPlan } = usePlanPermissions();
   const [screens, setScreens] = useState<Screen[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -364,25 +367,8 @@ export default function Sidebar() {
                     isActive = true;
                   }
                   
-                  // Verificar permissão (master e developer têm acesso total)
-                  const hasPermission = !item.requiresPermission || 
-                    user?.is_master ||
-                    user?.is_developer ||
-                    (item.requiresPermission === 'whatsapp' && canUseWhatsApp) ||
-                    (item.requiresPermission === 'alerts' && canUseAlerts);
-                  
-                  if (!hasPermission) {
-                    return (
-                      <div
-                        key={item.href}
-                        className="flex items-center gap-3 px-3 py-2 rounded-lg mb-1 opacity-50 cursor-not-allowed"
-                        title="Disponível em planos superiores"
-                      >
-                        <Icon size={20} />
-                        {!isCollapsed && <span className="font-medium">{item.label}</span>}
-                      </div>
-                    );
-                  }
+                  // Módulos removidos - sempre disponível
+                  // Verificação de permissão removida
                   
                   return (
                     <Link
@@ -420,24 +406,8 @@ export default function Sidebar() {
                     const Icon = item.icon;
                     const isActive = pathname === item.href;
                     
-                    // Verificar permissão para IA (master e developer têm acesso total)
-                    const hasPermission = !item.requiresPermission || 
-                      user?.is_master ||
-                      user?.is_developer ||
-                      (item.requiresPermission === 'ai' && canUseAI);
-                    
-                    if (!hasPermission) {
-                      return (
-                        <div
-                          key={item.href}
-                          className="flex items-center gap-3 px-3 py-2 rounded-lg mb-1 opacity-50 cursor-not-allowed"
-                          title="Disponível em planos superiores"
-                        >
-                          <Icon size={20} />
-                          {!isCollapsed && <span className="font-medium">{item.label}</span>}
-                        </div>
-                      );
-                    }
+                    // Módulos removidos - sempre disponível
+                    // Verificação de permissão removida
                     
                     return (
                       <Link

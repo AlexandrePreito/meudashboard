@@ -134,6 +134,39 @@ function formatTextForSpeech(text: string): string {
   return formatted.trim();
 }
 
+// ============================================
+// FUNÇÃO DE RETRY PARA CHAMADAS CLAUDE
+// ============================================
+async function callClaudeWithRetry(
+  params: {
+    model: string;
+    max_tokens: number;
+    system: string;
+    messages: any[];
+    tools?: any[];
+  },
+  maxRetries = 3
+): Promise<Anthropic.Message> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await anthropic.messages.create(params);
+      return response;
+    } catch (error: any) {
+      console.error(`[Claude Retry] Tentativa ${attempt}/${maxRetries} falhou:`, error.message);
+      
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      
+      // Backoff exponencial: 1s, 2s
+      const delayMs = attempt * 1000;
+      console.log(`[Claude Retry] Aguardando ${delayMs}ms antes da próxima tentativa...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+  throw new Error('Todas as tentativas falharam');
+}
+
 // Função para gerar áudio com TTS
 async function generateAudio(text: string): Promise<string | null> {
   try {
@@ -287,6 +320,10 @@ async function sendWhatsAppMessage(instance: any, phone: string, message: string
 
 // POST - Webhook do Evolution API
 export async function POST(request: Request) {
+  // Variáveis declaradas no escopo da função para acesso no catch
+  let instance: any = null;
+  let phone: string = '';
+  
   try {
     const body = await request.json();
     console.log('Webhook recebido:', JSON.stringify(body).substring(0, 500));
@@ -341,7 +378,7 @@ export async function POST(request: Request) {
     }
 
     // Extrair número do telefone
-    const phone = remoteJid?.replace('@s.whatsapp.net', '').replace('@g.us', '') || '';
+    phone = remoteJid?.replace('@s.whatsapp.net', '').replace('@g.us', '') || '';
     
     console.log('Mensagem recebida de:', phone);
     console.log('Texto:', messageText);
@@ -444,8 +481,28 @@ export async function POST(request: Request) {
       });
     }
 
+    // Validar limite diário de mensagens WhatsApp
+    const { data: developerData } = await supabase
+      .from('company_groups')
+      .select('developer:developers(max_chat_messages_per_day)')
+      .eq('id', authorizedNumber.company_group_id)
+      .single();
+
+    const messageLimit = developerData?.developer?.max_chat_messages_per_day || 1000;
+
+    // Contar mensagens WhatsApp enviadas hoje
+    const today = new Date().toISOString().split('T')[0];
+
+    const { count: whatsappMessagesToday } = await supabase
+      .from('whatsapp_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('company_group_id', authorizedNumber.company_group_id)
+      .eq('direction', 'outgoing')
+      .gte('created_at', `${today}T00:00:00Z`)
+      .lt('created_at', `${today}T23:59:59Z`);
+
     // Buscar instância WhatsApp pela que recebeu a mensagem
-    let instance = null;
+    instance = null;
 
     // Primeiro tenta buscar pela instância que enviou o webhook
     if (instanceName) {
@@ -489,6 +546,31 @@ export async function POST(request: Request) {
     if (!instance) {
       console.log('Nenhuma instância conectada');
       return NextResponse.json({ status: 'error', reason: 'no instance' });
+    }
+
+    // Bloquear se limite diário atingido (agora que temos a instância)
+    if (whatsappMessagesToday !== null && whatsappMessagesToday >= messageLimit) {
+      const errorMessage = 
+        '⚠️ *Limite Diário Atingido*\n\n' +
+        'O limite de mensagens para hoje foi atingido.\n' +
+        'Entre em contato com o administrador.';
+      
+      // Enviar mensagem de erro para o usuário
+      await sendWhatsAppMessage(instance, phone, errorMessage);
+      
+      // Salvar mensagem de erro
+      await supabase.from('whatsapp_messages').insert({
+        company_group_id: authorizedNumber.company_group_id,
+        phone_number: phone,
+        message_content: errorMessage,
+        direction: 'outgoing',
+        sender_name: 'Sistema'
+      });
+      
+      return NextResponse.json({ 
+        status: 'limit_reached',
+        message: 'Limite diário atingido'
+      });
     }
 
     // Verificar se é mensagem de áudio e se deve responder com áudio
@@ -901,6 +983,45 @@ Entre em contato com o suporte para configurar a conexão! 📞`;
     }
 
     // ============================================
+    // VALIDAÇÃO DE LIMITE DIÁRIO - INÍCIO
+    // ============================================
+    const { data: developerData } = await supabase
+      .from('company_groups')
+      .select('developer:developers(max_chat_messages_per_day)')
+      .eq('id', authorizedNumber.company_group_id)
+      .single();
+
+    const messageLimit = developerData?.developer?.max_chat_messages_per_day || 1000;
+
+    const today = new Date().toISOString().split('T')[0];
+    const { count: whatsappMessagesToday } = await supabase
+      .from('whatsapp_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('company_group_id', authorizedNumber.company_group_id)
+      .eq('direction', 'outgoing')
+      .gte('created_at', `${today}T00:00:00Z`)
+      .lt('created_at', `${today}T23:59:59Z`);
+
+    if (whatsappMessagesToday !== null && whatsappMessagesToday >= messageLimit) {
+      const limitMessage = 
+        '⚠️ *Limite Diário Atingido*\n\n' +
+        'O limite de mensagens para hoje foi atingido.\n' +
+        'Entre em contato com o administrador.';
+      
+      await sendWhatsAppMessage(instance, phone, limitMessage);
+      
+      return NextResponse.json({ 
+        status: 'limit_reached',
+        message: 'Limite diário atingido',
+        current: whatsappMessagesToday,
+        max: messageLimit
+      });
+    }
+    // ============================================
+    // VALIDAÇÃO DE LIMITE DIÁRIO - FIM
+    // ============================================
+
+    // ============================================
     // BUSCAR HISTÓRICO DE CONVERSAÇÃO (últimas 10 mensagens de todos os grupos)
     // ============================================
     const { data: recentMessages } = await supabase
@@ -1069,7 +1190,7 @@ ${new Date().toLocaleString('pt-BR', {
     console.log('Histórico construído:', conversationHistory.length, 'mensagens');
 
     // Chamar Claude COM HISTÓRICO
-    let response = await anthropic.messages.create({
+    let response = await callClaudeWithRetry({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1200,  // ← AUMENTADO DE 500 PARA 1200
       system: systemPrompt,
@@ -1118,7 +1239,7 @@ ${new Date().toLocaleString('pt-BR', {
       messages.push({ role: 'assistant', content: response.content });
       messages.push({ role: 'user', content: toolResults });
 
-      response = await anthropic.messages.create({
+      response = await callClaudeWithRetry({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 1200,  // ← AUMENTADO DE 500 PARA 1200
         system: systemPrompt,
@@ -1268,8 +1389,26 @@ Estou aqui para ajudar! 💪`;
     });
 
   } catch (error: any) {
-    console.error('Erro no webhook:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('[Webhook] Erro após todas as tentativas:', error);
+    
+    // Tentar enviar mensagem de erro ao usuário (se instance e phone estiverem disponíveis)
+    const errorMessage = 
+      '⚠️ Desculpe, estou com dificuldades técnicas no momento.\n\n' +
+      'Por favor, tente novamente em alguns instantes.';
+    
+    try {
+      // Verificar se temos as variáveis necessárias para enviar mensagem
+      if (instance && phone) {
+        await sendWhatsAppMessage(instance, phone, errorMessage);
+      }
+    } catch (sendError) {
+      console.error('[Webhook] Erro ao enviar mensagem de erro:', sendError);
+    }
+    
+    return NextResponse.json({ 
+      error: 'Erro ao processar mensagem',
+      details: error.message 
+    }, { status: 500 });
   }
 }
 

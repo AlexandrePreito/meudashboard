@@ -195,8 +195,49 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Grupo não encontrado' }, { status: 400 });
     }
 
-    // Verificar limite de perguntas do dia
+    // Validar limite diário de mensagens do developer
+    const { data: developerData } = await supabase
+      .from('company_groups')
+      .select('developer:developers(max_chat_messages_per_day)')
+      .eq('id', companyGroupId)
+      .single();
+
+    const messageLimit = developerData?.developer?.max_chat_messages_per_day || 1000;
+
+    // Contar mensagens do chat de hoje
     const today = new Date().toISOString().split('T')[0];
+
+    // Buscar todas as conversas do grupo para contar mensagens
+    const { data: groupConversations } = await supabase
+      .from('ai_conversations')
+      .select('id')
+      .eq('company_group_id', companyGroupId);
+
+    const conversationIds = groupConversations?.map(c => c.id) || [];
+
+    let chatMessagesToday = 0;
+    if (conversationIds.length > 0) {
+      const { count } = await supabase
+        .from('ai_messages')
+        .select('*', { count: 'exact', head: true })
+        .in('conversation_id', conversationIds)
+        .gte('created_at', `${today}T00:00:00Z`)
+        .lt('created_at', `${today}T23:59:59Z`);
+
+      chatMessagesToday = count || 0;
+    }
+
+    // Bloquear se limite atingido
+    if (chatMessagesToday >= messageLimit) {
+      return NextResponse.json({
+        error: 'Limite diário de mensagens atingido. Entre em contato com o administrador.',
+        limit_reached: true,
+        current: chatMessagesToday,
+        max: messageLimit
+      }, { status: 429 });
+    }
+
+    // Verificar limite de perguntas do dia
 
     // Buscar plano do grupo
     const { data: groupData } = await supabase

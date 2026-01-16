@@ -103,26 +103,29 @@ export async function POST(request: NextRequest) {
 
     const supabase = createAdminClient();
 
-    // Verificar limite de grupos do plano
+    // Validar limite de grupos
     const { data: developer } = await supabase
       .from('developers')
-      .select('plan:developer_plans(max_groups)')
-      .eq('id', developerId)
+      .select('max_companies')
+      .eq('user_id', user.id)
       .single();
 
-    const { count: currentGroups } = await supabase
+    const groupLimit = developer?.max_companies || 5;
+
+    // Contar grupos ativos deste developer
+    const { count: groupsCount } = await supabase
       .from('company_groups')
       .select('*', { count: 'exact', head: true })
-      .eq('developer_id', developerId);
+      .eq('developer_id', developerId)
+      .eq('status', 'active');
 
-    const plan = developer?.plan;
-    const planData = Array.isArray(plan) ? plan[0] : plan;
-    const maxGroups = planData?.max_groups || 0;
-    if (currentGroups && currentGroups >= maxGroups) {
-      return NextResponse.json(
-        { error: `Limite de grupos atingido (${maxGroups})` },
-        { status: 400 }
-      );
+    // Bloquear se limite atingido
+    if (groupsCount !== null && groupsCount >= groupLimit) {
+      return NextResponse.json({
+        error: `Limite de ${groupLimit} grupos atingido. Entre em contato com o administrador.`,
+        current: groupsCount,
+        max: groupLimit
+      }, { status: 403 });
     }
 
     const body = await request.json();

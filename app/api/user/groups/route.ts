@@ -83,32 +83,40 @@ export async function GET() {
       }
     }
 
-    // Buscar dados do developer para tema
+    // Buscar dados do developer para tema e limites
     let developerInfo = null;
 
     if (developerId) {
       // Desenvolvedor: busca pelo seu developer_id
       const { data: devData } = await supabase
         .from('developers')
-        .select('id, name, logo_url, primary_color')
+        .select('id, name, logo_url, primary_color, max_daily_refreshes, max_powerbi_screens, max_users, max_companies')
         .eq('id', developerId)
         .single();
       developerInfo = devData;
     } else if (groups.length > 0) {
-      // Usuario comum: busca o developer do primeiro grupo
+      // Usuario comum: busca o developer do primeiro grupo com developer e plan
       const { data: groupWithDev } = await supabase
         .from('company_groups')
-        .select('developer_id')
+        .select(`
+          developer_id,
+          developer:developers(
+            id,
+            name,
+            logo_url,
+            primary_color,
+            max_daily_refreshes,
+            max_powerbi_screens,
+            max_users,
+            max_companies
+          ),
+          plan:powerbi_plans(*)
+        `)
         .eq('id', groups[0].id)
         .single();
       
-      if (groupWithDev?.developer_id) {
-        const { data: devData } = await supabase
-          .from('developers')
-          .select('id, name, logo_url, primary_color')
-          .eq('id', groupWithDev.developer_id)
-          .single();
-        developerInfo = devData;
+      if (groupWithDev?.developer) {
+        developerInfo = groupWithDev.developer;
       }
     }
 
