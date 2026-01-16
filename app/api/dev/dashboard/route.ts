@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Desenvolvedor não encontrado' }, { status: 404 });
     }
 
-    // Buscar grupos do desenvolvedor
+    // Buscar grupos do desenvolvedor (apenas ativos)
     const { data: groups } = await supabase
       .from('company_groups')
       .select(`
@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
         created_at
       `)
       .eq('developer_id', developerId)
+      .eq('status', 'active')
       .order('name');
 
     // Buscar uso de hoje de todos os grupos

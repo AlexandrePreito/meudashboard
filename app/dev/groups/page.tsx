@@ -457,7 +457,7 @@ export default function DevGroupsPage() {
           </div>
           <button
             onClick={openNewGroup}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg"
           >
             <Plus className="w-5 h-5" />
             Novo Grupo
@@ -490,7 +490,7 @@ export default function DevGroupsPage() {
             </p>
             <button
               onClick={openNewGroup}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="btn-primary inline-flex items-center gap-2 px-6 py-3 rounded-lg"
             >
               <Plus className="w-5 h-5" />
               Criar primeiro grupo
@@ -1010,7 +1010,7 @@ export default function DevGroupsPage() {
                 type="button"
                 onClick={handleSave}
                 disabled={saving}
-                className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="btn-primary px-6 py-2.5 rounded-lg disabled:opacity-50 flex items-center gap-2"
               >
                 {saving ? (
                   <>
@@ -1102,7 +1102,7 @@ export default function DevGroupsPage() {
               <button
                 onClick={handleClone}
                 disabled={cloning}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                className="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg disabled:opacity-50"
               >
                 {cloning ? (
                   <>

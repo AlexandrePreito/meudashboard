@@ -103,9 +103,8 @@ interface ScreenFormData {
   title: string;
   report_id: string;
   page_name: string;
-  description: string;
   is_active: boolean;
-  is_first: boolean;
+  is_public: boolean;
   allowed_users: string[];
   icon: string;
 }
@@ -165,6 +164,7 @@ export default function GroupDetailPage({ params }: RouteParams) {
   const [reports, setReports] = useState<Report[]>([]);
   const [reportsLoading, setReportsLoading] = useState(false);
   
+  const [availablePages, setAvailablePages] = useState<string[]>([]);
   const [showScreenModal, setShowScreenModal] = useState(false);
   const [editingScreen, setEditingScreen] = useState<Screen | null>(null);
   const [savingScreen, setSavingScreen] = useState(false);
@@ -172,9 +172,8 @@ export default function GroupDetailPage({ params }: RouteParams) {
     title: '',
     report_id: '',
     page_name: '',
-    description: '',
     is_active: true,
-    is_first: false,
+    is_public: true,
     allowed_users: [],
     icon: 'Monitor',
   });
@@ -194,6 +193,14 @@ export default function GroupDetailPage({ params }: RouteParams) {
       loadReports();
     }
   }, [groupId]);
+
+  useEffect(() => {
+    if (screenFormData.report_id && showScreenModal) {
+      fetchPagesForReport(screenFormData.report_id);
+    } else {
+      setAvailablePages([]);
+    }
+  }, [screenFormData.report_id, showScreenModal]);
 
   async function loadGroup() {
     try {
@@ -405,15 +412,29 @@ export default function GroupDetailPage({ params }: RouteParams) {
     }
   }
 
+  const fetchPagesForReport = async (reportId: string) => {
+    try {
+      const res = await fetch(`/api/powerbi/reports/${reportId}/pages`);
+      if (res.ok) {
+        const data = await res.json();
+        setAvailablePages(data.pages || []);
+      } else {
+        setAvailablePages([]);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar páginas:', error);
+      setAvailablePages([]);
+    }
+  };
+
   function openNewScreen() {
     setEditingScreen(null);
     setScreenFormData({
       title: '',
       report_id: '',
       page_name: '',
-      description: '',
       is_active: true,
-      is_first: false,
+      is_public: true,
       allowed_users: [],
       icon: 'Monitor',
     });
@@ -427,9 +448,8 @@ export default function GroupDetailPage({ params }: RouteParams) {
       title: screen.title,
       report_id: screen.report_id,
       page_name: screen.page_name || '',
-      description: screen.description || '',
       is_active: screen.is_active,
-      is_first: screen.is_first,
+      is_public: screen.allowed_users && screen.allowed_users.length > 0 ? false : true,
       allowed_users: screen.allowed_users || [],
       icon: screen.icon || 'Monitor',
     });
@@ -456,10 +476,9 @@ export default function GroupDetailPage({ params }: RouteParams) {
         title: screenFormData.title.trim(),
         report_id: screenFormData.report_id.trim(),
         page_name: screenFormData.page_name.trim(),
-        description: screenFormData.description.trim(),
         is_active: screenFormData.is_active,
-        is_first: screenFormData.is_first,
-        allowed_users: screenFormData.allowed_users,
+        is_public: screenFormData.is_public,
+        allowed_users: screenFormData.is_public ? [] : screenFormData.allowed_users,
         icon: screenFormData.icon,
       };
       
@@ -554,9 +573,30 @@ export default function GroupDetailPage({ params }: RouteParams) {
           <p className="text-gray-600 mb-4">{error || 'Grupo não encontrado'}</p>
           <button
             onClick={() => router.push('/dev/groups')}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="btn-primary px-4 py-2 rounded-lg"
           >
             Voltar para grupos
+          </button>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Não mostrar página se grupo estiver inativo ou apagado
+  if (group.status !== 'active') {
+    return (
+      <MainLayout>
+        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+          <AlertCircle className="w-12 h-12 text-gray-400 mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Grupo não disponível</h2>
+          <p className="text-gray-500 mb-4">
+            Este grupo está {group.status === 'suspended' ? 'suspenso' : 'inativo'}.
+          </p>
+          <button
+            onClick={() => router.push('/dev/groups')}
+            className="btn-primary px-4 py-2 rounded-lg"
+          >
+            Voltar para Grupos
           </button>
         </div>
       </MainLayout>
@@ -593,7 +633,6 @@ export default function GroupDetailPage({ params }: RouteParams) {
                   {group.status === 'active' ? 'Ativo' : 'Suspenso'}
                 </span>
               </div>
-              <p className="text-gray-500 mt-1">{group.slug}</p>
             </div>
           </div>
           <button
@@ -603,100 +642,6 @@ export default function GroupDetailPage({ params }: RouteParams) {
             <Edit2 className="w-5 h-5" />
             Editar
           </button>
-        </div>
-
-        {/* Cards de Informações */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Dados da Empresa */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-blue-600" />
-              Dados da Empresa
-            </h3>
-            <div className="space-y-3 text-sm">
-              {group.document && (
-                <div>
-                  <span className="text-gray-500">CNPJ:</span>
-                  <p className="font-medium text-gray-900">
-                    {group.document.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')}
-                  </p>
-                </div>
-              )}
-              {group.email && (
-                <div className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-gray-400" />
-                  <span className="text-gray-900">{group.email}</span>
-                </div>
-              )}
-              {group.phone && (
-                <div className="flex items-center gap-2">
-                  <Phone className="w-4 h-4 text-gray-400" />
-                  <span className="text-gray-900">{group.phone}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Responsável */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Users className="w-5 h-5 text-purple-600" />
-              Responsável
-            </h3>
-            <div className="space-y-3 text-sm">
-              {group.responsible_name ? (
-                <>
-                  <div>
-                    <span className="text-gray-500">Nome:</span>
-                    <p className="font-medium text-gray-900">{group.responsible_name}</p>
-                  </div>
-                  {group.responsible_email && (
-                    <div className="flex items-center gap-2">
-                      <Mail className="w-4 h-4 text-gray-400" />
-                      <span className="text-gray-900">{group.responsible_email}</span>
-                    </div>
-                  )}
-                  {group.responsible_phone && (
-                    <div className="flex items-center gap-2">
-                      <Phone className="w-4 h-4 text-gray-400" />
-                      <span className="text-gray-900">{group.responsible_phone}</span>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="text-gray-400">Não informado</p>
-              )}
-            </div>
-          </div>
-
-          {/* Endereço */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <MapPin className="w-5 h-5 text-red-600" />
-              Endereço
-            </h3>
-            <div className="space-y-2 text-sm text-gray-900">
-              {group.address_street ? (
-                <>
-                  <p>
-                    {group.address_street}, {group.address_number}
-                    {group.address_complement && ` - ${group.address_complement}`}
-                  </p>
-                  <p>{group.address_neighborhood}</p>
-                  <p>
-                    {group.address_city} - {group.address_state}
-                  </p>
-                  {group.address_zip && (
-                    <p className="text-gray-500">
-                      CEP: {group.address_zip.replace(/^(\d{5})(\d{3})$/, '$1-$2')}
-                    </p>
-                  )}
-                </>
-              ) : (
-                <p className="text-gray-400">Não informado</p>
-              )}
-            </div>
-          </div>
         </div>
 
         {/* Cards de Quotas */}
@@ -806,7 +751,7 @@ export default function GroupDetailPage({ params }: RouteParams) {
             <h2 className="text-lg font-semibold text-gray-900">Usuários do Grupo</h2>
             <button
               onClick={openNewUser}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg"
             >
               <Plus className="w-5 h-5" />
               Novo Usuário
@@ -817,9 +762,9 @@ export default function GroupDetailPage({ params }: RouteParams) {
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
             </div>
-          ) : users.length === 0 ? (
+          ) : users.filter(u => u.is_active).length === 0 ? (
             <div className="text-center py-8 text-gray-500">
-              Nenhum usuário cadastrado neste grupo
+              Nenhum usuário ativo cadastrado neste grupo
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -834,7 +779,7 @@ export default function GroupDetailPage({ params }: RouteParams) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {users.map((userMembership) => (
+                  {users.filter(u => u.is_active).map((userMembership) => (
                     <tr key={userMembership.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
                         <span className="font-medium text-gray-900">
@@ -892,7 +837,7 @@ export default function GroupDetailPage({ params }: RouteParams) {
             <h2 className="text-lg font-semibold text-gray-900">Telas Power BI</h2>
             <button
               onClick={openNewScreen}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg"
             >
               <Plus className="w-5 h-5" />
               Nova Tela
@@ -911,32 +856,23 @@ export default function GroupDetailPage({ params }: RouteParams) {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {screens.map((screen) => (
                 <div key={screen.id} className="bg-white rounded-lg border border-gray-200 p-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <Monitor className="w-5 h-5 text-blue-600" />
-                      <div>
-                        <h3 className="font-medium text-gray-900">{screen.title}</h3>
-                        {screen.is_first && (
-                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
-                            Inicial
-                          </span>
-                        )}
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Monitor className="w-5 h-5 text-blue-600" />
+                        <div>
+                          <h3 className="font-medium text-gray-900">{screen.title}</h3>
+                        </div>
                       </div>
+                      <span
+                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          screen.is_active
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}
+                      >
+                        {screen.is_active ? 'Ativa' : 'Inativa'}
+                      </span>
                     </div>
-                    <span
-                      className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                        screen.is_active
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-600'
-                      }`}
-                    >
-                      {screen.is_active ? 'Ativa' : 'Inativa'}
-                    </span>
-                  </div>
-                  
-                  {screen.description && (
-                    <p className="text-sm text-gray-600 mb-3 line-clamp-2">{screen.description}</p>
-                  )}
                   
                   <div className="text-xs text-gray-500 mb-3">
                     <p>Report ID: {screen.report_id}</p>
@@ -1062,7 +998,7 @@ export default function GroupDetailPage({ params }: RouteParams) {
                 type="button"
                 onClick={handleSaveUser}
                 disabled={savingUser}
-                className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="btn-primary px-6 py-2.5 rounded-lg disabled:opacity-50 flex items-center gap-2"
               >
                 {savingUser ? (
                   <>
@@ -1164,78 +1100,110 @@ export default function GroupDetailPage({ params }: RouteParams) {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nome da Página
-                </label>
-                <input
-                  type="text"
-                  value={screenFormData.page_name}
-                  onChange={(e) => setScreenFormData({ ...screenFormData, page_name: e.target.value })}
-                  placeholder="Opcional - nome da página específica"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Descrição
-                </label>
-                <textarea
-                  value={screenFormData.description}
-                  onChange={(e) => setScreenFormData({ ...screenFormData, description: e.target.value })}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="space-y-2">
+              <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
                     checked={screenFormData.is_active}
                     onChange={(e) => setScreenFormData({ ...screenFormData, is_active: e.target.checked })}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    className="w-4 h-4 text-blue-600 bg-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2 accent-blue-600"
                   />
-                  <span className="text-sm font-medium text-gray-700">Tela Ativa</span>
-                </label>
-
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={screenFormData.is_first}
-                    onChange={(e) => setScreenFormData({ ...screenFormData, is_first: e.target.checked })}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                  />
-                  <span className="text-sm font-medium text-gray-700">Tela Inicial</span>
+                  <span className="text-sm text-gray-700">Ativa</span>
                 </label>
               </div>
 
+              {/* Seção de Visibilidade */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Usuários com Acesso
+                  Visibilidade
                 </label>
-                <div className="border border-gray-200 rounded-lg p-3 max-h-48 overflow-y-auto space-y-2">
-                  {users.filter(u => u.is_active).length === 0 ? (
-                    <p className="text-sm text-gray-500">Nenhum usuário ativo no grupo</p>
-                  ) : (
-                    users.filter(u => u.is_active).map((userMembership) => (
-                      <label key={userMembership.user.id} className="flex items-center gap-2 hover:bg-gray-50 p-2 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={screenFormData.allowed_users.includes(userMembership.user.id)}
-                          onChange={() => toggleUserAccess(userMembership.user.id)}
-                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                        />
-                        <span className="text-sm text-gray-700">{userMembership.user.full_name}</span>
-                        <span className="text-xs text-gray-500">({userMembership.user.email})</span>
-                      </label>
-                    ))
-                  )}
+                
+                {/* Toggle Público/Privado */}
+                <div className="flex items-center mb-4">
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={screenFormData.is_public}
+                      onChange={(e) => setScreenFormData({ 
+                        ...screenFormData, 
+                        is_public: e.target.checked, 
+                        allowed_users: e.target.checked ? [] : screenFormData.allowed_users 
+                      })}
+                      className="sr-only"
+                    />
+                    <div className={`w-11 h-6 rounded-full transition-colors ${
+                      screenFormData.is_public ? 'bg-blue-600' : 'bg-gray-200'
+                    }`}>
+                      <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${
+                        screenFormData.is_public ? 'translate-x-5' : ''
+                      }`} />
+                    </div>
+                    <span className="ml-3 text-sm font-medium text-gray-700">
+                      {screenFormData.is_public ? 'Todos podem ver' : 'Privado'}
+                    </span>
+                  </label>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Se nenhum usuário for selecionado, todos terão acesso
-                </p>
+
+                {/* Lista de Usuários - APENAS SE PRIVADO */}
+                {!screenFormData.is_public && (
+                  <div>
+
+                    {/* Lista de Usuários com Checkboxes */}
+                    <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg bg-white">
+                      {users.filter(u => u.is_active).length === 0 ? (
+                        <div className="p-4 text-center text-sm text-gray-500">
+                          Nenhum usuário disponível neste grupo
+                        </div>
+                      ) : (
+                        users.filter(u => u.is_active).map((userMembership) => (
+                          <label
+                            key={userMembership.user.id}
+                            className="flex items-center p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={screenFormData.allowed_users.includes(userMembership.user.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setScreenFormData({ 
+                                    ...screenFormData, 
+                                    allowed_users: [...screenFormData.allowed_users, userMembership.user.id] 
+                                  });
+                                } else {
+                                  setScreenFormData({ 
+                                    ...screenFormData, 
+                                    allowed_users: screenFormData.allowed_users.filter(id => id !== userMembership.user.id) 
+                                  });
+                                }
+                              }}
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded accent-blue-600"
+                            />
+                            <div className="ml-3 flex-1">
+                              <div className="text-sm font-medium text-gray-900">
+                                {userMembership.user.full_name}
+                              </div>
+                              <div className="text-xs text-gray-500">{userMembership.user.email}</div>
+                            </div>
+                          </label>
+                        ))
+                      )}
+                    </div>
+
+                    {/* Contador de usuários selecionados */}
+                    {screenFormData.allowed_users.length > 0 && (
+                      <div className="mt-2 text-xs text-gray-600">
+                        {screenFormData.allowed_users.length} usuário(s) selecionado(s)
+                      </div>
+                    )}
+                    
+                    {/* Aviso se nenhum usuário selecionado */}
+                    {screenFormData.allowed_users.length === 0 && (
+                      <div className="mt-2 text-xs text-gray-500 italic">
+                        Se nenhum usuário for selecionado, todos terão acesso
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1252,7 +1220,7 @@ export default function GroupDetailPage({ params }: RouteParams) {
                 type="button"
                 onClick={handleSaveScreen}
                 disabled={savingScreen}
-                className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="btn-primary px-6 py-2.5 rounded-lg disabled:opacity-50 flex items-center gap-2"
               >
                 {savingScreen ? (
                   <>

@@ -101,6 +101,15 @@ function PowerBIDashboardContent() {
   const [dataflows, setDataflows] = useState<Dataflow[]>([]);
   const [datasetsSummary, setDatasetsSummary] = useState<Summary>({ total: 0, updated: 0, failed: 0, stale: 0 });
   const [dataflowsSummary, setDataflowsSummary] = useState<Summary>({ total: 0, updated: 0, failed: 0, stale: 0 });
+  const [summary, setSummary] = useState<Summary>({
+    total: 0,
+    updated: 0,
+    failed: 0,
+    stale: 0
+  });
+  const [healthPercentage, setHealthPercentage] = useState(0);
+  const [datasetsStats, setDatasetsStats] = useState({ total: 0, ok: 0, failed: 0, stale: 0 });
+  const [dataflowsStats, setDataflowsStats] = useState({ total: 0, ok: 0, failed: 0, stale: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'datasets' | 'dataflows'>('datasets');
@@ -162,13 +171,35 @@ function PowerBIDashboardContent() {
     }
   };
 
+  const fetchHealthData = async () => {
+    try {
+      const res = await fetch('/api/powerbi/health');
+      
+      if (res.ok) {
+        const data = await res.json();
+        console.log('✅ Health data:', data);
+        
+        setSummary(data.summary);
+        setHealthPercentage(data.summary.healthPercentage);
+        setDatasetsStats(data.datasets);
+        setDataflowsStats(data.dataflows);
+      } else {
+        console.error('❌ Erro ao buscar health:', res.status);
+      }
+    } catch (error) {
+      console.error('❌ Erro:', error);
+    }
+  };
+
   useEffect(() => {
     checkAccessAndLoad();
+    fetchHealthData();
   }, []);
 
   useEffect(() => {
     if (userRole !== 'user') {
       loadData(activeGroup);
+      fetchHealthData();
     }
   }, [activeGroup, userRole]);
 
@@ -448,11 +479,12 @@ function PowerBIDashboardContent() {
     }
   };
 
-  const totalItems = datasetsSummary.total + dataflowsSummary.total;
-  const totalUpdated = datasetsSummary.updated + dataflowsSummary.updated;
-  const totalFailed = datasetsSummary.failed + dataflowsSummary.failed;
-  const totalStale = datasetsSummary.stale + dataflowsSummary.stale;
-  const healthPercentage = totalItems > 0 ? Math.round((totalUpdated / totalItems) * 100) : 0;
+  // Usar dados da API de health se disponível, senão usar dados calculados
+  const totalItems = summary.total || (datasetsSummary.total + dataflowsSummary.total);
+  const totalUpdated = summary.updated || (datasetsSummary.updated + dataflowsSummary.updated);
+  const totalFailed = summary.failed || (datasetsSummary.failed + dataflowsSummary.failed);
+  const totalStale = summary.stale || (datasetsSummary.stale + dataflowsSummary.stale);
+  const currentHealthPercentage = healthPercentage || (totalItems > 0 ? Math.round((totalUpdated / totalItems) * 100) : 0);
 
   if (accessDenied) {
     return (
@@ -492,16 +524,18 @@ function PowerBIDashboardContent() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Saúde Geral</p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">{healthPercentage}%</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1">
+                  {loading ? '...' : `${currentHealthPercentage}%`}
+                </p>
               </div>
-              <div className={`p-3 rounded-full ${healthPercentage >= 80 ? 'bg-green-100' : healthPercentage >= 50 ? 'bg-amber-100' : 'bg-red-100'}`}>
-                <Activity className={`w-6 h-6 ${healthPercentage >= 80 ? 'text-green-600' : healthPercentage >= 50 ? 'text-amber-600' : 'text-red-600'}`} />
+              <div className={`p-3 rounded-full ${currentHealthPercentage >= 80 ? 'bg-green-100' : currentHealthPercentage >= 50 ? 'bg-amber-100' : 'bg-red-100'}`}>
+                <Activity className={`w-6 h-6 ${currentHealthPercentage >= 80 ? 'text-green-600' : currentHealthPercentage >= 50 ? 'text-amber-600' : 'text-red-600'}`} />
               </div>
             </div>
             <div className="mt-4 h-2 bg-gray-100 rounded-full overflow-hidden">
               <div 
-                className={`h-full rounded-full transition-all ${healthPercentage >= 80 ? 'bg-green-500' : healthPercentage >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
-                style={{ width: `${healthPercentage}%` }}
+                className={`h-full rounded-full transition-all ${currentHealthPercentage >= 80 ? 'bg-green-500' : currentHealthPercentage >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
+                style={{ width: `${currentHealthPercentage}%` }}
               />
             </div>
           </div>
@@ -510,39 +544,47 @@ function PowerBIDashboardContent() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Atualizados</p>
-                <p className="text-3xl font-bold text-green-600 mt-1">{totalUpdated}</p>
+                <p className="text-3xl font-bold text-green-600 mt-1">
+                  {loading ? '...' : totalUpdated}
+                </p>
               </div>
               <div className="p-3 rounded-full bg-green-100">
                 <CheckCircle className="w-6 h-6 text-green-600" />
               </div>
             </div>
-            <p className="text-xs text-gray-400 mt-2">de {totalItems} recursos</p>
+            <p className="text-xs text-gray-500 mt-2">
+              de {loading ? '...' : totalItems} recursos
+            </p>
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Com Falha</p>
-                <p className="text-3xl font-bold text-red-600 mt-1">{totalFailed}</p>
+                <p className="text-3xl font-bold text-red-600 mt-1">
+                  {loading ? '...' : totalFailed}
+                </p>
               </div>
               <div className="p-3 rounded-full bg-red-100">
                 <XCircle className="w-6 h-6 text-red-600" />
               </div>
             </div>
-            <p className="text-xs text-gray-400 mt-2">requerem atenção</p>
+            <p className="text-xs text-gray-500 mt-2">requerem atenção</p>
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Desatualizados</p>
-                <p className="text-3xl font-bold text-amber-600 mt-1">{totalStale}</p>
+                <p className="text-3xl font-bold text-amber-600 mt-1">
+                  {loading ? '...' : totalStale}
+                </p>
               </div>
               <div className="p-3 rounded-full bg-amber-100">
                 <AlertTriangle className="w-6 h-6 text-amber-600" />
               </div>
             </div>
-            <p className="text-xs text-gray-400 mt-2">mais de 24h sem atualizar</p>
+            <p className="text-xs text-gray-500 mt-2">mais de 24h sem atualizar</p>
           </div>
         </div>
 
@@ -555,21 +597,23 @@ function PowerBIDashboardContent() {
               </div>
               <div>
                 <h3 className="font-semibold text-gray-900">Modelos Semânticos</h3>
-                <p className="text-sm text-gray-500">{datasetsSummary.total} datasets</p>
+                <p className="text-sm text-gray-600 mb-4">
+                  {loading ? '...' : datasetsStats.total} datasets
+                </p>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="text-center p-3 bg-green-50 rounded-lg">
-                <p className="text-2xl font-bold text-green-600">{datasetsSummary.updated}</p>
-                <p className="text-xs text-gray-500">OK</p>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-green-50 p-3 rounded text-center">
+                <p className="text-2xl font-bold text-green-600">{loading ? '...' : datasetsStats.ok}</p>
+                <p className="text-xs text-gray-600">OK</p>
               </div>
-              <div className="text-center p-3 bg-red-50 rounded-lg">
-                <p className="text-2xl font-bold text-red-600">{datasetsSummary.failed}</p>
-                <p className="text-xs text-gray-500">Falha</p>
+              <div className="bg-red-50 p-3 rounded text-center">
+                <p className="text-2xl font-bold text-red-600">{loading ? '...' : datasetsStats.failed}</p>
+                <p className="text-xs text-gray-600">Falha</p>
               </div>
-              <div className="text-center p-3 bg-amber-50 rounded-lg">
-                <p className="text-2xl font-bold text-amber-600">{datasetsSummary.stale}</p>
-                <p className="text-xs text-gray-500">Antigo</p>
+              <div className="bg-yellow-50 p-3 rounded text-center">
+                <p className="text-2xl font-bold text-yellow-600">{loading ? '...' : datasetsStats.stale}</p>
+                <p className="text-xs text-gray-600">Antigo</p>
               </div>
             </div>
           </div>
@@ -581,21 +625,23 @@ function PowerBIDashboardContent() {
               </div>
               <div>
                 <h3 className="font-semibold text-gray-900">Fluxos de Dados</h3>
-                <p className="text-sm text-gray-500">{dataflowsSummary.total} dataflows</p>
+                <p className="text-sm text-gray-600 mb-4">
+                  {loading ? '...' : dataflowsStats.total} dataflows
+                </p>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="text-center p-3 bg-green-50 rounded-lg">
-                <p className="text-2xl font-bold text-green-600">{dataflowsSummary.updated}</p>
-                <p className="text-xs text-gray-500">OK</p>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-green-50 p-3 rounded text-center">
+                <p className="text-2xl font-bold text-green-600">{loading ? '...' : dataflowsStats.ok}</p>
+                <p className="text-xs text-gray-600">OK</p>
               </div>
-              <div className="text-center p-3 bg-red-50 rounded-lg">
-                <p className="text-2xl font-bold text-red-600">{dataflowsSummary.failed}</p>
-                <p className="text-xs text-gray-500">Falha</p>
+              <div className="bg-red-50 p-3 rounded text-center">
+                <p className="text-2xl font-bold text-red-600">{loading ? '...' : dataflowsStats.failed}</p>
+                <p className="text-xs text-gray-600">Falha</p>
               </div>
-              <div className="text-center p-3 bg-amber-50 rounded-lg">
-                <p className="text-2xl font-bold text-amber-600">{dataflowsSummary.stale}</p>
-                <p className="text-xs text-gray-500">Antigo</p>
+              <div className="bg-yellow-50 p-3 rounded text-center">
+                <p className="text-2xl font-bold text-yellow-600">{loading ? '...' : dataflowsStats.stale}</p>
+                <p className="text-xs text-gray-600">Antigo</p>
               </div>
             </div>
           </div>

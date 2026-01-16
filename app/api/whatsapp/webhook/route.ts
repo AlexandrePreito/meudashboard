@@ -301,16 +301,64 @@ export async function POST(request: Request) {
       .limit(1)
       .maybeSingle();
 
-    // Buscar contexto AI do grupo (que tem connection_id e dataset_id)
-    const { data: aiContext } = await supabase
+    // Buscar TODOS os contextos disponíveis do grupo
+    const { data: allContexts } = await supabase
       .from('ai_model_contexts')
-      .select('connection_id, dataset_id, context_content')
+      .select('id, connection_id, dataset_id, context_content, name')
       .eq('company_group_id', authorizedNumber.company_group_id)
-      .eq('is_active', true)
-      .limit(1)
+      .eq('is_active', true);
+
+    console.log('Contextos encontrados:', allContexts?.length || 0);
+
+    // Verificar se usuário já tem uma seleção ativa (últimas 24h)
+    const { data: userSelection } = await supabase
+      .from('whatsapp_user_selections')
+      .select('*')
+      .eq('phone_number', phone)
+      .eq('company_group_id', authorizedNumber.company_group_id)
+      .gte('created_at', new Date(Date.now() - 24*60*60*1000).toISOString())
       .maybeSingle();
 
-    // Também buscar alerta como fallback
+    console.log('Seleção do usuário:', userSelection ? 'SIM' : 'NÃO');
+
+    // Comando "trocar" para resetar seleção (verificar ANTES de processar cenários)
+    if (messageText.toLowerCase().trim() === 'trocar') {
+      if (allContexts && allContexts.length > 1) {
+        // Deletar seleção atual
+        await supabase
+          .from('whatsapp_user_selections')
+          .delete()
+          .eq('phone_number', phone)
+          .eq('company_group_id', authorizedNumber.company_group_id);
+
+        // Mostrar opções novamente
+        let optionsList = '🔄 *Vamos escolher novamente!*\n\n';
+        allContexts.forEach((ctx, idx) => {
+          optionsList += `${idx + 1}️⃣ ${ctx.name || 'Dataset ' + (idx + 1)}\n`;
+        });
+        optionsList += '\n_Digite o número para selecionar._';
+
+        const sent = await sendWhatsAppMessage(instance, phone, optionsList);
+
+        if (sent) {
+          await supabase.from('whatsapp_messages').insert({
+            company_group_id: authorizedNumber.company_group_id,
+            phone_number: phone,
+            message_content: optionsList,
+            direction: 'outgoing',
+            sender_name: 'Assistente IA'
+          });
+        }
+
+        return NextResponse.json({ status: 'success', reason: 'selection_reset' });
+      } else {
+        const noMultipleMessage = 'Você tem apenas um agente configurado. Não há o que trocar! 😊';
+        await sendWhatsAppMessage(instance, phone, noMultipleMessage);
+        return NextResponse.json({ status: 'success', reason: 'no_multiple_datasets' });
+      }
+    }
+
+    // Buscar alerta como fallback
     const { data: alerts } = await supabase
       .from('ai_alerts')
       .select('*')
@@ -321,16 +369,226 @@ export async function POST(request: Request) {
 
     const recentAlert = alerts?.[0] || null;
 
-    // Determinar connection_id e dataset_id (prioridade: contexto AI > alerta)
-    const connectionId = aiContext?.connection_id || recentAlert?.connection_id || null;
-    const datasetId = aiContext?.dataset_id || recentAlert?.dataset_id || null;
+    let connectionId: string | null = null;
+    let datasetId: string | null = null;
+    let aiContext: any = null;
+
+    // CENÁRIO 1: Usuário tem seleção prévia
+    if (userSelection) {
+      connectionId = userSelection.selected_connection_id;
+      datasetId = userSelection.selected_dataset_id;
+      aiContext = allContexts?.find(ctx => 
+        ctx.connection_id === userSelection.selected_connection_id && 
+        ctx.dataset_id === userSelection.selected_dataset_id
+      );
+      console.log('Usando seleção prévia do usuário');
+    }
+    // CENÁRIO 2: Múltiplos datasets disponíveis e usuário NÃO tem seleção
+    else if (allContexts && allContexts.length > 1) {
+      const userInput = messageText.trim();
+      const choice = parseInt(userInput);  // Verificar se usuário digitou um número válido
+      if (!isNaN(choice) && choice >= 1 && choice <= allContexts.length) {
+        // Usuário escolheu um dataset
+        const selectedContext = allContexts[choice - 1];
+
+        // SALVAR a escolha
+        const { error: insertError } = await supabase
+          .from('whatsapp_user_selections')
+          .insert({
+            phone_number: phone,
+            company_group_id: authorizedNumber.company_group_id,
+            selected_connection_id: selectedContext.connection_id,
+            selected_dataset_id: selectedContext.dataset_id
+          });
+
+        if (insertError) {
+          console.error('Erro ao salvar seleção:', insertError);
+        }
+
+        // Mensagem de confirmação
+        const confirmMessage = `✅ *${selectedContext.name || 'Agente ' + choice}* selecionado!
+
+Agora pode fazer suas perguntas. 😊
+
+Digite "trocar" para mudar de agente.`;
+
+        const sent = await sendWhatsAppMessage(instance, phone, confirmMessage);
+
+        if (sent) {
+          await supabase.from('whatsapp_messages').insert({
+            company_group_id: authorizedNumber.company_group_id,
+            phone_number: phone,
+            message_content: confirmMessage,
+            direction: 'outgoing',
+            sender_name: 'Assistente IA'
+          });
+        }
+
+        return NextResponse.json({ status: 'success', reason: 'dataset_selected' });
+      } 
+      // Usuário NÃO digitou número válido - mostrar opções
+      else {
+        let optionsList = '📊 *Escolha o agente:*\n\n';
+        allContexts.forEach((ctx, idx) => {
+          optionsList += `${idx + 1}️⃣ ${ctx.name || 'Dataset ' + (idx + 1)}\n`;
+        });
+        optionsList += '\n_Digite o número para selecionar._';
+
+        const sent = await sendWhatsAppMessage(instance, phone, optionsList);
+
+        if (sent) {
+          await supabase.from('whatsapp_messages').insert({
+            company_group_id: authorizedNumber.company_group_id,
+            phone_number: phone,
+            message_content: optionsList,
+            direction: 'outgoing',
+            sender_name: 'Assistente IA'
+          });
+        }
+
+        return NextResponse.json({ status: 'success', reason: 'awaiting_dataset_selection' });
+      }
+    }
+    // CENÁRIO 3: Apenas 1 dataset disponível
+    else if (allContexts && allContexts.length === 1) {
+      aiContext = allContexts[0];
+      connectionId = aiContext.connection_id;
+      datasetId = aiContext.dataset_id;
+      console.log('Usando único dataset disponível');
+    }
+    // CENÁRIO 4: Nenhum contexto, tentar alerta
+    else if (recentAlert) {
+      connectionId = recentAlert.connection_id;
+      datasetId = recentAlert.dataset_id;
+      console.log('Usando alerta como fallback');
+    }
 
     console.log('Conexão encontrada:', connectionId ? 'SIM' : 'NÃO');
     console.log('Dataset encontrado:', datasetId ? 'SIM' : 'NÃO');
     console.log('É saudação:', isGreeting);
 
+    // ============================================
+    // PROCESSAR COMANDOS ESPECIAIS
+    // ============================================
+    const userCommand = messageText.toLowerCase().trim();
+
+    // Comando: /ajuda
+    if (userCommand === '/ajuda' || userCommand === 'ajuda') {
+      const helpMessage = `🤖 *Assistente IA - Comandos*
+
+*Comandos disponíveis:*
+/ajuda - Mostra esta mensagem
+/limpar - Limpar histórico de conversa
+/trocar - Trocar agente/dataset
+/status - Ver status da conexão
+
+📊 *Exemplos de perguntas:*
+- Qual o faturamento hoje?
+- Mostre os top 5 produtos
+- Compare vendas deste mês vs mês passado
+- Quem são meus maiores clientes?
+- Como está o estoque?
+
+💡 *Dica:* Seja específico nas perguntas para respostas mais precisas!`;
+
+      const sent = await sendWhatsAppMessage(instance, phone, helpMessage);
+
+      if (sent) {
+        await supabase.from('whatsapp_messages').insert({
+          company_group_id: authorizedNumber.company_group_id,
+          phone_number: phone,
+          message_content: helpMessage,
+          direction: 'outgoing',
+          sender_name: 'Assistente IA'
+        });
+      }
+
+      return NextResponse.json({ status: 'success', reason: 'help_command' });
+    }
+
+    // Comando: /limpar
+    if (userCommand === '/limpar' || userCommand === 'limpar') {
+      await supabase
+        .from('whatsapp_messages')
+        .update({ archived: true })
+        .eq('phone_number', phone)
+        .eq('company_group_id', authorizedNumber.company_group_id);
+
+      const clearMessage = `🗑️ *Histórico limpo!*
+
+Agora podemos começar uma conversa do zero. Como posso ajudar? 😊`;
+
+      const sent = await sendWhatsAppMessage(instance, phone, clearMessage);
+
+      if (sent) {
+        await supabase.from('whatsapp_messages').insert({
+          company_group_id: authorizedNumber.company_group_id,
+          phone_number: phone,
+          message_content: clearMessage,
+          direction: 'outgoing',
+          sender_name: 'Assistente IA',
+          archived: false
+        });
+      }
+
+      return NextResponse.json({ status: 'success', reason: 'history_cleared' });
+    }
+
+    // Comando: /status
+    if (userCommand === '/status' || userCommand === 'status') {
+      const statusMessage = `📊 *Status da Conexão*
+
+*Usuário:* ${authorizedNumber.name || phone}
+*Grupo:* ${authorizedNumber.company_group_id}
+*Dataset:* ${datasetId ? '✅ Conectado' : '❌ Não configurado'}
+*Conexão:* ${connectionId ? '✅ Ativa' : '❌ Inativa'}
+*Instância WhatsApp:* ${instance.instance_name}
+
+${connectionId && datasetId 
+  ? '✅ Tudo pronto! Pode fazer suas perguntas.' 
+  : '⚠️ Configure a conexão para usar o assistente.'}`;
+
+      const sent = await sendWhatsAppMessage(instance, phone, statusMessage);
+
+      if (sent) {
+        await supabase.from('whatsapp_messages').insert({
+          company_group_id: authorizedNumber.company_group_id,
+          phone_number: phone,
+          message_content: statusMessage,
+          direction: 'outgoing',
+          sender_name: 'Assistente IA'
+        });
+      }
+
+      return NextResponse.json({ status: 'success', reason: 'status_command' });
+    }
+
     // Se é uma saudação, responder com boas-vindas
     if (isGreeting) {
+      // Se há múltiplos datasets e usuário não tem seleção, mostrar opções
+      if (allContexts && allContexts.length > 1 && !userSelection) {
+        let optionsList = `Olá ${authorizedNumber.name || ''}! 👋\n\n📊 *Escolha o agente:*\n\n`;
+        allContexts.forEach((ctx, idx) => {
+          optionsList += `${idx + 1}️⃣ ${ctx.name || 'Dataset ' + (idx + 1)}\n`;
+        });
+        optionsList += '\n_Digite o número para selecionar._';
+
+        const sent = await sendWhatsAppMessage(instance, phone, optionsList);
+
+        if (sent) {
+          await supabase.from('whatsapp_messages').insert({
+            company_group_id: authorizedNumber.company_group_id,
+            phone_number: phone,
+            message_content: optionsList,
+            direction: 'outgoing',
+            sender_name: 'Assistente IA'
+          });
+        }
+
+        return NextResponse.json({ status: 'success', sent, reason: 'greeting_with_selection' });
+      }
+
+      // Saudação normal quando já tem seleção ou apenas 1 dataset
       const welcomeMessage = connectionId && datasetId
         ? `Olá ${authorizedNumber.name || ''}! 👋
 
@@ -383,6 +641,20 @@ Entre em contato com o suporte para configurar a conexão! 📞`;
       return NextResponse.json({ status: 'success', sent, reason: 'no_connection_configured' });
     }
 
+    // ============================================
+    // BUSCAR HISTÓRICO DE CONVERSAÇÃO (últimas 10 mensagens)
+    // ============================================
+    const { data: recentMessages } = await supabase
+      .from('whatsapp_messages')
+      .select('message_content, direction, created_at')
+      .eq('phone_number', phone)
+      .eq('company_group_id', authorizedNumber.company_group_id)
+      .eq('archived', false)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    console.log('Histórico encontrado:', recentMessages?.length || 0, 'mensagens');
+
     // Usar contexto já buscado ou buscar novamente
     let modelContext = aiContext?.context_content?.slice(0, 6000) || '';
 
@@ -400,45 +672,82 @@ Entre em contato com o suporte para configurar a conexão! 📞`;
       }
     }
 
-    // Construir prompt para a IA
-    const systemPrompt = `Você é o assistente IA da empresa do usuário, integrado via WhatsApp. Responda de forma concisa e direta.
+    // Construir prompt melhorado para a IA
+    const systemPrompt = `Você é o assistente IA da empresa do usuário, integrado via WhatsApp. 
 
-${modelContext ? `## CONTEXTO DO MODELO DE DADOS\n${modelContext}\n` : ''}
+## SUA PERSONALIDADE
+- Profissional mas amigável e acessível
+- Direto ao ponto, sem enrolação
+- Usa emojis com moderação (máximo 3 por mensagem)
+- LEMBRA do contexto da conversa anterior
+- Nunca repete informações já fornecidas
+- Adapta o nível de detalhe ao interesse do usuário
 
-## REGRAS
-- Respostas curtas e objetivas
-- Use emojis moderadamente
-- Formate valores: R$ 1.234,56
-- Se precisar de dados, use a função execute_dax
-- Não mencione nomes técnicos de medidas ou tabelas
-- Formate para WhatsApp (use *negrito* e _itálico_)
+## CONTEXTO DO MODELO DE DADOS
+${modelContext ? `${modelContext.slice(0, 6000)}\n` : 'Nenhum contexto de dados disponível no momento.\n'}
 
-## IMPORTANTE: SEMPRE SUGIRA OPÇÕES
-Após responder, SEMPRE adicione uma seção de sugestões com 3 opções relacionadas ao tema.
-Formato obrigatório no final de TODA resposta:
+## FORMATAÇÃO PARA WHATSAPP
+- Use *negrito* para destaques importantes
+- Use _itálico_ para ênfases sutis
+- Valores monetários: R$ 1.234,56
+- Porcentagens: 15,5%
+- Use quebras de linha para separar seções
+- Máximo 3 emojis por mensagem
+- Listas curtas com emojis: ✓ ✗ → • 
+
+## REGRAS PARA DADOS E ANÁLISES
+- Se precisar buscar dados, use a função execute_dax
+- NUNCA mencione termos técnicos como "tabela fato", "medida DAX", "coluna calculada"
+- Apresente dados de forma visual usando emojis como mini-gráficos
+- Sempre contextualize os números (compare, mostre tendências)
+- Se não tiver certeza dos dados, peça esclarecimento ao usuário
+- Formate valores grandes: 1,2M (milhão), 1,5K (mil)
+
+## REGRAS DE RESPOSTA
+1. Respostas entre 100-800 palavras (ideal: 300-400)
+2. Para perguntas complexas, divida a resposta em seções claras
+3. Sempre termine com próximos passos ou sugestões relevantes
+4. Se não tiver dados suficientes, seja honesto mas sugira alternativas
+5. LEMBRE o contexto: se o usuário perguntou sobre janeiro, mantenha esse contexto
+6. Se o usuário fizer pergunta de acompanhamento, continue a conversa naturalmente
+
+## SUGESTÕES INTELIGENTES E CONTEXTUAIS
+Após CADA resposta, sugira 2-3 análises relacionadas ao tema discutido:
 
 ━━━━━━━━━━━━━━━━━
-💡 *Posso detalhar:*
-1️⃣ [Opção relacionada 1]
-2️⃣ [Opção relacionada 2]
-3️⃣ [Opção relacionada 3]
+💡 *Posso analisar:*
+1️⃣ [Análise relacionada 1]
+2️⃣ [Análise relacionada 2]
 
 Exemplos de sugestões por contexto:
-- Faturamento → Por vendedor, Por produto, Por região, Comparativo mês anterior
-- Vendas → Por cliente, Por período, Ticket médio, Meta vs realizado
-- Clientes → Top clientes, Inadimplentes, Novos clientes, Churn
-- Produtos → Mais vendidos, Margem, Estoque, ABC
+- Faturamento → Comparativo com mês anterior, Por vendedor, Por produto, Por região
+- Vendas → Top clientes, Ticket médio, Meta vs realizado, Produtos mais vendidos
+- Clientes → Inadimplência, Novos clientes, Taxa de churn, Clientes inativos
+- Produtos → Mais vendidos, Margem de lucro, Giro de estoque, Análise ABC
+- Períodos → Comparar com ano anterior, Tendência trimestral, Sazonalidade
 
-## CONTEXTO DO ALERTA
 ${recentAlert ? `
-Último alerta: ${recentAlert.name}
-Query DAX: ${recentAlert.dax_query}
+## ALERTA RECENTE CONFIGURADO
+Nome: ${recentAlert.name}
 Dataset: ${recentAlert.dataset_id}
 Conexão: ${recentAlert.connection_id}
-` : 'Nenhum alerta recente encontrado.'}
+` : ''}
 
-## DATA ATUAL
-${new Date().toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+## DATA E HORA ATUAL
+${new Date().toLocaleString('pt-BR', { 
+  weekday: 'long', 
+  year: 'numeric', 
+  month: 'long', 
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'America/Sao_Paulo'
+})} (Horário de Brasília)
+
+## IMPORTANTE
+- Você TEM memória das mensagens anteriores desta conversa
+- Use esse contexto para dar respostas mais inteligentes e personalizadas
+- Se o usuário fizer referência a algo que você disse antes, lembre-se disso
 `;
 
     // Definir tools para o Claude
@@ -459,19 +768,45 @@ ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', mon
       }
     ] : [];
 
-    // Chamar Claude
+    // ============================================
+    // CONSTRUIR HISTÓRICO DE CONVERSAÇÃO
+    // ============================================
+    const conversationHistory: any[] = [];
+    
+    if (recentMessages && recentMessages.length > 0) {
+      // Inverter ordem para cronológica (mais antiga primeiro)
+      const orderedMessages = [...recentMessages].reverse();
+      
+      for (const msg of orderedMessages) {
+        conversationHistory.push({
+          role: msg.direction === 'incoming' ? 'user' : 'assistant',
+          content: msg.message_content
+        });
+      }
+    }
+
+    // Adicionar mensagem atual
+    conversationHistory.push({ 
+      role: 'user', 
+      content: messageText 
+    });
+
+    console.log('Histórico construído:', conversationHistory.length, 'mensagens');
+
+    // Chamar Claude COM HISTÓRICO
     let response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 500,
+      max_tokens: 1200,  // ← AUMENTADO DE 500 PARA 1200
       system: systemPrompt,
-      messages: [{ role: 'user', content: messageText }],
+      messages: conversationHistory,  // ← USANDO HISTÓRICO
       tools: tools.length > 0 ? tools : undefined
     });
 
     // Processar tool calls
     let iterations = 0;
     const maxIterations = 2;
-    const messages: any[] = [{ role: 'user', content: messageText }];
+    // Usar histórico completo para manter contexto nas iterações de tools
+    const messages: any[] = [...conversationHistory];
 
     while (response.stop_reason === 'tool_use' && iterations < maxIterations) {
       iterations++;
@@ -510,7 +845,7 @@ ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', mon
 
       response = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 500,
+        max_tokens: 1200,  // ← AUMENTADO DE 500 PARA 1200
         system: systemPrompt,
         messages,
         tools: tools.length > 0 ? tools : undefined
@@ -525,16 +860,84 @@ ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', mon
       }
     }
 
+    // ============================================
+    // TRATAR MENSAGENS LONGAS
+    // ============================================
     if (!assistantMessage.trim()) {
-      assistantMessage = 'Desculpe, não consegui processar sua pergunta. Tente novamente!';
+      assistantMessage = `Desculpe ${authorizedNumber.name || ''}, tive um problema ao processar sua pergunta. 😕
+
+*Pode tentar:*
+- Reformular a pergunta
+- Ser mais específico
+- Usar o comando /ajuda
+
+Estou aqui para ajudar! 💪`;
     }
 
-    // Limitar tamanho da mensagem
-    if (assistantMessage.length > 1500) {
-      assistantMessage = assistantMessage.substring(0, 1497) + '...';
-    }
+    console.log('Resposta IA:', assistantMessage.substring(0, 200) + '...');
+    console.log('Tamanho da resposta:', assistantMessage.length, 'caracteres');
 
-    console.log('Resposta IA:', assistantMessage);
+    // Dividir mensagens muito longas em múltiplas partes
+    if (assistantMessage.length > 2000) {
+      console.log('Mensagem longa detectada, dividindo em partes...');
+      
+      // Dividir por parágrafos primeiro
+      const paragraphs = assistantMessage.split('\n\n');
+      let currentPart = '';
+      const parts: string[] = [];
+
+      for (const paragraph of paragraphs) {
+        if ((currentPart + paragraph).length > 1800) {
+          if (currentPart) {
+            parts.push(currentPart.trim());
+            currentPart = paragraph;
+          } else {
+            // Parágrafo individual muito longo, forçar quebra
+            const chunks = paragraph.match(/.{1,1800}/g) || [];
+            parts.push(...chunks);
+          }
+        } else {
+          currentPart += (currentPart ? '\n\n' : '') + paragraph;
+        }
+      }
+
+      if (currentPart) {
+        parts.push(currentPart.trim());
+      }
+
+      console.log('Mensagem dividida em', parts.length, 'partes');
+
+      // Enviar cada parte com delay
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        const partPrefix = parts.length > 1 ? `📄 *Parte ${i + 1}/${parts.length}*\n\n` : '';
+        const fullPart = partPrefix + part;
+
+        const sent = await sendWhatsAppMessage(instance, phone, fullPart);
+
+        if (sent) {
+          await supabase.from('whatsapp_messages').insert({
+            company_group_id: authorizedNumber.company_group_id,
+            phone_number: phone,
+            message_content: fullPart,
+            direction: 'outgoing',
+            sender_name: 'Assistente IA'
+          });
+        }
+
+        // Delay entre mensagens para não sobrecarregar
+        if (i < parts.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        }
+      }
+
+      return NextResponse.json({ 
+        status: 'success', 
+        sent: true,
+        parts: parts.length,
+        reason: 'long_message_split'
+      });
+    }
 
     // Log da instância que será usada
     console.log('Instância para envio:', {
@@ -544,7 +947,7 @@ ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', mon
       is_connected: instance.is_connected
     });
 
-    // Enviar resposta
+    // Enviar resposta normal (não dividida)
     const sent = await sendWhatsAppMessage(instance, phone, assistantMessage);
 
     console.log('Mensagem enviada:', sent);

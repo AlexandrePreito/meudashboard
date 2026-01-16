@@ -245,7 +245,7 @@ export default function DevQuotasPage() {
           <button
             onClick={saveQuotas}
             disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            className="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg disabled:opacity-50"
           >
             {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Salvar
@@ -277,27 +277,27 @@ export default function DevQuotasPage() {
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     <th className="text-left px-4 py-3 text-sm font-medium text-gray-700">Grupo</th>
-                    <th className="text-center px-4 py-3 text-sm font-medium text-gray-700">
+                    <th className="text-center px-4 py-3 text-sm font-medium text-gray-700 w-24">
                       <div className="flex items-center justify-center gap-1">
                         <Users className="w-4 h-4" /> Usuarios
                       </div>
                     </th>
-                    <th className="text-center px-4 py-3 text-sm font-medium text-gray-700">
+                    <th className="text-center px-4 py-3 text-sm font-medium text-gray-700 w-24">
                       <div className="flex items-center justify-center gap-1">
                         <Monitor className="w-4 h-4" /> Telas
                       </div>
                     </th>
-                    <th className="text-center px-4 py-3 text-sm font-medium text-gray-700">
+                    <th className="text-center px-4 py-3 text-sm font-medium text-gray-700 w-24">
                       <div className="flex items-center justify-center gap-1">
                         <Bell className="w-4 h-4" /> Alertas
                       </div>
                     </th>
-                    <th className="text-center px-4 py-3 text-sm font-medium text-gray-700">
+                    <th className="text-center px-4 py-3 text-sm font-medium text-gray-700 w-24">
                       <div className="flex items-center justify-center gap-1">
                         <MessageSquare className="w-4 h-4" /> WhatsApp
                       </div>
                     </th>
-                    <th className="text-center px-4 py-3 text-sm font-medium text-gray-700">
+                    <th className="text-center px-4 py-3 text-sm font-medium text-gray-700 w-24">
                       <div className="flex items-center justify-center gap-1">
                         <Sparkles className="w-4 h-4" /> IA
                       </div>
@@ -315,50 +315,60 @@ export default function DevQuotasPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="number"
-                          min="0"
-                          value={quotas[group.id]?.quota_users || 0}
-                          onChange={(e) => updateQuota(group.id, 'quota_users', parseInt(e.target.value) || 0)}
-                          className="w-20 px-2 py-1 text-center border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex justify-center">
+                          <input
+                            type="number"
+                            min="0"
+                            value={quotas[group.id]?.quota_users || 0}
+                            onChange={(e) => updateQuota(group.id, 'quota_users', parseInt(e.target.value) || 0)}
+                            className="w-20 px-2 py-1 text-center border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
                       </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="number"
-                          min="0"
-                          value={quotas[group.id]?.quota_screens || 0}
-                          onChange={(e) => updateQuota(group.id, 'quota_screens', parseInt(e.target.value) || 0)}
-                          className="w-20 px-2 py-1 text-center border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex justify-center">
+                          <input
+                            type="number"
+                            min="0"
+                            value={quotas[group.id]?.quota_screens || 0}
+                            onChange={(e) => updateQuota(group.id, 'quota_screens', parseInt(e.target.value) || 0)}
+                            className="w-20 px-2 py-1 text-center border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
                       </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="number"
-                          min="0"
-                          value={quotas[group.id]?.quota_alerts || 0}
-                          onChange={(e) => updateQuota(group.id, 'quota_alerts', parseInt(e.target.value) || 0)}
-                          className="w-20 px-2 py-1 text-center border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex justify-center">
+                          <input
+                            type="number"
+                            min="0"
+                            value={quotas[group.id]?.quota_alerts || 0}
+                            onChange={(e) => updateQuota(group.id, 'quota_alerts', parseInt(e.target.value) || 0)}
+                            className="w-20 px-2 py-1 text-center border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
                       </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="number"
-                          min="0"
-                          value={quotas[group.id]?.quota_whatsapp_per_day || 0}
-                          onChange={(e) => updateQuota(group.id, 'quota_whatsapp_per_day', parseInt(e.target.value) || 0)}
-                          className="w-20 px-2 py-1 text-center border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex justify-center">
+                          <input
+                            type="number"
+                            min="0"
+                            value={quotas[group.id]?.quota_whatsapp_per_day || 0}
+                            onChange={(e) => updateQuota(group.id, 'quota_whatsapp_per_day', parseInt(e.target.value) || 0)}
+                            className="w-20 px-2 py-1 text-center border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
                       </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="number"
-                          min="0"
-                          value={quotas[group.id]?.quota_ai_credits_per_day || 0}
-                          onChange={(e) => updateQuota(group.id, 'quota_ai_credits_per_day', parseInt(e.target.value) || 0)}
-                          className="w-20 px-2 py-1 text-center border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex justify-center">
+                          <input
+                            type="number"
+                            min="0"
+                            value={quotas[group.id]?.quota_ai_credits_per_day || 0}
+                            onChange={(e) => updateQuota(group.id, 'quota_ai_credits_per_day', parseInt(e.target.value) || 0)}
+                            className="w-20 px-2 py-1 text-center border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
                       </td>
                     </tr>
                   ))}

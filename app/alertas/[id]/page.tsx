@@ -18,7 +18,8 @@ import {
   Plus,
   Trash2,
   Save,
-  Sparkles
+  Sparkles,
+  Asterisk
 } from 'lucide-react';
 
 interface Connection {
@@ -79,10 +80,9 @@ const DAYS_OF_WEEK = [
 
 const FORM_TABS = [
   { id: 'geral', label: 'Geral', icon: FileText },
-  { id: 'dados', label: 'Dados', icon: Database },
+  { id: 'dados', label: 'Mensagem', icon: Sparkles },
   { id: 'condicao', label: 'Condição', icon: GitBranch },
   { id: 'agendamento', label: 'Agendamento', icon: Clock },
-  { id: 'notificacoes', label: 'Template', icon: FileCode },
 ] as const;
 
 type TabId = typeof FORM_TABS[number]['id'];
@@ -107,6 +107,9 @@ export default function EditarAlertaPage() {
   const [daxTestResult, setDaxTestResult] = useState<{ success: boolean; message: string; value?: any } | null>(null);
   const [previewValue, setPreviewValue] = useState<string>('');
   const [generatingTemplate, setGeneratingTemplate] = useState(false);
+  const [daxPrompt, setDaxPrompt] = useState('');
+  const [generatingDax, setGeneratingDax] = useState(false);
+  const [daxError, setDaxError] = useState<{ message: string; suggestions: string[] } | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -137,11 +140,6 @@ export default function EditarAlertaPage() {
     }
   }, [formData.connection_id, connections]);
 
-  useEffect(() => {
-    if (activeTab === 'notificacoes') {
-      fetchPreviewValue();
-    }
-  }, [activeTab, formData.connection_id, formData.dataset_id, formData.dax_query]);
 
   async function loadData() {
     try {
@@ -263,6 +261,59 @@ export default function EditarAlertaPage() {
       });
     } finally {
       setTestingDax(false);
+    }
+  }
+
+  async function handleGenerateWithAI() {
+    if (!formData.connection_id || !formData.dataset_id) {
+      alert('Selecione uma conexão e dataset primeiro');
+      return;
+    }
+
+    if (!daxPrompt.trim()) {
+      alert('Descreva o que você precisa monitorar');
+      return;
+    }
+
+    setGeneratingDax(true);
+    setDaxError(null);
+    setDaxTestResult(null);
+
+    try {
+      const res = await fetch('/api/ai/generate-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: daxPrompt,
+          connection_id: formData.connection_id,
+          dataset_id: formData.dataset_id,
+          alert_name: formData.name,
+          alert_type: formData.alert_type
+        })
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setFormData(prev => ({
+          ...prev,
+          dax_query: data.dax_query,
+          message_template: data.message_template
+        }));
+        setDaxError(null);
+      } else {
+        setDaxError({
+          message: data.error || 'Erro ao gerar',
+          suggestions: data.suggestions || []
+        });
+      }
+    } catch (err) {
+      setDaxError({
+        message: 'Erro ao gerar com IA',
+        suggestions: []
+      });
+    } finally {
+      setGeneratingDax(false);
     }
   }
 
@@ -581,46 +632,186 @@ export default function EditarAlertaPage() {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Query DAX *
-                    </label>
-                    <textarea
-                      value={formData.dax_query}
-                      onChange={(e) => setFormData({ ...formData, dax_query: e.target.value })}
-                      placeholder='EVALUATE ROW("Valor", [Minha Medida])'
-                      rows={6}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 font-mono text-sm resize-none"
-                    />
+                  {/* Gerador com IA */}
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Sparkles size={18} className="text-blue-600" />
+                        <h3 className="text-sm font-semibold text-blue-900">Gerar com IA</h3>
+                      </div>
+                      
+                      <button
+                        type="button"
+                        onClick={handleGenerateWithAI}
+                        disabled={generatingDax || !formData.connection_id || !formData.dataset_id || !daxPrompt.trim()}
+                        className="relative flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-400 to-blue-600 text-white rounded-lg hover:from-blue-500 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium shadow-md overflow-hidden"
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"></div>
+                        {generatingDax ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin relative z-10" />
+                            <span className="relative z-10">Gerando...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Asterisk size={16} className="relative z-10" />
+                            <span className="relative z-10">Gerar com IA</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm text-blue-700 mb-1">
+                          Descreva o que você precisa monitorar:
+                        </label>
+                        <textarea
+                          value={daxPrompt}
+                          onChange={(e) => setDaxPrompt(e.target.value)}
+                          placeholder="Ex: Quero o faturamento por empresa dos últimos 3 dias e total no final..."
+                          rows={3}
+                          disabled={!formData.connection_id || !formData.dataset_id}
+                          className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg focus:outline-none focus:border-blue-500 text-sm resize-none disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        />
+                      </div>
+                      
+                      {!formData.connection_id || !formData.dataset_id && (
+                        <div className="flex items-center gap-2 text-xs text-blue-600">
+                          <span>⚠️ Selecione conexão e dataset primeiro</span>
+                        </div>
+                      )}
+
+                      {/* Mensagem de erro com sugestões */}
+                      {daxError && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                          <p className="text-sm text-amber-800 font-medium">{daxError.message}</p>
+                          {daxError.suggestions.length > 0 && (
+                            <div className="mt-2">
+                              <p className="text-xs text-amber-700 mb-1">Sugestões disponíveis:</p>
+                              <div className="flex flex-wrap gap-1">
+                                {daxError.suggestions.map((suggestion, idx) => (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => setDaxPrompt(suggestion)}
+                                    className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded text-xs transition-colors"
+                                  >
+                                    {suggestion}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={handleTestDax}
-                      disabled={testingDax || !formData.connection_id || !formData.dataset_id}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50"
-                    >
-                      {testingDax ? (
-                        <RefreshCw size={16} className="animate-spin" />
-                      ) : (
-                        <Play size={16} />
-                      )}
-                      Testar Query
-                    </button>
-
-                    {daxTestResult && (
-                      <div className={`flex-1 px-4 py-2 rounded-lg text-sm ${
-                        daxTestResult.success
-                          ? 'bg-green-50 text-green-700'
-                          : 'bg-red-50 text-red-700'
-                      }`}>
-                        {daxTestResult.success && daxTestResult.value !== undefined && (
-                          <span className="font-semibold">Valor: {daxTestResult.value} - </span>
-                        )}
-                        {daxTestResult.message}
+                  {/* Grid: DAX à esquerda, Template à direita */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Query DAX */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-sm font-medium text-gray-700">
+                          Query DAX {formData.dax_query && <span className="text-green-600 text-xs ml-1">✓ Gerada</span>}
+                        </label>
+                        
+                        {/* Botão Testar */}
+                        <button
+                          type="button"
+                          onClick={handleTestDax}
+                          disabled={testingDax || !formData.connection_id || !formData.dataset_id || !formData.dax_query}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 text-sm"
+                        >
+                          {testingDax ? (
+                            <RefreshCw size={14} className="animate-spin" />
+                          ) : (
+                            <Play size={14} />
+                          )}
+                          Testar
+                        </button>
                       </div>
-                    )}
+                      
+                      <textarea
+                        value={formData.dax_query}
+                        onChange={(e) => setFormData({ ...formData, dax_query: e.target.value })}
+                        placeholder="Use a IA acima para gerar ou escreva manualmente..."
+                        rows={12}
+                        className="w-full px-3 py-2 border-2 border-blue-400 rounded-lg focus:outline-none focus:border-blue-500 font-mono text-xs resize-none"
+                      />
+                      
+                      {/* Resultado do teste */}
+                      {daxTestResult && (
+                        <div className="mt-2">
+                          <span className={`text-xs ${daxTestResult.success ? 'text-green-600' : 'text-red-600'}`}>
+                            {daxTestResult.success ? '✓ ' : '✗ '}{daxTestResult.message}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Template da Mensagem */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Template da Mensagem {formData.message_template && formData.dax_query && <span className="text-green-600 text-xs ml-1">✓ Gerado</span>}
+                      </label>
+                      <MessageEditor
+                        value={formData.message_template}
+                        onChange={(value) => setFormData({ ...formData, message_template: value })}
+                        placeholder="Use a IA para gerar ou edite manualmente..."
+                        rows={12}
+                        alertName={formData.name || 'Vendas Abaixo da Meta'}
+                        testValue={daxTestResult?.success ? String(daxTestResult.value) : undefined}
+                      />
+                      
+                      {/* Variáveis disponíveis */}
+                      <div className="mt-2">
+                        <div className="flex flex-wrap gap-1.5 items-center">
+                          <span className="text-xs text-gray-500">Variáveis do sistema:</span>
+                          {[
+                            { key: '{{nome_alerta}}', label: 'Nome do Alerta' },
+                            { key: '{{valor}}', label: 'Valor/Resultado' },
+                            { key: '{{data}}', label: 'Data' },
+                            { key: '{{hora}}', label: 'Hora' },
+                          ].map((v) => (
+                            <button
+                              key={v.key}
+                              type="button"
+                              onClick={() => setFormData(prev => ({
+                                ...prev,
+                                message_template: prev.message_template + ' ' + v.key
+                              }))}
+                              className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 rounded text-xs font-mono text-blue-600 border border-blue-200"
+                              title={v.label}
+                            >
+                              {v.key}
+                            </button>
+                          ))}
+                        </div>
+                        
+                        {/* Variáveis extraídas da DAX */}
+                        {daxVariables.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 items-center mt-2">
+                            <span className="text-xs text-gray-500">Da sua query:</span>
+                            {daxVariables.map((v) => (
+                              <button
+                                key={v.key}
+                                type="button"
+                                onClick={() => setFormData(prev => ({
+                                  ...prev,
+                                  message_template: prev.message_template + ' ' + v.key
+                                }))}
+                                className="px-2 py-0.5 bg-purple-50 hover:bg-purple-100 rounded text-xs font-mono text-purple-600 border border-purple-200"
+                                title={v.label}
+                              >
+                                {v.key} <span className="text-purple-400 font-normal">({v.label})</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -906,131 +1097,6 @@ export default function EditarAlertaPage() {
                 </div>
               )}
 
-              {/* Tab: Template */}
-              {activeTab === 'notificacoes' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-700">Template da Mensagem</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">Configure a mensagem que será enviada quando o alerta for disparado</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleGenerateTemplate}
-                      disabled={generatingTemplate || !formData.name}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
-                      title="Gerar template com IA"
-                    >
-                      {generatingTemplate ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <Sparkles size={16} />
-                      )}
-                      {generatingTemplate ? 'Gerando...' : 'IA'}
-                    </button>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Campos Disponíveis
-                    </label>
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                      <p className="text-xs text-gray-500 mb-3">
-                        Clique em um campo para adicioná-lo à mensagem:
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { key: '{{nome_alerta}}', label: 'Nome do Alerta' },
-                          { key: '{{valor}}', label: 'Valor (1º numérico)' },
-                          { key: '{{data}}', label: 'Data' },
-                          { key: '{{hora}}', label: 'Hora' },
-                          { key: '{{condicao}}', label: 'Condição' },
-                          { key: '{{threshold}}', label: 'Limite' },
-                          { key: '{{filial}}', label: 'Filial' },
-                          { key: '{{vendedor}}', label: 'Vendedor' },
-                          { key: '{{produto}}', label: 'Produto' },
-                          { key: '{{quantidade}}', label: 'Quantidade' },
-                          { key: '{{meta}}', label: 'Meta' },
-                          { key: '{{percentual}}', label: 'Percentual' },
-                        ].map((variable) => (
-                          <button
-                            key={variable.key}
-                            type="button"
-                            onClick={() => {
-                              setFormData(prev => ({
-                                ...prev,
-                                message_template: prev.message_template + variable.key
-                              }));
-                            }}
-                            className="px-3 py-2 bg-white border border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors text-sm"
-                          >
-                            <span className="font-mono text-blue-600">{variable.key}</span>
-                            <span className="text-xs text-gray-500 ml-2">{variable.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Personalizar Mensagem
-                    </label>
-                    <MessageEditor
-                      value={formData.message_template}
-                      onChange={(value) => setFormData(prev => ({ ...prev, message_template: value }))}
-                      alertName={formData.name || 'Meu Alerta'}
-                    />
-                    
-                    {/* Variáveis disponíveis */}
-                    <div className="mt-2">
-                      <div className="flex flex-wrap gap-1.5 items-center">
-                        <span className="text-xs text-gray-500">Variáveis do sistema:</span>
-                        {[
-                          { key: '{{nome_alerta}}', label: 'Nome do Alerta' },
-                          { key: '{{valor}}', label: 'Valor/Resultado' },
-                          { key: '{{data}}', label: 'Data' },
-                          { key: '{{hora}}', label: 'Hora' },
-                        ].map((v) => (
-                          <button
-                            key={v.key}
-                            type="button"
-                            onClick={() => setFormData(prev => ({
-                              ...prev,
-                              message_template: prev.message_template + ' ' + v.key
-                            }))}
-                            className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 rounded text-xs font-mono text-blue-600 border border-blue-200"
-                            title={v.label}
-                          >
-                            {v.key}
-                          </button>
-                        ))}
-                      </div>
-                      
-                      {/* Variáveis extraídas da DAX */}
-                      {daxVariables.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 items-center mt-2">
-                          <span className="text-xs text-gray-500">Da sua query:</span>
-                          {daxVariables.map((v) => (
-                            <button
-                              key={v.key}
-                              type="button"
-                              onClick={() => setFormData(prev => ({
-                                ...prev,
-                                message_template: prev.message_template + ' ' + v.key
-                              }))}
-                              className="px-2 py-0.5 bg-purple-50 hover:bg-purple-100 rounded text-xs font-mono text-purple-600 border border-purple-200"
-                              title={v.label}
-                            >
-                              {v.key} <span className="text-purple-400 font-normal">({v.label})</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Footer */}
@@ -1060,7 +1126,7 @@ export default function EditarAlertaPage() {
                   </button>
                 )}
 
-                {activeTab !== 'notificacoes' ? (
+                {activeTab !== FORM_TABS[FORM_TABS.length - 1].id ? (
                   <button
                     type="button"
                     onClick={() => {

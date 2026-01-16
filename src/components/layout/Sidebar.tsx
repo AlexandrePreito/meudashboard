@@ -33,7 +33,12 @@ import {
   Puzzle,
   Code2,
   Shield,
-  Code
+  Code,
+  DollarSign,
+  ShoppingCart,
+  Package,
+  Truck,
+  Factory
 } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
 import { usePlanPermissions } from '@/hooks/usePlanPermissions';
@@ -71,8 +76,36 @@ const ICON_MAP: Record<string, any> = {
   'PieChart': PieChart,
   'TrendingUp': TrendingUp,
   'Activity': Activity,
+  'DollarSign': DollarSign,
+  'Users': Users,
+  'ShoppingCart': ShoppingCart,
+  'Package': Package,
+  'Truck': Truck,
+  'Factory': Factory,
   'default': Monitor
 };
+
+// Função helper para obter o componente de ícone
+function getIconComponent(iconName?: string | null) {
+  if (!iconName || iconName.trim() === '') {
+    return Monitor;
+  }
+  
+  const normalized = iconName.trim();
+  // Tentar match exato primeiro
+  if (ICON_MAP[normalized]) {
+    return ICON_MAP[normalized];
+  }
+  
+  // Tentar com primeira letra maiúscula (para nomes como "monitor" -> "Monitor")
+  const capitalized = normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  if (ICON_MAP[capitalized]) {
+    return ICON_MAP[capitalized];
+  }
+  
+  // Fallback para Monitor
+  return Monitor;
+}
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -160,11 +193,20 @@ export default function Sidebar() {
         const data = await res.json();
         const activeScreens = (data.screens || [])
           .filter((s: Screen) => s.is_active)
+          .map((s: Screen) => {
+            // Debug: log para verificar ícones recebidos
+            console.log('Screen recebida:', s.title, 'icon:', s.icon, 'tipo:', typeof s.icon);
+            return {
+              ...s,
+              icon: s.icon || 'Monitor' // Garantir que sempre temos um ícone padrão
+            };
+          })
           .sort((a: Screen, b: Screen) => {
             if (a.is_first && !b.is_first) return -1;
             if (!a.is_first && b.is_first) return 1;
             return a.title.localeCompare(b.title);
           });
+        console.log('Telas processadas:', activeScreens.map(s => ({ title: s.title, icon: s.icon })));
         setScreens(activeScreens);
       }
     } catch (error) {
@@ -450,9 +492,10 @@ export default function Sidebar() {
               ) : (
                 <nav className="px-2 space-y-1">
                   {screens.map((screen) => {
-                const Icon = ICON_MAP[screen.icon || 'default'] || Monitor;
-                const href = `/tela/${screen.id}`;
-                const isActive = pathname === href;
+                    const Icon = getIconComponent(screen.icon);
+                    const href = `/tela/${screen.id}`;
+                    const isActive = pathname === href;
+                    
                     return (
                       <Link
                         key={screen.id}

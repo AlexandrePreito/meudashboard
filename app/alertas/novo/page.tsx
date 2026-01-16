@@ -659,7 +659,8 @@ export default function NovoAlertaPage() {
                         onChange={(value) => setFormData({ ...formData, message_template: value })}
                         placeholder="Use a IA para gerar ou edite manualmente..."
                         rows={12}
-                        alertName={formData.name || 'Meu Alerta'}
+                        alertName={formData.name || 'Vendas Abaixo da Meta'}
+                        testValue={daxTestResult?.success ? String(daxTestResult.value) : undefined}
                       />
                       
                       {/* Variáveis disponíveis */}

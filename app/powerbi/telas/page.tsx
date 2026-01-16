@@ -11,8 +11,6 @@ import {
   Loader2, 
   Layers,
   FileText,
-  Star,
-  StarOff,
   Eye,
   EyeOff,
   Copy,
@@ -49,6 +47,8 @@ interface Screen {
   is_first: boolean;
   display_order: number;
   is_public?: boolean;
+  page_name?: string;
+  description?: string;
   report: Report;
   company_group: {
     id: string;
@@ -102,6 +102,7 @@ function TelasContent() {
   const [screens, setScreens] = useState<Screen[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [availablePages, setAvailablePages] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingScreen, setEditingScreen] = useState<Screen | null>(null);
@@ -116,9 +117,9 @@ function TelasContent() {
     report_id: '',
     title: '',
     icon: 'Monitor',
-    is_first: false,
     is_active: true,
     is_public: true,
+    page_name: '',
     allowed_users: [] as string[]
   });
 
@@ -131,6 +132,14 @@ function TelasContent() {
       loadData(activeGroup);
     }
   }, [activeGroup, userRole]);
+
+  useEffect(() => {
+    if (form.report_id && showModal) {
+      fetchPagesForReport(form.report_id);
+    } else {
+      setAvailablePages([]);
+    }
+  }, [form.report_id, showModal]);
 
   async function checkAccessAndLoad() {
     try {
@@ -188,6 +197,8 @@ function TelasContent() {
       if (usersRes.ok) {
         const data = await usersRes.json();
         console.log('DEBUG - users loaded:', data);
+        console.log('DEBUG - Total de usuários carregados:', data.users?.length || 0);
+        console.log('DEBUG - Usuários:', data.users);
         setUsers(data.users || []);
       } else {
         console.log('DEBUG - users error:', usersRes.status, await usersRes.text());
@@ -198,6 +209,21 @@ function TelasContent() {
       setLoading(false);
     }
   }
+
+  const fetchPagesForReport = async (reportId: string) => {
+    try {
+      const res = await fetch(`/api/powerbi/reports/${reportId}/pages`);
+      if (res.ok) {
+        const data = await res.json();
+        setAvailablePages(data.pages || []);
+      } else {
+        setAvailablePages([]);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar páginas:', error);
+      setAvailablePages([]);
+    }
+  };
 
   async function openModal(screen?: Screen) {
     if (screen) {
@@ -224,9 +250,9 @@ function TelasContent() {
         report_id: screen.report?.id || '',
         title: screen.title,
         icon: screen.icon,
-        is_first: screen.is_first,
         is_active: screen.is_active,
         is_public: screen.is_public ?? true,
+        page_name: (screen as any).page_name || '',
         allowed_users: allowedUsers
       });
     } else {
@@ -235,9 +261,9 @@ function TelasContent() {
         report_id: reports[0]?.id || '',
         title: '',
         icon: 'Monitor',
-        is_first: false,
         is_active: true,
         is_public: true,
+        page_name: '',
         allowed_users: []
       });
     }
@@ -254,9 +280,9 @@ function TelasContent() {
       report_id: screen.report?.id || '',
       title: `${screen.title} (Cópia)`,
       icon: screen.icon,
-      is_first: false,
       is_active: screen.is_active,
       is_public: screen.is_public ?? true,
+      page_name: (screen as any).page_name || '',
       allowed_users: []
     });
     setUserSearchTerm('');
@@ -280,6 +306,7 @@ function TelasContent() {
         ...form,
         company_group_id,
         is_public: form.is_public,
+        page_name: form.page_name,
         user_ids: form.is_public ? [] : form.allowed_users
       };
 
@@ -339,21 +366,6 @@ function TelasContent() {
     }
   }
 
-  async function toggleFirst(screen: Screen) {
-    try {
-      const res = await fetch(`/api/powerbi/screens/${screen.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_first: !screen.is_first })
-      });
-
-      if (res.ok) {
-        loadData(activeGroup);
-      }
-    } catch (error) {
-      console.error('Erro ao alterar destaque:', error);
-    }
-  }
 
   if (accessDenied) {
     return (
@@ -452,7 +464,6 @@ function TelasContent() {
                   <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Relatório</th>
                   <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Grupo</th>
                   <th className="text-center px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                  <th className="text-center px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Destaque</th>
                   <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Ações</th>
                 </tr>
               </thead>
@@ -500,37 +511,24 @@ function TelasContent() {
                         {screen.is_active ? <Eye size={16} /> : <EyeOff size={16} />}
                       </button>
                     </td>
-                    <td className="px-6 py-4 text-center">
-                      <button
-                        onClick={() => toggleFirst(screen)}
-                        className={`p-1.5 rounded-lg transition-colors ${
-                          screen.is_first 
-                            ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200' 
-                            : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
-                        }`}
-                        title={screen.is_first ? 'Tela principal' : 'Definir como principal'}
-                      >
-                        {screen.is_first ? <Star size={16} /> : <StarOff size={16} />}
-                      </button>
-                    </td>
                     <td className="px-6 py-4 text-right">
                       <button
                         onClick={() => openModal(screen)}
-                        className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg mr-1"
+                        className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg mr-1"
                         title="Editar"
                       >
                         <Pencil size={16} />
                       </button>
                       <button
                         onClick={() => handleCopy(screen)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg mr-1"
+                        className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg mr-1"
                         title="Copiar"
                       >
                         <Copy size={16} />
                       </button>
                       <button
                         onClick={() => handleDelete(screen.id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                        className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg"
                         title="Excluir"
                       >
                         <Trash2 size={16} />
@@ -611,44 +609,50 @@ function TelasContent() {
                   />
                   <span className="text-sm text-gray-700">Ativa</span>
                 </label>
-
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={form.is_first}
-                    onChange={(e) => setForm({ ...form, is_first: e.target.checked })}
-                    className="w-4 h-4 text-blue-600 bg-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2 accent-blue-600"
-                  />
-                  <span className="text-sm text-gray-700">Tela principal</span>
-                </label>
               </div>
 
-              {/* Controle de Acesso */}
-              <div className="space-y-3 pt-2 border-t border-gray-200">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <div className="relative">
+              {/* Seção de Visibilidade */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Visibilidade
+                </label>
+                
+                {/* Toggle Público/Privado */}
+                <div className="flex items-center mb-4">
+                  <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
                       checked={form.is_public}
-                      onChange={(e) => setForm({ ...form, is_public: e.target.checked, allowed_users: e.target.checked ? [] : form.allowed_users })}
+                      onChange={(e) => setForm({ 
+                        ...form, 
+                        is_public: e.target.checked, 
+                        allowed_users: e.target.checked ? [] : form.allowed_users 
+                      })}
                       className="sr-only"
                     />
                     <div className={`w-11 h-6 rounded-full transition-colors ${
-                      form.is_public ? 'bg-blue-600' : 'bg-gray-300'
+                      form.is_public ? 'bg-blue-600' : 'bg-gray-200'
                     }`}>
-                      <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform mt-0.5 ${
-                        form.is_public ? 'translate-x-5' : 'translate-x-0.5'
+                      <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${
+                        form.is_public ? 'translate-x-5' : ''
                       }`} />
                     </div>
-                  </div>
-                  <span className="text-sm font-medium text-gray-700">Todos podem ver</span>
-                </label>
+                    <span className="ml-3 text-sm font-medium text-gray-700">
+                      {form.is_public ? 'Todos podem ver' : 'Privado'}
+                    </span>
+                  </label>
+                </div>
 
+                {/* Lista de Usuários - APENAS SE PRIVADO */}
                 {!form.is_public && (
-                  <div className="space-y-3 pl-14">
-                    {/* Campo de busca de usuários */}
-                    <div className="relative">
-                      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <div>
+                    {/* Campo de Busca */}
+                    <div className="relative mb-3">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </div>
                       <input
                         type="text"
                         placeholder="Buscar usuários..."
@@ -658,108 +662,118 @@ function TelasContent() {
                       />
                     </div>
 
-                    {/* Lista de usuários */}
+                    {/* Lista de Usuários com Checkboxes */}
                     <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg bg-white">
                       {users
                         .filter(user => {
-                          // Filtrar por company_group da tela/relatório
-                          let screenGroupId: string | undefined;
-                          if (editingScreen) {
-                            screenGroupId = editingScreen.company_group?.id || (editingScreen as any).company_group_id;
-                          } else {
-                            // Ao criar nova tela, pegar do relatório selecionado
-                            const selectedReport = reports.find(r => r.id === form.report_id);
-                            screenGroupId = selectedReport?.connection?.company_group_id || screens[0]?.company_group?.id;
+                          // Filtrar por company_group
+                          let groupId: string | undefined;
+                          
+                          if (editingScreen?.company_group?.id) {
+                            groupId = editingScreen.company_group.id;
+                          } else if (form.report_id) {
+                            const selectedReport = reports.find((r: any) => r.id === form.report_id);
+                            groupId = selectedReport?.connection?.company_group_id;
                           }
                           
-                          if (!screenGroupId) return false;
-                          
-                          const userInGroup = user.memberships?.some(
-                            (m: any) => m.company_group?.id === screenGroupId && m.is_active
-                          );
-                          if (!userInGroup) return false;
+                          // Se tem grupo definido, filtrar por grupo
+                          if (groupId && user.memberships) {
+                            const userInGroup = user.memberships.some(
+                              (m: any) => m.company_group?.id === groupId && m.is_active
+                            );
+                            if (!userInGroup) return false;
+                          }
 
                           // Filtrar por busca
-                          if (userSearchTerm) {
-                            const term = userSearchTerm.toLowerCase();
-                            return (
-                              user.full_name.toLowerCase().includes(term) ||
-                              user.email.toLowerCase().includes(term)
-                            );
+                          if (userSearchTerm.trim()) {
+                            const term = userSearchTerm.toLowerCase().trim();
+                            const matchName = user.full_name?.toLowerCase().includes(term);
+                            const matchEmail = user.email?.toLowerCase().includes(term);
+                            return matchName || matchEmail;
                           }
+
                           return true;
                         })
-                        .map((user) => (
+                        .map(user => (
                           <label
                             key={user.id}
-                            className="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            className="flex items-center p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
                           >
-                            <div className="flex-shrink-0">
-                              {user.avatar_url ? (
-                                <img
-                                  src={user.avatar_url}
-                                  alt={user.full_name}
-                                  className="w-8 h-8 rounded-full"
-                                />
-                              ) : (
-                                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                                  <span className="text-xs font-medium text-blue-600">
-                                    {user.full_name.charAt(0).toUpperCase()}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">
-                                {user.full_name}
-                              </p>
-                              <p className="text-xs text-gray-500 truncate">
-                                {user.email}
-                              </p>
-                            </div>
                             <input
                               type="checkbox"
                               checked={form.allowed_users.includes(user.id)}
                               onChange={(e) => {
                                 if (e.target.checked) {
-                                  setForm({ ...form, allowed_users: [...form.allowed_users, user.id] });
+                                  setForm({ 
+                                    ...form, 
+                                    allowed_users: [...form.allowed_users, user.id] 
+                                  });
                                 } else {
-                                  setForm({ ...form, allowed_users: form.allowed_users.filter(id => id !== user.id) });
+                                  setForm({ 
+                                    ...form, 
+                                    allowed_users: form.allowed_users.filter(id => id !== user.id) 
+                                  });
                                 }
                               }}
-                              className="w-4 h-4 text-blue-600 bg-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2 accent-blue-600"
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded accent-blue-600"
                             />
+                            <div className="ml-3 flex-1">
+                              <div className="text-sm font-medium text-gray-900">
+                                {user.full_name}
+                              </div>
+                              <div className="text-xs text-gray-500">{user.email}</div>
+                            </div>
                           </label>
                         ))}
+                      
+                      {/* Mensagem quando não há usuários */}
                       {users.filter(user => {
-                        let screenGroupId: string | undefined;
-                        if (editingScreen) {
-                          screenGroupId = editingScreen.company_group?.id || (editingScreen as any).company_group_id;
-                        } else {
-                          const selectedReport = reports.find(r => r.id === form.report_id);
-                          screenGroupId = selectedReport?.connection?.company_group_id || screens[0]?.company_group?.id;
+                        let groupId: string | undefined;
+                        
+                        if (editingScreen?.company_group?.id) {
+                          groupId = editingScreen.company_group.id;
+                        } else if (form.report_id) {
+                          const selectedReport = reports.find((r: any) => r.id === form.report_id);
+                          groupId = selectedReport?.connection?.company_group_id;
                         }
                         
-                        if (!screenGroupId) return false;
-                        
-                        const userInGroup = user.memberships?.some(
-                          (m: any) => m.company_group?.id === screenGroupId && m.is_active
-                        );
-                        if (!userInGroup) return false;
-                        if (userSearchTerm) {
-                          const term = userSearchTerm.toLowerCase();
-                          return (
-                            user.full_name.toLowerCase().includes(term) ||
-                            user.email.toLowerCase().includes(term)
+                        if (groupId && user.memberships) {
+                          const userInGroup = user.memberships.some(
+                            (m: any) => m.company_group?.id === groupId && m.is_active
                           );
+                          if (!userInGroup) return false;
                         }
+
+                        if (userSearchTerm.trim()) {
+                          const term = userSearchTerm.toLowerCase().trim();
+                          const matchName = user.full_name?.toLowerCase().includes(term);
+                          const matchEmail = user.email?.toLowerCase().includes(term);
+                          return matchName || matchEmail;
+                        }
+
                         return true;
                       }).length === 0 && (
                         <div className="p-4 text-center text-sm text-gray-500">
-                          {userSearchTerm ? 'Nenhum usuário encontrado' : 'Nenhum usuário disponível'}
+                          {userSearchTerm.trim() 
+                            ? 'Nenhum usuário encontrado' 
+                            : 'Nenhum usuário disponível neste grupo'}
                         </div>
                       )}
                     </div>
+
+                    {/* Contador de usuários selecionados */}
+                    {form.allowed_users.length > 0 && (
+                      <div className="mt-2 text-xs text-gray-600">
+                        {form.allowed_users.length} usuário(s) selecionado(s)
+                      </div>
+                    )}
+                    
+                    {/* Aviso se nenhum usuário selecionado */}
+                    {form.allowed_users.length === 0 && (
+                      <div className="mt-2 text-xs text-gray-500 italic">
+                        Se nenhum usuário for selecionado, todos terão acesso
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     if (groupIds.length === 0) {
       return NextResponse.json({ 
         accessByDay: [],
-        accessByUser: [],
+        userSessions: [],
         accessByGroup: []
       });
     }
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     // Construir query base
     let query = supabase
       .from('activity_logs')
-      .select('id, user_id, company_group_id, action_type, created_at')
+      .select('id, user_id, company_group_id, action_type, module, description, entity_type, metadata, created_at')
       .in('company_group_id', targetGroupIds);
 
     // Filtrar por periodo
@@ -88,42 +88,49 @@ export async function GET(request: NextRequest) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, count]) => ({ date, count }));
 
-    // Agrupar por usuario
-    const byUser: Record<string, number> = {};
-    (logs || []).forEach(log => {
-      if (log.user_id) {
-        byUser[log.user_id] = (byUser[log.user_id] || 0) + 1;
-      }
-    });
+    // Criar lista de sessões de usuários (ordenada por data)
+    const userSessions = (logs || [])
+      .filter(log => log.user_id)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .map(log => ({
+        id: log.id,
+        userId: log.user_id,
+        userName: userNames[log.user_id] || 'Usuário',
+        accessDate: log.created_at,
+        module: log.module || 'dashboard',
+        actionType: log.action_type || 'page_view',
+        description: log.description || null,
+        entityType: log.entity_type || null,
+        metadata: log.metadata || {}
+      }));
 
-    const accessByUser = Object.entries(byUser)
-      .map(([userId, count]) => ({
-        userId,
-        userName: userNames[userId] || 'Usuario',
-        count
-      }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10); // Top 10
-
-    // Agrupar por grupo
-    const byGroup: Record<string, number> = {};
+    // Agrupar por grupo com última data
+    const byGroup: Record<string, { count: number; lastAccess: string }> = {};
     (logs || []).forEach(log => {
       if (log.company_group_id) {
-        byGroup[log.company_group_id] = (byGroup[log.company_group_id] || 0) + 1;
+        if (!byGroup[log.company_group_id]) {
+          byGroup[log.company_group_id] = { count: 0, lastAccess: log.created_at };
+        }
+        byGroup[log.company_group_id].count++;
+        // Manter a data mais recente
+        if (log.created_at > byGroup[log.company_group_id].lastAccess) {
+          byGroup[log.company_group_id].lastAccess = log.created_at;
+        }
       }
     });
 
     const accessByGroup = Object.entries(byGroup)
-      .map(([groupId, count]) => ({
+      .map(([groupId, data]) => ({
         groupId,
         groupName: groupNames[groupId] || 'Grupo',
-        count
+        count: data.count,
+        lastAccess: data.lastAccess
       }))
       .sort((a, b) => b.count - a.count);
 
     return NextResponse.json({
       accessByDay,
-      accessByUser,
+      userSessions,
       accessByGroup,
       totalAccess: logs?.length || 0
     });

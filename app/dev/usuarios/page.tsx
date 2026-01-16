@@ -272,7 +272,7 @@ export default function DevUsuariosPage() {
           <button
             onClick={openNewUser}
             disabled={groups.length === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            className="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg disabled:opacity-50"
           >
             <Plus className="w-5 h-5" />
             Novo Usuário
@@ -337,7 +337,7 @@ export default function DevUsuariosPage() {
             {groups.length > 0 && (
               <button
                 onClick={openNewUser}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="btn-primary inline-flex items-center gap-2 px-6 py-3 rounded-lg"
               >
                 <Plus className="w-5 h-5" />
                 Criar primeiro usuário
@@ -596,7 +596,7 @@ export default function DevUsuariosPage() {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                className="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg disabled:opacity-50"
               >
                 {saving ? (
                   <>

@@ -117,7 +117,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { title, report_id, is_active, is_first, allowed_users, icon } = body;
+    const { title, report_id, is_active, is_public, page_name, allowed_users, icon } = body;
 
     if (!title || !report_id) {
       return NextResponse.json(
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         report_id,
         icon: icon || 'Monitor',
         is_active: is_active !== undefined ? is_active : true,
-        is_first: is_first !== undefined ? is_first : false,
+        page_name: page_name || null,
       })
       .select()
       .single();
@@ -145,8 +145,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: screenError.message || 'Erro ao criar tela' }, { status: 500 });
     }
 
-    // Inserir usuários com acesso (se fornecidos)
-    if (allowed_users && allowed_users.length > 0) {
+    // Inserir usuários com acesso (se fornecidos e não for público)
+    if (!is_public && allowed_users && allowed_users.length > 0) {
       const screenUsersData = allowed_users.map((userId: string) => ({
         screen_id: screen.id,
         user_id: userId,
@@ -187,7 +187,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     const { id } = await params;
     const body = await request.json();
-    const { screen_id, title, report_id, is_active, is_first, allowed_users, icon } = body;
+    const { screen_id, title, report_id, is_active, is_public, page_name, allowed_users, icon } = body;
 
     if (!screen_id) {
       return NextResponse.json({ error: 'screen_id é obrigatório' }, { status: 400 });
@@ -224,7 +224,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (report_id !== undefined) updateData.report_id = report_id;
     if (icon !== undefined) updateData.icon = icon;
     if (is_active !== undefined) updateData.is_active = is_active;
-    if (is_first !== undefined) updateData.is_first = is_first;
+    if (page_name !== undefined) updateData.page_name = page_name || null;
 
     const { data: screen, error: updateError } = await supabase
       .from('powerbi_dashboard_screens')
@@ -238,8 +238,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Erro ao atualizar tela' }, { status: 500 });
     }
 
-    // Atualizar usuários com acesso
-    if (allowed_users !== undefined) {
+    // Atualizar usuários com acesso (se não for público)
+    if (is_public === false && allowed_users !== undefined) {
       // Deletar usuários existentes
       await supabase
         .from('powerbi_screen_users')

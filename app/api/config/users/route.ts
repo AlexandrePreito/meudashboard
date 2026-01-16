@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
 import { logActivity, getUserGroupId } from '@/lib/activity-log';
 
@@ -66,12 +66,25 @@ export async function GET(request: Request) {
       return NextResponse.json({ user: userData });
     }
 
-    // Se não for master, verificar se é admin de algum grupo
+    // Se não for master, verificar se é admin de algum grupo ou developer
     let adminGroupIds: string[] = [];
+    let isDeveloper = false;
     if (!user.is_master) {
-      adminGroupIds = await getUserAdminGroups(supabase, user.id);
+      const developerId = await getUserDeveloperId(user.id);
+      if (developerId) {
+        isDeveloper = true;
+        // Developer: buscar grupos dele
+        const { data: devGroups } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('developer_id', developerId)
+          .eq('status', 'active');
+        adminGroupIds = devGroups?.map(g => g.id) || [];
+      } else {
+        adminGroupIds = await getUserAdminGroups(supabase, user.id);
+      }
       
-      if (adminGroupIds.length === 0) {
+      if (adminGroupIds.length === 0 && !isDeveloper) {
         return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
       }
     }
@@ -103,14 +116,14 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Se não for master, filtrar apenas usuários dos grupos que é admin
+    // Se não for master, filtrar apenas usuários dos grupos que é admin ou developer
     let filteredUsers = users || [];
     if (!user.is_master) {
       filteredUsers = filteredUsers.filter(u => {
-        // Não mostrar usuários master para admins de grupo
+        // Não mostrar usuários master para admins de grupo ou developers
         if (u.is_master) return false;
         
-        // Verificar se usuário pertence a algum grupo que o admin gerencia
+        // Verificar se usuário pertence a algum grupo que o admin/developer gerencia
         return u.memberships?.some((m: any) => 
           m.company_group?.id && adminGroupIds.includes(m.company_group.id)
         );

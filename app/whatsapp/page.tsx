@@ -390,60 +390,6 @@ function WhatsAppDashboardContent() {
             </div>
           </div>
 
-          {/* Atalhos Rápidos */}
-          <div className="bg-white rounded-xl border border-gray-200">
-            <div className="p-4 border-b border-gray-200">
-              <h2 className="font-semibold text-gray-900 flex items-center gap-2">
-                <TrendingUp size={18} className="text-gray-400" />
-                Ações Rápidas
-              </h2>
-            </div>
-            <div className="p-4 grid grid-cols-2 gap-3">
-              <Link
-                href="/whatsapp/instancias"
-                className="flex items-center gap-3 p-4 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
-              >
-                <Smartphone className="text-green-600" size={20} />
-                <div>
-                  <p className="font-medium text-gray-900 text-sm">Instâncias</p>
-                  <p className="text-xs text-gray-500">Gerenciar conexões</p>
-                </div>
-              </Link>
-
-              <Link
-                href="/whatsapp/numeros"
-                className="flex items-center gap-3 p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-              >
-                <Users className="text-blue-600" size={20} />
-                <div>
-                  <p className="font-medium text-gray-900 text-sm">Números</p>
-                  <p className="text-xs text-gray-500">Autorizar contatos</p>
-                </div>
-              </Link>
-
-              <Link
-                href="/whatsapp/grupos"
-                className="flex items-center gap-3 p-4 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors"
-              >
-                <UsersRound className="text-purple-600" size={20} />
-                <div>
-                  <p className="font-medium text-gray-900 text-sm">Grupos</p>
-                  <p className="text-xs text-gray-500">Autorizar grupos</p>
-                </div>
-              </Link>
-
-              <Link
-                href="/whatsapp/webhook"
-                className="flex items-center gap-3 p-4 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors"
-              >
-                <Send className="text-orange-600" size={20} />
-                <div>
-                  <p className="font-medium text-gray-900 text-sm">Webhook</p>
-                  <p className="text-xs text-gray-500">Configurar Evolution</p>
-                </div>
-              </Link>
-            </div>
-          </div>
         </div>
       </div>
 

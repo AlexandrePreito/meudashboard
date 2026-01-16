@@ -9,6 +9,7 @@ interface MessageEditorProps {
   placeholder?: string;
   rows?: number;
   alertName?: string;
+  testValue?: string;
 }
 
 const EMOJI_LIST = ['📊', '📈', '📉', '💰', '💵', '🏪', '🏢', '📅', '⏰', '✅', '❌', '⚠️', '🚨', 'ℹ️', '🔔', '📣', '👋', '👍', '🎯', '🔥'];
@@ -32,7 +33,7 @@ const TEMPLATES = [
   }
 ];
 
-export default function MessageEditor({ value, onChange, placeholder, rows = 8, alertName = 'Meu Alerta' }: MessageEditorProps) {
+export default function MessageEditor({ value, onChange, placeholder, rows = 8, alertName = 'Meu Alerta', testValue }: MessageEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showEmojis, setShowEmojis] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -87,7 +88,7 @@ export default function MessageEditor({ value, onChange, placeholder, rows = 8, 
     const now = new Date();
     const exampleValues: Record<string, string> = {
       '{{nome_alerta}}': alertName,
-      '{{valor}}': 'Filial Centro: R$ 45.230,00\nFilial Sul: R$ 38.150,00\nFilial Norte: R$ 32.890,00\nTOTAL: R$ 116.270,00',
+      '{{valor}}': testValue || 'R$ 15.234,50',
       '{{data}}': now.toLocaleDateString('pt-BR'),
       '{{hora}}': now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
       '{{condicao}}': 'maior que',
