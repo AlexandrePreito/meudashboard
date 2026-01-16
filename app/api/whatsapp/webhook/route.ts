@@ -140,11 +140,9 @@ async function generateAudio(text: string): Promise<string | null> {
     console.log('━━━━ INICIANDO GERAÇÃO DE ÁUDIO ━━━━');
     console.log('[generateAudio] Texto original length:', text.length);
     
-    // Formatar texto para fala mais natural
     const speechText = formatTextForSpeech(text);
     console.log('[generateAudio] Texto formatado length:', speechText.length);
     
-    // Limitar texto (máximo ~4000 caracteres)
     const limitedText = speechText.slice(0, 4000);
     console.log('[generateAudio] Texto limitado:', limitedText.substring(0, 100) + '...');
     
@@ -172,7 +170,6 @@ async function generateAudio(text: string): Promise<string | null> {
     console.error('━━━━ ERRO NA GERAÇÃO DE ÁUDIO ━━━━');
     console.error('[generateAudio] Erro completo:', error);
     console.error('[generateAudio] Mensagem:', error.message);
-    console.error('[generateAudio] Stack:', error.stack);
     return null;
   }
 }
@@ -185,7 +182,6 @@ async function sendWhatsAppAudio(instance: any, phone: string, audioBase64: stri
     console.log('[sendWhatsAppAudio] Phone:', phone);
     console.log('[sendWhatsAppAudio] Base64 length:', audioBase64?.length || 0);
     
-    // Tentativa 1: sendWhatsAppAudio
     const url = `${instance.api_url}/message/sendWhatsAppAudio/${instance.instance_name}`;
     console.log('[sendWhatsAppAudio] Tentativa 1 - URL:', url);
     
@@ -204,14 +200,13 @@ async function sendWhatsAppAudio(instance: any, phone: string, audioBase64: stri
     console.log('[sendWhatsAppAudio] Resposta status:', response.status);
     
     if (response.ok) {
-      console.log('[sendWhatsAppAudio] ✅ Áudio enviado com sucesso (tentativa 1)');
+      console.log('[sendWhatsAppAudio] ✅ Áudio enviado (tentativa 1)');
       return true;
     }
     
     const errorText = await response.text();
     console.log('[sendWhatsAppAudio] ❌ Tentativa 1 falhou:', errorText);
     
-    // Tentativa 2: sendMedia
     const url2 = `${instance.api_url}/message/sendMedia/${instance.instance_name}`;
     console.log('[sendWhatsAppAudio] Tentativa 2 - URL:', url2);
     
@@ -232,13 +227,12 @@ async function sendWhatsAppAudio(instance: any, phone: string, audioBase64: stri
     console.log('[sendWhatsAppAudio] Resposta 2 status:', response2.status);
     
     if (response2.ok) {
-      console.log('[sendWhatsAppAudio] ✅ Áudio enviado com sucesso (tentativa 2)');
+      console.log('[sendWhatsAppAudio] ✅ Áudio enviado (tentativa 2)');
       return true;
     }
     
     const errorText2 = await response2.text();
     console.log('[sendWhatsAppAudio] ❌ Tentativa 2 falhou:', errorText2);
-    console.log('━━━━ FALHA NO ENVIO DE ÁUDIO ━━━━');
     return false;
   } catch (error) {
     console.error('━━━━ ERRO NO ENVIO DE ÁUDIO ━━━━');
