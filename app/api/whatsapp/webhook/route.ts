@@ -343,7 +343,7 @@ export async function POST(request: Request) {
         // Mostrar opções novamente
         let optionsList = '🔄 *Vamos escolher novamente!*\n\n';
         allContexts.forEach((ctx, idx) => {
-          optionsList += `${idx + 1}️⃣ ${ctx.context_name || ctx.dataset_name || 'Dataset ' + (idx + 1)}\n`;
+          optionsList += `${idx + 1}️⃣ ${ctx.dataset_name || ctx.context_name || 'Dataset ' + (idx + 1)}\n`;
         });
         optionsList += '\n_Digite o número para selecionar._';
 
@@ -415,7 +415,7 @@ export async function POST(request: Request) {
         }
 
         // Mensagem de confirmação
-        const confirmMessage = `✅ *${selectedContext.context_name || selectedContext.dataset_name || 'Agente ' + choice}* selecionado!
+        const confirmMessage = `✅ *${selectedContext.dataset_name || selectedContext.context_name || 'Agente ' + choice}* selecionado!
 
 Agora pode fazer suas perguntas. 😊
 
@@ -439,7 +439,7 @@ Digite "trocar" para mudar de agente.`;
       else {
         let optionsList = '📊 *Escolha o agente:*\n\n';
         allContexts.forEach((ctx, idx) => {
-          optionsList += `${idx + 1}️⃣ ${ctx.context_name || ctx.dataset_name || 'Dataset ' + (idx + 1)}\n`;
+          optionsList += `${idx + 1}️⃣ ${ctx.dataset_name || ctx.context_name || 'Dataset ' + (idx + 1)}\n`;
         });
         optionsList += '\n_Digite o número para selecionar._';
 
@@ -578,7 +578,7 @@ ${connectionId && datasetId
       if (allContexts && allContexts.length > 1 && !userSelection) {
         let optionsList = `Olá ${authorizedNumber.name || ''}! 👋\n\n📊 *Escolha o agente:*\n\n`;
         allContexts.forEach((ctx, idx) => {
-          optionsList += `${idx + 1}️⃣ ${ctx.context_name || ctx.dataset_name || 'Dataset ' + (idx + 1)}\n`;
+          optionsList += `${idx + 1}️⃣ ${ctx.dataset_name || ctx.context_name || 'Dataset ' + (idx + 1)}\n`;
         });
         optionsList += '\n_Digite o número para selecionar._';
 
