@@ -296,15 +296,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: 'error', reason: 'no instance' });
     }
 
-    // Verificar se é uma saudação genérica
-    const greetings = ['oi', 'olá', 'ola', 'hey', 'hi', 'hello', 'bom dia', 'boa tarde', 'boa noite', 'e aí', 'eai', 'opa', 'fala'];
-    const isGreeting = greetings.some(g => messageText.toLowerCase().trim() === g || messageText.toLowerCase().trim().startsWith(g + ' '));
-
-    // Buscar conexão Power BI do grupo
+    // ============================================
+    // 1. BUSCAR CONEXÃO E CONTEXTOS
+    // ============================================
     const { data: groupConnection } = await supabase
       .from('powerbi_connections')
       .select('id, name')
-      .eq('company_group_id', authorizedNumber.company_group_id)
+      .in('company_group_id', allGroupIds.length > 0 ? allGroupIds : [authorizedNumber?.company_group_id || ''])
       .limit(1)
       .maybeSingle();
 
@@ -330,48 +328,11 @@ export async function POST(request: Request) {
 
     console.log('Seleção do usuário:', userSelection ? 'SIM' : 'NÃO');
 
-    // Comando "trocar" para resetar seleção (verificar ANTES de processar cenários)
-    if (messageText.toLowerCase().trim() === 'trocar') {
-      if (allContexts && allContexts.length > 1) {
-        // Deletar seleção atual (de todos os grupos)
-        await supabase
-          .from('whatsapp_user_selections')
-          .delete()
-          .eq('phone_number', phone)
-          .in('company_group_id', allGroupIds.length > 0 ? allGroupIds : [authorizedNumber?.company_group_id || '']);
-
-        // Mostrar opções novamente
-        let optionsList = '🔄 *Vamos escolher novamente!*\n\n';
-        allContexts.forEach((ctx, idx) => {
-          optionsList += `${idx + 1}️⃣ ${ctx.dataset_name || ctx.context_name || 'Dataset ' + (idx + 1)}\n`;
-        });
-        optionsList += '\n_Digite o número para selecionar._';
-
-        const sent = await sendWhatsAppMessage(instance, phone, optionsList);
-
-        if (sent) {
-          await supabase.from('whatsapp_messages').insert({
-            company_group_id: authorizedNumber.company_group_id,
-            phone_number: phone,
-            message_content: optionsList,
-            direction: 'outgoing',
-            sender_name: 'Assistente IA'
-          });
-        }
-
-        return NextResponse.json({ status: 'success', reason: 'selection_reset' });
-      } else {
-        const noMultipleMessage = 'Você tem apenas um agente configurado. Não há o que trocar! 😊';
-        await sendWhatsAppMessage(instance, phone, noMultipleMessage);
-        return NextResponse.json({ status: 'success', reason: 'no_multiple_datasets' });
-      }
-    }
-
     // Buscar alerta como fallback
     const { data: alerts } = await supabase
       .from('ai_alerts')
       .select('*')
-      .eq('company_group_id', authorizedNumber.company_group_id)
+      .in('company_group_id', allGroupIds.length > 0 ? allGroupIds : [authorizedNumber?.company_group_id || ''])
       .eq('is_enabled', true)
       .order('updated_at', { ascending: false })
       .limit(1);
@@ -382,7 +343,11 @@ export async function POST(request: Request) {
     let datasetId: string | null = null;
     let aiContext: any = null;
 
-    // CENÁRIO 1: Usuário tem seleção prévia
+    // ============================================
+    // 2. VERIFICAR MÚLTIPLOS DATASETS (ANTES DE SAUDAÇÃO!)
+    // ============================================
+    
+    // Se usuário tem seleção prévia, usar ela
     if (userSelection) {
       connectionId = userSelection.selected_connection_id;
       datasetId = userSelection.selected_dataset_id;
@@ -392,15 +357,17 @@ export async function POST(request: Request) {
       );
       console.log('Usando seleção prévia do usuário');
     }
-    // CENÁRIO 2: Múltiplos datasets disponíveis e usuário NÃO tem seleção
+    // Se NÃO tem seleção e há múltiplos datasets
     else if (allContexts && allContexts.length > 1) {
       const userInput = messageText.trim();
-      const choice = parseInt(userInput);  // Verificar se usuário digitou um número válido
+      const choice = parseInt(userInput);
+
+      // Verificar se usuário digitou um número válido
       if (!isNaN(choice) && choice >= 1 && choice <= allContexts.length) {
         // Usuário escolheu um dataset
         const selectedContext = allContexts[choice - 1];
-
-        // SALVAR a escolha (usar company_group_id do contexto selecionado)
+        
+        // SALVAR a escolha
         const { error: insertError } = await supabase
           .from('whatsapp_user_selections')
           .insert({
@@ -419,13 +386,13 @@ export async function POST(request: Request) {
 
 Agora pode fazer suas perguntas. 😊
 
-Digite "trocar" para mudar de agente.`;
+_Digite "trocar" para mudar de agente._`;
 
         const sent = await sendWhatsAppMessage(instance, phone, confirmMessage);
 
         if (sent) {
           await supabase.from('whatsapp_messages').insert({
-            company_group_id: authorizedNumber.company_group_id,
+            company_group_id: selectedContext.company_group_id,
             phone_number: phone,
             message_content: confirmMessage,
             direction: 'outgoing',
@@ -458,23 +425,98 @@ Digite "trocar" para mudar de agente.`;
         return NextResponse.json({ status: 'success', reason: 'awaiting_dataset_selection' });
       }
     }
-    // CENÁRIO 3: Apenas 1 dataset disponível
+    // Apenas 1 dataset disponível
     else if (allContexts && allContexts.length === 1) {
       aiContext = allContexts[0];
       connectionId = aiContext.connection_id;
       datasetId = aiContext.dataset_id;
       console.log('Usando único dataset disponível');
     }
-    // CENÁRIO 4: Nenhum contexto, tentar alerta
+    // Nenhum contexto, tentar alerta
     else if (recentAlert) {
       connectionId = recentAlert.connection_id;
       datasetId = recentAlert.dataset_id;
       console.log('Usando alerta como fallback');
     }
 
+    // Comando "trocar" para resetar seleção
+    if (messageText.toLowerCase().trim() === 'trocar') {
+      if (allContexts && allContexts.length > 1) {
+        await supabase
+          .from('whatsapp_user_selections')
+          .delete()
+          .eq('phone_number', phone)
+          .in('company_group_id', allGroupIds.length > 0 ? allGroupIds : [authorizedNumber?.company_group_id || '']);
+
+        let optionsList = '🔄 *Vamos escolher novamente!*\n\n';
+        allContexts.forEach((ctx, idx) => {
+          optionsList += `${idx + 1}️⃣ ${ctx.dataset_name || ctx.context_name || 'Dataset ' + (idx + 1)}\n`;
+        });
+        optionsList += '\n_Digite o número para selecionar._';
+
+        const sent = await sendWhatsAppMessage(instance, phone, optionsList);
+
+        if (sent) {
+          await supabase.from('whatsapp_messages').insert({
+            company_group_id: authorizedNumber.company_group_id,
+            phone_number: phone,
+            message_content: optionsList,
+            direction: 'outgoing',
+            sender_name: 'Assistente IA'
+          });
+        }
+
+        return NextResponse.json({ status: 'success', reason: 'selection_reset' });
+      } else {
+        const noMultipleMessage = 'Você tem apenas um agente configurado. Não há o que trocar! 😊';
+        await sendWhatsAppMessage(instance, phone, noMultipleMessage);
+        return NextResponse.json({ status: 'success', reason: 'no_multiple_datasets' });
+      }
+    }
+
     console.log('Conexão encontrada:', connectionId ? 'SIM' : 'NÃO');
     console.log('Dataset encontrado:', datasetId ? 'SIM' : 'NÃO');
+
+    // ============================================
+    // 3. AGORA SIM VERIFICAR SAUDAÇÃO
+    // ============================================
+    const greetings = ['oi', 'olá', 'ola', 'hey', 'hi', 'hello', 'bom dia', 'boa tarde', 'boa noite', 'e aí', 'eai', 'opa', 'fala'];
+    const isGreeting = greetings.some(g => messageText.toLowerCase().trim() === g || messageText.toLowerCase().trim().startsWith(g + ' '));
+    
     console.log('É saudação:', isGreeting);
+
+    // Se é uma saudação, responder com boas-vindas
+    if (isGreeting) {
+      const welcomeMessage = connectionId && datasetId
+        ? `Olá ${authorizedNumber.name || ''}! 👋
+
+Sou o assistente IA da sua empresa. Posso te ajudar com análises e consultas sobre seus dados em tempo real! 📊
+
+*Como posso te ajudar hoje?*
+Exemplos do que você pode perguntar:
+1️⃣ Qual o faturamento do mês?
+2️⃣ Quais os produtos mais vendidos?
+3️⃣ Como estão as vendas por região?`
+        : `Olá ${authorizedNumber.name || ''}! 👋
+
+Sou o assistente IA da sua empresa, mas ainda não tenho acesso aos seus dados configurado.
+
+📞 *Entre em contato com o suporte* para configurar a conexão com seus dados.`;
+
+      const sent = await sendWhatsAppMessage(instance, phone, welcomeMessage);
+
+      if (sent) {
+        await supabase.from('whatsapp_messages').insert({
+          company_group_id: authorizedNumber.company_group_id,
+          phone_number: phone,
+          message_content: welcomeMessage,
+          direction: 'outgoing',
+          sender_name: 'Assistente IA'
+        });
+      }
+
+      return NextResponse.json({ status: 'success', sent, reason: 'greeting_response' });
+    }
 
     // ============================================
     // PROCESSAR COMANDOS ESPECIAIS
@@ -572,62 +614,6 @@ ${connectionId && datasetId
       return NextResponse.json({ status: 'success', reason: 'status_command' });
     }
 
-    // Se é uma saudação, responder com boas-vindas
-    if (isGreeting) {
-      // Se há múltiplos datasets e usuário não tem seleção, mostrar opções
-      if (allContexts && allContexts.length > 1 && !userSelection) {
-        let optionsList = `Olá ${authorizedNumber.name || ''}! 👋\n\n📊 *Escolha o agente:*\n\n`;
-        allContexts.forEach((ctx, idx) => {
-          optionsList += `${idx + 1}️⃣ ${ctx.dataset_name || ctx.context_name || 'Dataset ' + (idx + 1)}\n`;
-        });
-        optionsList += '\n_Digite o número para selecionar._';
-
-        const sent = await sendWhatsAppMessage(instance, phone, optionsList);
-
-        if (sent) {
-          await supabase.from('whatsapp_messages').insert({
-            company_group_id: authorizedNumber.company_group_id,
-            phone_number: phone,
-            message_content: optionsList,
-            direction: 'outgoing',
-            sender_name: 'Assistente IA'
-          });
-        }
-
-        return NextResponse.json({ status: 'success', sent, reason: 'greeting_with_selection' });
-      }
-
-      // Saudação normal quando já tem seleção ou apenas 1 dataset
-      const welcomeMessage = connectionId && datasetId
-        ? `Olá ${authorizedNumber.name || ''}! 👋
-
-Sou o assistente IA da sua empresa. Posso te ajudar com análises e consultas sobre seus dados em tempo real! 📊
-
-*Como posso te ajudar hoje?*
-Exemplos do que você pode perguntar:
-- Qual o faturamento do mês?
-- Quais os produtos mais vendidos?
-- Como estão as vendas por região?`
-        : `Olá ${authorizedNumber.name || ''}! 👋
-
-Sou o assistente IA da sua empresa, mas ainda não tenho acesso aos seus dados configurado.
-
-📞 *Entre em contato com o suporte* para configurar a conexão com seus dados.`;
-
-      const sent = await sendWhatsAppMessage(instance, phone, welcomeMessage);
-
-      if (sent) {
-        await supabase.from('whatsapp_messages').insert({
-          company_group_id: authorizedNumber.company_group_id,
-          phone_number: phone,
-          message_content: welcomeMessage,
-          direction: 'outgoing',
-          sender_name: 'Assistente IA'
-        });
-      }
-
-      return NextResponse.json({ status: 'success', sent, reason: 'greeting_response' });
-    }
 
     // Se não tem conexão configurada para perguntas reais, responder educadamente
     if (!connectionId || !datasetId) {
