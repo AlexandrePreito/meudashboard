@@ -192,12 +192,14 @@ export async function POST(request: Request) {
         allGroupIds = [authorizedNumber.company_group_id];
       }
       
-      console.log('========================================');
-      console.log('[DEBUG] Número:', phone);
-      console.log('[DEBUG] Registros encontrados:', allAuthorizedRecords?.length || 0);
-      console.log('[DEBUG] Group IDs:', allGroupIds);
-      console.log('[DEBUG] Número autorizado:', authorizedNumber ? 'SIM' : 'NÃO', authorizedNumber?.name);
-      console.log('========================================');
+      console.log('═══════════════════════════════════════');
+      console.log('🔍 [DEBUG] PHASE 1: Número Autorizado');
+      console.log('Telefone:', phone);
+      console.log('Total de registros encontrados:', allAuthorizedRecords?.length || 0);
+      console.log('allGroupIds:', JSON.stringify(allGroupIds));
+      console.log('allGroupIds length:', allGroupIds.length);
+      console.log('Authorized Number:', authorizedNumber?.name);
+      console.log('═══════════════════════════════════════');
     } catch (dbError: any) {
       console.error('Exceção ao buscar número:', dbError.message);
       return NextResponse.json({ status: 'error', reason: 'exception', error: dbError.message }, { status: 500 });
@@ -317,16 +319,30 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     // Buscar contextos de TODOS os grupos vinculados ao número
-    const { data: allContexts } = await supabase
+    console.log('═══════════════════════════════════════');
+    console.log('🔍 [DEBUG] PHASE 2: Buscando Contextos');
+    console.log('Buscando com allGroupIds:', JSON.stringify(allGroupIds));
+    console.log('═══════════════════════════════════════');
+    
+    const { data: allContexts, error: contextsError } = await supabase
       .from('ai_model_contexts')
       .select('id, connection_id, dataset_id, context_content, context_name, dataset_name, company_group_id')
       .in('company_group_id', allGroupIds)
       .eq('is_active', true);
 
-    console.log('[DEBUG] Contextos encontrados:', allContexts?.length || 0);
+    console.log('═══════════════════════════════════════');
+    console.log('📊 [DEBUG] PHASE 3: Resultado Contextos');
+    console.log('Query error?:', contextsError || 'NENHUM');
+    console.log('Total contextos encontrados:', allContexts?.length || 0);
     if (allContexts && allContexts.length > 0) {
-      console.log('[DEBUG] Datasets:', allContexts.map(ctx => ctx.dataset_name || ctx.context_name));
+      console.log('Lista de datasets:');
+      allContexts.forEach((ctx, i) => {
+        console.log(`  ${i+1}. ${ctx.dataset_name || ctx.context_name} (group: ${ctx.company_group_id})`);
+      });
+    } else {
+      console.log('⚠️ NENHUM CONTEXTO ENCONTRADO!');
     }
+    console.log('═══════════════════════════════════════');
 
     // Buscar seleção do usuário (pode ser de qualquer grupo)
     const { data: userSelection } = await supabase
@@ -372,6 +388,13 @@ export async function POST(request: Request) {
     }
     // Se NÃO tem seleção e há múltiplos datasets
     else if (allContexts && allContexts.length > 1) {
+      console.log('═══════════════════════════════════════');
+      console.log('✅ [DEBUG] PHASE 4: Múltiplos Datasets Detectados!');
+      console.log('Total:', allContexts.length);
+      console.log('Mensagem do usuário:', messageText);
+      console.log('É número?:', !isNaN(parseInt(messageText.trim())));
+      console.log('═══════════════════════════════════════');
+      
       const userInput = messageText.trim();
       const choice = parseInt(userInput);
 
