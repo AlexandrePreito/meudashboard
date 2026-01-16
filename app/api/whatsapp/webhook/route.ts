@@ -305,7 +305,7 @@ export async function POST(request: Request) {
     // Buscar TODOS os contextos disponíveis do grupo
     const { data: allContexts } = await supabase
       .from('ai_model_contexts')
-      .select('id, connection_id, dataset_id, context_content, name')
+      .select('id, connection_id, dataset_id, context_content, context_name, dataset_name')
       .eq('company_group_id', authorizedNumber.company_group_id)
       .eq('is_active', true);
 
@@ -335,7 +335,7 @@ export async function POST(request: Request) {
         // Mostrar opções novamente
         let optionsList = '🔄 *Vamos escolher novamente!*\n\n';
         allContexts.forEach((ctx, idx) => {
-          optionsList += `${idx + 1}️⃣ ${ctx.name || 'Dataset ' + (idx + 1)}\n`;
+          optionsList += `${idx + 1}️⃣ ${ctx.context_name || ctx.dataset_name || 'Dataset ' + (idx + 1)}\n`;
         });
         optionsList += '\n_Digite o número para selecionar._';
 
@@ -407,7 +407,7 @@ export async function POST(request: Request) {
         }
 
         // Mensagem de confirmação
-        const confirmMessage = `✅ *${selectedContext.name || 'Agente ' + choice}* selecionado!
+        const confirmMessage = `✅ *${selectedContext.context_name || selectedContext.dataset_name || 'Agente ' + choice}* selecionado!
 
 Agora pode fazer suas perguntas. 😊
 
@@ -431,7 +431,7 @@ Digite "trocar" para mudar de agente.`;
       else {
         let optionsList = '📊 *Escolha o agente:*\n\n';
         allContexts.forEach((ctx, idx) => {
-          optionsList += `${idx + 1}️⃣ ${ctx.name || 'Dataset ' + (idx + 1)}\n`;
+          optionsList += `${idx + 1}️⃣ ${ctx.context_name || ctx.dataset_name || 'Dataset ' + (idx + 1)}\n`;
         });
         optionsList += '\n_Digite o número para selecionar._';
 
@@ -570,7 +570,7 @@ ${connectionId && datasetId
       if (allContexts && allContexts.length > 1 && !userSelection) {
         let optionsList = `Olá ${authorizedNumber.name || ''}! 👋\n\n📊 *Escolha o agente:*\n\n`;
         allContexts.forEach((ctx, idx) => {
-          optionsList += `${idx + 1}️⃣ ${ctx.name || 'Dataset ' + (idx + 1)}\n`;
+          optionsList += `${idx + 1}️⃣ ${ctx.context_name || ctx.dataset_name || 'Dataset ' + (idx + 1)}\n`;
         });
         optionsList += '\n_Digite o número para selecionar._';
 
