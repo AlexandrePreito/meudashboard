@@ -172,14 +172,15 @@ export async function POST(request: Request) {
         .select('*, company_group_id')
         .eq('phone_number', phone)
         .eq('is_active', true)
-        .maybeSingle();
+        .order('created_at', { ascending: false })
+        .limit(1);
       
       if (error) {
         console.error('Erro ao buscar número autorizado:', error);
         return NextResponse.json({ status: 'error', reason: 'db_error', error: error.message }, { status: 500 });
       }
       
-      authorizedNumber = data;
+      authorizedNumber = data?.[0] || null;
       console.log('Número autorizado encontrado:', authorizedNumber ? 'SIM' : 'NÃO', authorizedNumber?.name);
     } catch (dbError: any) {
       console.error('Exceção ao buscar número:', dbError.message);
