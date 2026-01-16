@@ -171,7 +171,7 @@ export async function POST(request: Request) {
       // Buscar TODOS os registros do número (pode ter múltiplos grupos)
       const { data: allAuthorizedRecords, error } = await supabase
         .from('whatsapp_authorized_numbers')
-        .select('*, company_group_id')
+        .select('id, name, phone_number, company_group_id, instance_id, is_active')
         .eq('phone_number', phone)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
@@ -185,9 +185,19 @@ export async function POST(request: Request) {
       authorizedNumber = allAuthorizedRecords?.[0] || null;
       
       // Extrair TODOS os company_group_ids
-      allGroupIds = allAuthorizedRecords?.map(record => record.company_group_id) || [];
-      console.log('Número autorizado encontrado:', authorizedNumber ? 'SIM' : 'NÃO', authorizedNumber?.name);
-      console.log('Grupos encontrados para o número:', allGroupIds.length);
+      allGroupIds = allAuthorizedRecords?.map(record => record.company_group_id).filter(Boolean) || [];
+      
+      // Garantir que sempre tenha pelo menos o grupo do authorizedNumber
+      if (allGroupIds.length === 0 && authorizedNumber?.company_group_id) {
+        allGroupIds = [authorizedNumber.company_group_id];
+      }
+      
+      console.log('========================================');
+      console.log('[DEBUG] Número:', phone);
+      console.log('[DEBUG] Registros encontrados:', allAuthorizedRecords?.length || 0);
+      console.log('[DEBUG] Group IDs:', allGroupIds);
+      console.log('[DEBUG] Número autorizado:', authorizedNumber ? 'SIM' : 'NÃO', authorizedNumber?.name);
+      console.log('========================================');
     } catch (dbError: any) {
       console.error('Exceção ao buscar número:', dbError.message);
       return NextResponse.json({ status: 'error', reason: 'exception', error: dbError.message }, { status: 500 });
@@ -310,10 +320,13 @@ export async function POST(request: Request) {
     const { data: allContexts } = await supabase
       .from('ai_model_contexts')
       .select('id, connection_id, dataset_id, context_content, context_name, dataset_name, company_group_id')
-      .in('company_group_id', allGroupIds.length > 0 ? allGroupIds : [authorizedNumber?.company_group_id || ''])
+      .in('company_group_id', allGroupIds)
       .eq('is_active', true);
 
-    console.log('Contextos encontrados:', allContexts?.length || 0);
+    console.log('[DEBUG] Contextos encontrados:', allContexts?.length || 0);
+    if (allContexts && allContexts.length > 0) {
+      console.log('[DEBUG] Datasets:', allContexts.map(ctx => ctx.dataset_name || ctx.context_name));
+    }
 
     // Buscar seleção do usuário (pode ser de qualquer grupo)
     const { data: userSelection } = await supabase
