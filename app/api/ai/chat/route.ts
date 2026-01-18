@@ -202,7 +202,12 @@ export async function POST(request: Request) {
       .eq('id', companyGroupId)
       .single();
 
-    const messageLimit = developerData?.developer?.max_chat_messages_per_day || 1000;
+    // Tratar developer como objeto ou array (dependendo da relação do Supabase)
+    const developer = Array.isArray(developerData?.developer) 
+      ? developerData.developer[0] 
+      : developerData?.developer;
+    
+    const messageLimit = developer?.max_chat_messages_per_day || 1000;
 
     // Contar mensagens do chat de hoje
     const today = new Date().toISOString().split('T')[0];
