@@ -982,44 +982,6 @@ Entre em contato com o suporte para configurar a conexão! 📞`;
       return NextResponse.json({ status: 'success', sent, reason: 'no_connection_configured' });
     }
 
-    // ============================================
-    // VALIDAÇÃO DE LIMITE DIÁRIO - INÍCIO
-    // ============================================
-    const { data: developerData } = await supabase
-      .from('company_groups')
-      .select('developer:developers(max_chat_messages_per_day)')
-      .eq('id', authorizedNumber.company_group_id)
-      .single();
-
-    const messageLimit = developerData?.developer?.max_chat_messages_per_day || 1000;
-
-    const today = new Date().toISOString().split('T')[0];
-    const { count: whatsappMessagesToday } = await supabase
-      .from('whatsapp_messages')
-      .select('*', { count: 'exact', head: true })
-      .eq('company_group_id', authorizedNumber.company_group_id)
-      .eq('direction', 'outgoing')
-      .gte('created_at', `${today}T00:00:00Z`)
-      .lt('created_at', `${today}T23:59:59Z`);
-
-    if (whatsappMessagesToday !== null && whatsappMessagesToday >= messageLimit) {
-      const limitMessage = 
-        '⚠️ *Limite Diário Atingido*\n\n' +
-        'O limite de mensagens para hoje foi atingido.\n' +
-        'Entre em contato com o administrador.';
-      
-      await sendWhatsAppMessage(instance, phone, limitMessage);
-      
-      return NextResponse.json({ 
-        status: 'limit_reached',
-        message: 'Limite diário atingido',
-        current: whatsappMessagesToday,
-        max: messageLimit
-      });
-    }
-    // ============================================
-    // VALIDAÇÃO DE LIMITE DIÁRIO - FIM
-    // ============================================
 
     // ============================================
     // BUSCAR HISTÓRICO DE CONVERSAÇÃO (últimas 10 mensagens de todos os grupos)
