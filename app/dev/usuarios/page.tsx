@@ -22,6 +22,14 @@ import {
 } from 'lucide-react';
 import ScreenOrderModal from './ScreenOrderModal';
 
+const roleLabels: { [key: string]: string } = {
+  admin: 'Administrador',
+  viewer: 'Visualizador',
+  user: 'Usuário',
+  developer: 'Desenvolvedor',
+  master: 'Master',
+};
+
 interface User {
   id: string;
   email: string;
@@ -63,7 +71,7 @@ export default function DevUsuariosPage() {
     full_name: '',
     password: '',
     company_group_id: '',
-    role: 'user',
+    role: 'viewer',
     is_active: true,
     can_use_ai: false,
     can_refresh: false
@@ -100,7 +108,7 @@ export default function DevUsuariosPage() {
       full_name: '',
       password: '',
       company_group_id: groups[0]?.id || '',
-      role: 'user',
+      role: 'viewer',
       is_active: true,
       can_use_ai: false,
       can_refresh: false
@@ -159,6 +167,7 @@ export default function DevUsuariosPage() {
         ? {
             user_id: editingUser.id,
             membership_id: editingUser.membership_id,
+            email: formData.email.trim().toLowerCase(),
             full_name: formData.full_name.trim(),
             role: formData.role,
             is_active: formData.is_active,
@@ -390,7 +399,7 @@ export default function DevUsuariosPage() {
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
                         user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700'
                       }`}>
-                        {user.role === 'admin' ? 'Administrador' : 'Usuário'}
+                        {roleLabels[user.role] || 'Usuário'}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-center">
@@ -506,6 +515,21 @@ export default function DevUsuariosPage() {
                 </div>
               )}
 
+              {editingUser && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="email@exemplo.com"
+                  />
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   {editingUser ? 'Nova Senha (deixe vazio para manter)' : 'Senha'} {!editingUser && <span className="text-red-500">*</span>}
@@ -535,7 +559,7 @@ export default function DevUsuariosPage() {
                   onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="user">Usuário</option>
+                  <option value="viewer">Visualizador</option>
                   <option value="admin">Administrador</option>
                 </select>
               </div>

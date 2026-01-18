@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
+import { isUserAdminOfGroup } from '@/lib/admin-helpers';
 
 // GET - Listar números autorizados
 export async function GET(request: Request) {
@@ -110,29 +111,39 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient();
 
-    // Verificar permissão: master pode tudo, dev só seus grupos
+    // Verificar permissão: master pode tudo, dev e admin só seus grupos
     if (!user.is_master) {
       const { getUserDeveloperId } = await import('@/lib/auth');
       const developerId = await getUserDeveloperId(user.id);
       
-      if (!developerId) {
+      // Verificar se é admin do grupo
+      let isAdminOfGroup = false;
+      if (company_group_id) {
+        isAdminOfGroup = await isUserAdminOfGroup(user.id, company_group_id);
+      }
+      
+      if (!developerId && !isAdminOfGroup) {
         return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
       }
       
-      // Verificar se o grupo pertence ao desenvolvedor
+      // Verificar se o grupo pertence ao desenvolvedor ou admin
       if (!company_group_id) {
         return NextResponse.json({ error: 'company_group_id é obrigatório' }, { status: 400 });
       }
       
-      const { data: group } = await supabase
-        .from('company_groups')
-        .select('id')
-        .eq('id', company_group_id)
-        .eq('developer_id', developerId)
-        .single();
-        
-      if (!group) {
-        return NextResponse.json({ error: 'Grupo não pertence a você' }, { status: 403 });
+      if (developerId) {
+        const { data: group } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('id', company_group_id)
+          .eq('developer_id', developerId)
+          .single();
+          
+        if (!group) {
+          return NextResponse.json({ error: 'Grupo não pertence a você' }, { status: 403 });
+        }
+      } else if (!isAdminOfGroup) {
+        return NextResponse.json({ error: 'Sem permissão para este grupo' }, { status: 403 });
       }
     }
 
@@ -272,7 +283,17 @@ export async function PUT(request: Request) {
         .eq('id', id)
         .single();
 
-      if (!number || !userGroupIds.includes(number.company_group_id)) {
+      if (!number) {
+        return NextResponse.json({ error: 'Número não encontrado' }, { status: 404 });
+      }
+
+      // Verificar permissão: se admin, usar isUserAdminOfGroup; se developer, verificar grupos
+      if (userRole === 'admin') {
+        const isAdminOfGroup = await isUserAdminOfGroup(user.id, number.company_group_id);
+        if (!isAdminOfGroup) {
+          return NextResponse.json({ error: 'Sem permissão para editar este número' }, { status: 403 });
+        }
+      } else if (!userGroupIds.includes(number.company_group_id)) {
         return NextResponse.json({ error: 'Sem permissão para editar este número' }, { status: 403 });
       }
     }
@@ -407,7 +428,17 @@ export async function DELETE(request: Request) {
         .eq('id', id)
         .single();
 
-      if (!number || !userGroupIds.includes(number.company_group_id)) {
+      if (!number) {
+        return NextResponse.json({ error: 'Número não encontrado' }, { status: 404 });
+      }
+
+      // Verificar permissão: se admin, usar isUserAdminOfGroup; se developer, verificar grupos
+      if (userRole === 'admin') {
+        const isAdminOfGroup = await isUserAdminOfGroup(user.id, number.company_group_id);
+        if (!isAdminOfGroup) {
+          return NextResponse.json({ error: 'Sem permissão para excluir este número' }, { status: 403 });
+        }
+      } else if (!userGroupIds.includes(number.company_group_id)) {
         return NextResponse.json({ error: 'Sem permissão para excluir este número' }, { status: 403 });
       }
     }

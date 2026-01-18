@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser } from '@/lib/auth';
+import { isUserAdminOfGroup } from '@/lib/admin-helpers';
 
 // GET - Listar alertas
 export async function GET(request: Request) {
@@ -313,6 +314,43 @@ export async function PUT(request: Request) {
 
     const supabase = createAdminClient();
 
+    // Verificar permissão: buscar alerta e verificar acesso
+    const { data: existingAlert } = await supabase
+      .from('ai_alerts')
+      .select('company_group_id')
+      .eq('id', id)
+      .single();
+
+    if (!existingAlert) {
+      return NextResponse.json({ error: 'Alerta não encontrado' }, { status: 404 });
+    }
+
+    // Verificar permissão: master pode tudo, admin e dev só seus grupos
+    if (!user.is_master) {
+      const { getUserDeveloperId } = await import('@/lib/auth');
+      const developerId = await getUserDeveloperId(user.id);
+
+      if (developerId) {
+        // Verificar se grupo pertence ao developer
+        const { data: group } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('id', existingAlert.company_group_id)
+          .eq('developer_id', developerId)
+          .single();
+        
+        if (!group) {
+          return NextResponse.json({ error: 'Sem permissão para editar este alerta' }, { status: 403 });
+        }
+      } else {
+        // Verificar se é admin do grupo
+        const isAdminOfGroup = await isUserAdminOfGroup(user.id, existingAlert.company_group_id);
+        if (!isAdminOfGroup) {
+          return NextResponse.json({ error: 'Sem permissão para editar este alerta' }, { status: 403 });
+        }
+      }
+    }
+
     // Preparar dados para atualização
     const dataToUpdate: any = {
       updated_at: new Date().toISOString()
@@ -374,6 +412,43 @@ export async function DELETE(request: Request) {
     }
 
     const supabase = createAdminClient();
+
+    // Verificar permissão: buscar alerta e verificar acesso
+    const { data: existingAlert } = await supabase
+      .from('ai_alerts')
+      .select('company_group_id')
+      .eq('id', id)
+      .single();
+
+    if (!existingAlert) {
+      return NextResponse.json({ error: 'Alerta não encontrado' }, { status: 404 });
+    }
+
+    // Verificar permissão: master pode tudo, admin e dev só seus grupos
+    if (!user.is_master) {
+      const { getUserDeveloperId } = await import('@/lib/auth');
+      const developerId = await getUserDeveloperId(user.id);
+
+      if (developerId) {
+        // Verificar se grupo pertence ao developer
+        const { data: group } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('id', existingAlert.company_group_id)
+          .eq('developer_id', developerId)
+          .single();
+        
+        if (!group) {
+          return NextResponse.json({ error: 'Sem permissão para excluir este alerta' }, { status: 403 });
+        }
+      } else {
+        // Verificar se é admin do grupo
+        const isAdminOfGroup = await isUserAdminOfGroup(user.id, existingAlert.company_group_id);
+        if (!isAdminOfGroup) {
+          return NextResponse.json({ error: 'Sem permissão para excluir este alerta' }, { status: 403 });
+        }
+      }
+    }
 
     const { error } = await supabase
       .from('ai_alerts')

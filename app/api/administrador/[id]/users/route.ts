@@ -1,11 +1,11 @@
 /**
- * API Route - Developer Group Users
- * Gerenciamento de usuários do grupo pelo desenvolvedor
+ * API Route - Admin Group Users
+ * Gerenciamento de usuários do grupo pelo administrador
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
+import { getAuthUser } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
 
 interface RouteParams {
@@ -20,20 +20,27 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    const developerId = await getUserDeveloperId(user.id);
-    if (!developerId) {
-      return NextResponse.json({ error: 'Você não é um desenvolvedor' }, { status: 403 });
-    }
-
     const { id } = await params;
     const supabase = createAdminClient();
 
-    // Verificar se grupo pertence ao desenvolvedor
+    // Verificar se usuário é admin do grupo
+    const { data: membership } = await supabase
+      .from('user_group_membership')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('company_group_id', id)
+      .eq('is_active', true)
+      .single();
+
+    if (!membership || membership.role !== 'admin') {
+      return NextResponse.json({ error: 'Você não é admin deste grupo' }, { status: 403 });
+    }
+
+    // Buscar dados do grupo
     const { data: group } = await supabase
       .from('company_groups')
       .select('id, quota_users')
       .eq('id', id)
-      .eq('developer_id', developerId)
       .single();
 
     if (!group) {
@@ -76,20 +83,27 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    const developerId = await getUserDeveloperId(user.id);
-    if (!developerId) {
-      return NextResponse.json({ error: 'Você não é um desenvolvedor' }, { status: 403 });
-    }
-
     const { id } = await params;
     const supabase = createAdminClient();
 
-    // Verificar se grupo pertence ao desenvolvedor
+    // Verificar se usuário é admin do grupo
+    const { data: membership } = await supabase
+      .from('user_group_membership')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('company_group_id', id)
+      .eq('is_active', true)
+      .single();
+
+    if (!membership || membership.role !== 'admin') {
+      return NextResponse.json({ error: 'Você não é admin deste grupo' }, { status: 403 });
+    }
+
+    // Buscar dados do grupo
     const { data: group } = await supabase
       .from('company_groups')
       .select('id, quota_users')
       .eq('id', id)
-      .eq('developer_id', developerId)
       .single();
 
     if (!group) {
@@ -212,20 +226,27 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    const developerId = await getUserDeveloperId(user.id);
-    if (!developerId) {
-      return NextResponse.json({ error: 'Você não é um desenvolvedor' }, { status: 403 });
-    }
-
     const { id } = await params;
     const supabase = createAdminClient();
 
-    // Verificar se grupo pertence ao desenvolvedor
+    // Verificar se usuário é admin do grupo
+    const { data: membership } = await supabase
+      .from('user_group_membership')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('company_group_id', id)
+      .eq('is_active', true)
+      .single();
+
+    if (!membership || membership.role !== 'admin') {
+      return NextResponse.json({ error: 'Você não é admin deste grupo' }, { status: 403 });
+    }
+
+    // Buscar dados do grupo
     const { data: group } = await supabase
       .from('company_groups')
       .select('id')
       .eq('id', id)
-      .eq('developer_id', developerId)
       .single();
 
     if (!group) {
@@ -233,14 +254,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { user_id, role, email, full_name } = body;
+    const { user_id, role } = body;
 
     if (!user_id) {
       return NextResponse.json({ error: 'user_id é obrigatório' }, { status: 400 });
     }
 
     // Verificar se usuário pertence ao grupo
-    const { data: membership } = await supabase
+    const { data: userMembership } = await supabase
       .from('user_group_membership')
       .select('id')
       .eq('company_group_id', id)
@@ -248,39 +269,15 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       .eq('is_active', true)
       .single();
 
-    if (!membership) {
+    if (!userMembership) {
       return NextResponse.json({ error: 'Usuário não pertence a este grupo' }, { status: 404 });
-    }
-
-    // Atualizar dados do usuário se fornecidos
-    if (email || full_name) {
-      const updateData: any = {};
-      if (email) updateData.email = email.toLowerCase();
-      if (full_name) updateData.full_name = full_name;
-
-      // Atualizar na tabela users
-      await supabase
-        .from('users')
-        .update(updateData)
-        .eq('id', user_id);
-
-      // Se mudou email, atualizar no Auth também
-      if (email) {
-        try {
-          await supabase.auth.admin.updateUserById(user_id, {
-            email: email.toLowerCase(),
-          });
-        } catch (error) {
-          console.error('Erro ao atualizar email no Auth:', error);
-        }
-      }
     }
 
     // Atualizar role
     const { error: updateError } = await supabase
       .from('user_group_membership')
       .update({ role: role || 'viewer' })
-      .eq('id', membership.id);
+      .eq('id', userMembership.id);
 
     if (updateError) {
       console.error('Erro ao atualizar usuário:', updateError);
@@ -302,11 +299,6 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    const developerId = await getUserDeveloperId(user.id);
-    if (!developerId) {
-      return NextResponse.json({ error: 'Você não é um desenvolvedor' }, { status: 403 });
-    }
-
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('user_id');
@@ -317,12 +309,24 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     const supabase = createAdminClient();
 
-    // Verificar se grupo pertence ao desenvolvedor
+    // Verificar se usuário é admin do grupo
+    const { data: membership } = await supabase
+      .from('user_group_membership')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('company_group_id', id)
+      .eq('is_active', true)
+      .single();
+
+    if (!membership || membership.role !== 'admin') {
+      return NextResponse.json({ error: 'Você não é admin deste grupo' }, { status: 403 });
+    }
+
+    // Buscar dados do grupo
     const { data: group } = await supabase
       .from('company_groups')
       .select('id')
       .eq('id', id)
-      .eq('developer_id', developerId)
       .single();
 
     if (!group) {

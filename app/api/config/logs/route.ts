@@ -50,8 +50,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Sem permissao para acessar logs' }, { status: 403 });
     }
 
-    // SEGURANCA: Validar acesso ao grupo
-    if (groupId && userRole !== 'master' && !userGroupIds.includes(groupId)) {
+    // SEGURANCA: Validar acesso ao grupo (mas não bloquear se only_mine=true)
+    if (groupId && userRole !== 'master' && !onlyMine && !userGroupIds.includes(groupId)) {
       return NextResponse.json({ error: 'Sem permissao para este grupo' }, { status: 403 });
     }
 

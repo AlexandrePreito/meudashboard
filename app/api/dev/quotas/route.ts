@@ -46,7 +46,8 @@ export async function GET() {
         quota_screens,
         quota_alerts,
         quota_whatsapp_per_day,
-        quota_ai_credits_per_day
+        quota_ai_credits_per_day,
+        quota_refreshes
       `)
       .eq('developer_id', developerId)
       .order('name');
@@ -131,7 +132,7 @@ export async function PUT(request: Request) {
     }
 
     // Validar que soma nao excede plano
-    let totalUsers = 0, totalScreens = 0, totalAlerts = 0, totalWhatsapp = 0, totalAI = 0;
+    let totalUsers = 0, totalScreens = 0, totalAlerts = 0, totalWhatsapp = 0, totalAI = 0, totalRefreshes = 0;
 
     Object.values(quotas).forEach((q: any) => {
       totalUsers += q.quota_users || 0;
@@ -139,6 +140,7 @@ export async function PUT(request: Request) {
       totalAlerts += q.quota_alerts || 0;
       totalWhatsapp += q.quota_whatsapp_per_day || 0;
       totalAI += q.quota_ai_credits_per_day || 0;
+      totalRefreshes += q.quota_refreshes || 0;
     });
 
     if (totalUsers > plan.max_users) {
@@ -183,6 +185,7 @@ export async function PUT(request: Request) {
           quota_alerts: q.quota_alerts || 0,
           quota_whatsapp_per_day: q.quota_whatsapp_per_day || 0,
           quota_ai_credits_per_day: q.quota_ai_credits_per_day || 0,
+          quota_refreshes: q.quota_refreshes || 0,
           updated_at: new Date().toISOString(),
         })
         .eq('id', groupId);

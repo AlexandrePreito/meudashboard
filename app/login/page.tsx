@@ -101,6 +101,13 @@ export default function LoginPage() {
       console.log('=== DADOS LOGIN ===', JSON.stringify(data, null, 2));
 
       if (response.ok && data.success) {
+        console.log('🔍 DEBUG - Dados do usuário:', {
+          isDeveloperUser: data.user?.isDeveloperUser,
+          developerId: data.user?.developerId,
+          role: data.user?.role,
+          groupIds: data.user?.groupIds,
+        });
+        
         // Salvar cor do tema para evitar flash
         if (data.user?.developer?.primary_color) {
           localStorage.setItem('theme-color', data.user.developer.primary_color);
@@ -116,6 +123,9 @@ export default function LoginPage() {
             router.push('/dev');
           } else if (data.user?.role === 'master') {
             router.push('/admin');
+          } else if (data.user?.role === 'admin' && data.user?.groupIds?.length > 0) {
+            // Admin vai para página de gestão do seu grupo
+            router.push(`/administrador/${data.user.groupIds[0]}`);
           } else {
             router.push('/dashboard');
           }

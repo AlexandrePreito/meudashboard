@@ -23,6 +23,7 @@ import {
   Smartphone,
   UsersRound,
   MessageSquare,
+  MessageCircle,
   Webhook,
   LayoutDashboard,
   Bell,
@@ -120,6 +121,9 @@ export default function Sidebar() {
   // Verifica se é usuário comum
   const isRegularUser = !user?.is_master && !user?.is_developer && user?.role === 'user';
 
+  // Verificar se é admin (não master, não dev)
+  const isAdmin = !user?.is_master && !user?.is_developer && user?.role === 'admin';
+
   // User comum sempre vê as telas no sidebar, independente da página
   const showScreens = isRegularUser || pathname === '/dashboard' || pathname.startsWith('/tela') || pathname.startsWith('/powerbi');
 
@@ -128,17 +132,18 @@ export default function Sidebar() {
   const showWhatsAppMenu = pathname.startsWith('/whatsapp') || pathname.startsWith('/alertas');
   const showAdminMenu = pathname.startsWith('/admin');
   const showDevMenu = pathname.startsWith('/dev');
+  const showAdministradorMenu = pathname.startsWith('/administrador/');
 
-  // Verifica se usuário pode ver menu de configurações (master ou admin)
-  const canSeeConfig = user?.is_master || user?.role === 'admin';
+  // Verifica se usuário pode ver menu de configurações (apenas master, não admin)
+  const canSeeConfig = user?.is_master;
 
   const powerBIMenuItems = [
     { href: '/powerbi', icon: Activity, label: 'Dashboard' },
-    { href: '/powerbi/conexoes', icon: LinkIcon, label: 'Conexões' },
-    { href: '/powerbi/relatorios', icon: FileText, label: 'Relatórios' },
+    { href: '/powerbi/conexoes', icon: LinkIcon, label: 'Conexões', hideForAdmin: true },
+    { href: '/powerbi/relatorios', icon: FileText, label: 'Relatórios', hideForAdmin: true },
     { href: '/powerbi/telas', icon: Monitor, label: 'Telas' },
-    { href: '/powerbi/contextos', icon: Brain, label: 'Contextos IA', requiresPermission: 'ai' },
-    { href: '/powerbi/ordem-atualizacao', icon: ArrowUpDown, label: 'Ordem Atualização' },
+    { href: '/powerbi/contextos', icon: Brain, label: 'Contextos IA', requiresPermission: 'ai', hideForAdmin: true },
+    { href: '/powerbi/ordem-atualizacao', icon: ArrowUpDown, label: 'Ordem Atualização', hideForAdmin: true },
   ];
 
   // Itens de configuração - filtrados por perfil
@@ -163,27 +168,29 @@ export default function Sidebar() {
 
   const whatsappMenuItems = [
     { href: '/whatsapp', icon: LayoutDashboard, label: 'Dashboard', requiresPermission: 'whatsapp' },
-    { href: '/whatsapp/instancias', icon: Smartphone, label: 'Instâncias', requiresPermission: 'whatsapp' },
+    { href: '/whatsapp/instancias', icon: Smartphone, label: 'Instâncias', requiresPermission: 'whatsapp', hideForAdmin: true },
     { href: '/whatsapp/numeros', icon: User, label: 'Números Autorizados', requiresPermission: 'whatsapp' },
-    { href: '/whatsapp/grupos', icon: UsersRound, label: 'Grupos Autorizados', requiresPermission: 'whatsapp', hideForDeveloper: true },
+    { href: '/whatsapp/grupos', icon: UsersRound, label: 'Grupos Autorizados', requiresPermission: 'whatsapp', hideForDeveloper: true, hideForAdmin: true },
     { href: '/whatsapp/mensagens', icon: MessageSquare, label: 'Mensagens', requiresPermission: 'whatsapp' },
     { href: '/alertas', icon: Bell, label: 'Alertas', requiresPermission: 'alerts' },
     { href: '/alertas/historico', icon: History, label: 'Histórico', requiresPermission: 'alerts' },
-    { href: '/whatsapp/webhook', icon: Webhook, label: 'Webhook', requiresPermission: 'whatsapp', hideForDeveloper: true },
+    { href: '/whatsapp/webhook', icon: Webhook, label: 'Webhook', requiresPermission: 'whatsapp', hideForDeveloper: true, hideForAdmin: true },
   ];
 
   useEffect(() => {
-    if (activeGroup?.id) {
+    if (activeGroup?.id && user) {
       loadScreens(activeGroup.id);
     } else {
       setScreens([]);
     }
-  }, [activeGroup?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeGroup?.id, user?.id, user?.role, user?.is_master, user?.is_developer]);
 
   async function loadScreens(groupId: string) {
     setLoading(true);
     try {
-      // Usuário comum precisa filtrar por permissão (only_mine=true)
+      // Para usuários comuns (não master, não developer, não admin), sempre usar only_mine=true
+      // Para garantir que vejam apenas as telas às quais têm acesso
       const needsFilter = !user?.is_master && !user?.is_developer && user?.role !== 'admin';
       const url = needsFilter
         ? `/api/powerbi/screens?group_id=${groupId}&only_mine=true`
@@ -211,9 +218,13 @@ export default function Sidebar() {
           });
         console.log('Telas processadas:', activeScreens.map((s: any) => ({ title: s.title, icon: s.icon })));
         setScreens(activeScreens);
+      } else {
+        // Se der erro, definir telas vazias para não mostrar nada
+        setScreens([]);
       }
     } catch (error) {
       console.error('Erro ao carregar telas:', error);
+      setScreens([]);
     } finally {
       setLoading(false);
     }
@@ -241,7 +252,70 @@ export default function Sidebar() {
         </button>
 
         <div className="flex flex-col h-full overflow-y-auto py-4">
-          {/* Menu de Configurações (master e admin) */}
+          {/* Menu Principal para ADMIN */}
+          {isAdmin && !showConfigMenu && !showPowerBIMenu && !showWhatsAppMenu && !showAdministradorMenu && !showAdminMenu && !showDevMenu && !pathname.startsWith('/tela') && !pathname.startsWith('/dashboard') && (
+            <>
+              {!isCollapsed && (
+                <div className="px-4 pt-4 pb-2">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    Menu Principal
+                  </h3>
+                </div>
+              )}
+              <nav className="px-2 pb-4 border-b border-gray-100 mb-2">
+                <Link
+                  href="/administrador"
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 ${
+                    pathname.startsWith('/administrador')
+                      ? 'nav-active'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                  title="Administrador"
+                >
+                  <Building2 size={20} />
+                  {!isCollapsed && <span className="font-medium">Administrador</span>}
+                </Link>
+                <Link
+                  href="/powerbi"
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 ${
+                    pathname.startsWith('/powerbi')
+                      ? 'nav-active'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                  title="Power BI"
+                >
+                  <BarChart3 size={20} />
+                  {!isCollapsed && <span className="font-medium">Power BI</span>}
+                </Link>
+                <Link
+                  href="/whatsapp"
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 ${
+                    pathname.startsWith('/whatsapp') || pathname.startsWith('/alertas')
+                      ? 'nav-active'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                  title="WhatsApp"
+                >
+                  <MessageSquare size={20} />
+                  {!isCollapsed && <span className="font-medium">WhatsApp</span>}
+                </Link>
+                <Link
+                  href="/dashboard"
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 ${
+                    pathname === '/dashboard'
+                      ? 'nav-active'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                  title="Dashboard"
+                >
+                  <LayoutDashboard size={20} />
+                  {!isCollapsed && <span className="font-medium">Dashboard</span>}
+                </Link>
+              </nav>
+            </>
+          )}
+
+          {/* Menu de Configurações (apenas master) */}
           {showConfigMenu && canSeeConfig && (
             <>
               {!isCollapsed && (
@@ -272,6 +346,52 @@ export default function Sidebar() {
                   );
                 })}
               </nav>
+            </>
+          )}
+
+          {/* Menu de Administrador (Grupo) */}
+          {showAdministradorMenu && (
+            <>
+              {!isCollapsed && (
+                <div className="px-3 mb-2">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    ADMINISTRADOR
+                  </p>
+                </div>
+              )}
+              <Link
+                href={pathname.split('/').slice(0, 3).join('/')}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                  pathname === pathname.split('/').slice(0, 3).join('/') && !pathname.includes('/usuarios') && !pathname.includes('/logs')
+                    ? 'nav-active' 
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <Building2 className="h-5 w-5" />
+                {!isCollapsed && <span>Administrador</span>}
+              </Link>
+              <Link
+                href={`${pathname.split('/').slice(0, 3).join('/')}/usuarios`}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                  pathname.includes('/usuarios') 
+                    ? 'nav-active' 
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <Users className="h-5 w-5" />
+                {!isCollapsed && <span>Usuários</span>}
+              </Link>
+              <Link
+                href={`${pathname.split('/').slice(0, 3).join('/')}/logs`}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                  pathname.includes('/logs') 
+                    ? 'nav-active' 
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <FileText className="h-5 w-5" />
+                {!isCollapsed && <span>Logs</span>}
+              </Link>
             </>
           )}
 
@@ -356,7 +476,13 @@ export default function Sidebar() {
               )}
               <nav className="px-2 pb-4 border-b border-gray-100 mb-2">
                 {whatsappMenuItems
-                  .filter(item => !(item.hideForDeveloper && user?.is_developer))
+                  .filter(item => {
+                    // Ocultar para developer se marcado
+                    if ((item as any).hideForDeveloper && user?.is_developer) return false;
+                    // Ocultar para admin se marcado
+                    if ((item as any).hideForAdmin && isAdmin) return false;
+                    return true;
+                  })
                   .map((item) => {
                   const Icon = item.icon;
                   let isActive = pathname === item.href;
@@ -401,7 +527,13 @@ export default function Sidebar() {
               )}
               <nav className="px-2 pb-4 border-b border-gray-100 mb-2">
                   {powerBIMenuItems
-                    .filter(item => !((item as any).hideForDeveloper && user?.is_developer))
+                    .filter(item => {
+                      // Ocultar para developer se marcado
+                      if ((item as any).hideForDeveloper && user?.is_developer) return false;
+                      // Ocultar para admin se marcado
+                      if ((item as any).hideForAdmin && isAdmin) return false;
+                      return true;
+                    })
                     .map((item) => {
                     const Icon = item.icon;
                     const isActive = pathname === item.href;

@@ -6,6 +6,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
 import DatasetSelector from '@/components/whatsapp/DatasetSelector';
 import { useMenu } from '@/contexts/MenuContext';
+import { showToast } from '@/lib/toast';
 import {
   Users,
   Plus,
@@ -59,6 +60,8 @@ function NumerosContent() {
 
   const [showModal, setShowModal] = useState(false);
   const [editingNumber, setEditingNumber] = useState<AuthorizedNumber | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [numberToDelete, setNumberToDelete] = useState<AuthorizedNumber | null>(null);
 
   const [formData, setFormData] = useState({
     phone_number: '',
@@ -181,7 +184,7 @@ function NumerosContent() {
 
   async function handleSave() {
     if (!formData.phone_number || !formData.name) {
-      alert('Telefone e nome são obrigatórios');
+      showToast('Telefone e nome são obrigatórios', 'error');
       return;
     }
 
@@ -215,35 +218,46 @@ function NumerosContent() {
       });
 
       if (res.ok) {
-        alert(editingNumber ? 'Número atualizado!' : 'Número autorizado!');
+        showToast(editingNumber ? 'Número atualizado!' : 'Número autorizado!', 'success');
         setShowModal(false);
         resetForm();
         loadNumbers(activeGroup);
       } else {
         const data = await res.json();
-        alert(data.error || 'Erro ao salvar');
+        showToast(data.error || 'Erro ao salvar', 'error');
       }
     } catch (err) {
-      alert('Erro ao salvar número');
+      showToast('Erro ao salvar número', 'error');
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Remover este número autorizado?')) return;
+  function openDeleteModal(number: AuthorizedNumber) {
+    setNumberToDelete(number);
+    setShowDeleteModal(true);
+  }
+
+  function closeDeleteModal() {
+    setShowDeleteModal(false);
+    setNumberToDelete(null);
+  }
+
+  async function handleDelete() {
+    if (!numberToDelete) return;
 
     try {
-      const res = await fetch(`/api/whatsapp/authorized-numbers?id=${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/whatsapp/authorized-numbers?id=${numberToDelete.id}`, { method: 'DELETE' });
       if (res.ok) {
-        alert('Número removido!');
+        showToast('Número removido!', 'success');
+        closeDeleteModal();
         loadNumbers(activeGroup);
       } else {
         const data = await res.json();
-        alert(data.error || 'Erro ao remover');
+        showToast(data.error || 'Erro ao remover', 'error');
       }
     } catch (err) {
-      alert('Erro ao remover número');
+      showToast('Erro ao remover número', 'error');
     }
   }
 
@@ -446,7 +460,7 @@ function NumerosContent() {
                             <Edit size={16} />
                           </button>
                           <button
-                            onClick={() => handleDelete(num.id)}
+                            onClick={() => openDeleteModal(num)}
                             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             title="Excluir"
                           >
@@ -571,6 +585,44 @@ function NumerosContent() {
             </div>
           </div>
         )}
+
+      {/* Modal de Confirmação de Exclusão */}
+      {showDeleteModal && numberToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
+            <div className="p-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                  <Trash2 className="w-6 h-6 text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Excluir Número</h3>
+                  <p className="text-sm text-gray-500">Esta ação não pode ser desfeita</p>
+                </div>
+              </div>
+              
+              <p className="text-gray-700 mb-6">
+                Tem certeza que deseja remover o número autorizado <span className="font-semibold">"{numberToDelete.name}"</span>?
+              </p>
+
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  onClick={closeDeleteModal}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors"
+                >
+                  Excluir
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
   );
 }

@@ -112,6 +112,8 @@ function TelasContent() {
   const [userSearchTerm, setUserSearchTerm] = useState('');
   const [userRole, setUserRole] = useState<string>('user');
   const [accessDenied, setAccessDenied] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [screenToDelete, setScreenToDelete] = useState<Screen | null>(null);
   
   const [form, setForm] = useState({
     report_id: '',
@@ -331,15 +333,26 @@ function TelasContent() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Tem certeza que deseja excluir esta tela?')) return;
+  function openDeleteModal(screen: Screen) {
+    setScreenToDelete(screen);
+    setShowDeleteModal(true);
+  }
+
+  function closeDeleteModal() {
+    setShowDeleteModal(false);
+    setScreenToDelete(null);
+  }
+
+  async function handleDelete() {
+    if (!screenToDelete) return;
 
     try {
-      const res = await fetch(`/api/powerbi/screens/${id}`, {
+      const res = await fetch(`/api/powerbi/screens/${screenToDelete.id}`, {
         method: 'DELETE'
       });
 
       if (res.ok) {
+        closeDeleteModal();
         loadData(activeGroup);
       } else {
         const data = await res.json();
@@ -347,6 +360,7 @@ function TelasContent() {
       }
     } catch (error) {
       console.error('Erro ao excluir:', error);
+      alert('Erro ao excluir tela');
     }
   }
 
@@ -527,7 +541,7 @@ function TelasContent() {
                         <Copy size={16} />
                       </button>
                       <button
-                        onClick={() => handleDelete(screen.id)}
+                        onClick={() => openDeleteModal(screen)}
                         className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg"
                         title="Excluir"
                       >
@@ -794,6 +808,44 @@ function TelasContent() {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Exclusão */}
+      {showDeleteModal && screenToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
+            <div className="p-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                  <Trash2 className="w-6 h-6 text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Excluir Tela</h3>
+                  <p className="text-sm text-gray-500">Esta ação não pode ser desfeita</p>
+                </div>
+              </div>
+              
+              <p className="text-gray-700 mb-6">
+                Tem certeza que deseja excluir a tela <span className="font-semibold">"{screenToDelete.title}"</span>?
+              </p>
+
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  onClick={closeDeleteModal}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors"
+                >
+                  Excluir
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

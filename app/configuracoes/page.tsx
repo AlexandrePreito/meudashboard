@@ -453,46 +453,81 @@ function ConfiguracoesContent() {
 
         {/* Perfil do usuário comum */}
         {isRegularUser && !loading && myProfile && (
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            {[myProfile].map(user => (
-              <div key={user.id} className="space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center text-white text-2xl font-medium">
-                    {user.full_name.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-gray-900">{user.full_name}</h2>
-                    <p className="text-gray-500">{user.email}</p>
-                  </div>
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            {/* Conteúdo */}
+            <div className="p-6 space-y-6">
+              {/* Header do perfil */}
+              <div className="flex items-center gap-4 pb-6 border-b border-gray-100">
+                <div className="w-20 h-20 rounded-full btn-primary flex items-center justify-center text-white text-3xl font-bold">
+                  {myProfile.full_name.charAt(0).toUpperCase()}
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-100">
-                  <div>
-                    <p className="text-sm text-gray-500">Telefone</p>
-                    <p className="font-medium text-gray-900">{user.phone || 'Não informado'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Grupo</p>
-                    <p className="font-medium text-gray-900">{user.memberships[0]?.company_group?.name || '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Último Acesso</p>
-                    <p className="font-medium text-gray-900">{formatDate(user.last_login_at)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Membro desde</p>
-                    <p className="font-medium text-gray-900">{formatDate(user.created_at)}</p>
-                  </div>
-                </div>
-                <div className="pt-4">
-                  <button
-                    onClick={() => openEditUser(user)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    Editar Meus Dados
-                  </button>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">{myProfile.full_name}</h2>
+                  <p className="text-gray-500 mt-1">{myProfile.email}</p>
                 </div>
               </div>
-            ))}
+              {/* Cards de informações */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-lg bg-primary-light flex items-center justify-center">
+                      <span className="text-primary text-xl">📞</span>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Telefone</p>
+                      <p className="text-sm font-semibold text-gray-900 mt-0.5">{myProfile.phone || 'Não informado'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-lg bg-primary-light flex items-center justify-center">
+                      <span className="text-primary text-xl">🏢</span>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Grupo</p>
+                      <p className="text-sm font-semibold text-gray-900 mt-0.5">{myProfile.memberships[0]?.company_group?.name || '-'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-lg bg-primary-light flex items-center justify-center">
+                      <span className="text-primary text-xl">🕒</span>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Último Acesso</p>
+                      <p className="text-sm font-semibold text-gray-900 mt-0.5">{formatDate(myProfile.last_login_at)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-lg bg-primary-light flex items-center justify-center">
+                      <span className="text-primary text-xl">📅</span>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Membro desde</p>
+                      <p className="text-sm font-semibold text-gray-900 mt-0.5">{formatDate(myProfile.created_at)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Botão de ação */}
+              <div className="pt-4 border-t border-gray-100">
+                <Button
+                  onClick={() => openEditUser(myProfile)}
+                  className="w-full md:w-auto"
+                  icon={<Edit size={18} />}
+                >
+                  Editar Meus Dados
+                </Button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -529,7 +564,7 @@ function ConfiguracoesContent() {
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
                               <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-medium ${
-                                user.is_master ? 'bg-purple-600' : 'bg-blue-600'
+                                user.is_master ? 'bg-purple-600' : 'btn-primary'
                               }`}>
                                 {user.full_name.charAt(0).toUpperCase()}
                               </div>
@@ -564,7 +599,7 @@ function ConfiguracoesContent() {
                             <div className="flex items-center justify-end gap-1">
                               <button
                                 onClick={() => openEditUser(user)}
-                                className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                className="p-2 text-gray-400 hover:text-primary hover:bg-primary-light rounded-lg transition-colors"
                                 title="Editar"
                               >
                                 <Edit size={16} />
@@ -599,8 +634,8 @@ function ConfiguracoesContent() {
                     <div key={group.id} className="bg-white rounded-xl border border-gray-200 p-5">
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                            <Building2 className="text-blue-600" size={24} />
+                          <div className="w-12 h-12 rounded-lg bg-primary-light flex items-center justify-center">
+                            <Building2 className="text-primary" size={24} />
                           </div>
                           <div>
                             <h3 className="font-semibold text-gray-900">{group.name}</h3>
@@ -610,7 +645,7 @@ function ConfiguracoesContent() {
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => openEditGroup(group)}
-                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            className="p-1.5 text-gray-400 hover:text-primary hover:bg-primary-light rounded-lg transition-colors"
                           >
                             <Edit size={16} />
                           </button>

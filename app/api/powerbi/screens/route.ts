@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
+import { getUserAdminGroups, isUserAdminOfGroup } from '@/lib/admin-helpers';
 
 // GET - Listar telas
 export async function GET(request: Request) {
@@ -38,14 +39,22 @@ export async function GET(request: Request) {
 
         userGroupIds = devGroups?.map(g => g.id) || [];
       } else {
-        // Usuario comum: buscar via membership
-        const { data: memberships } = await supabase
-          .from('user_group_membership')
-          .select('company_group_id')
-          .eq('user_id', user.id)
-          .eq('is_active', true);
+        // Verificar se é admin de algum grupo
+        const adminGroupIds = await getUserAdminGroups(user.id);
+        
+        if (adminGroupIds.length > 0) {
+          // Se é admin, usar apenas grupos onde é admin
+          userGroupIds = adminGroupIds;
+        } else {
+          // Usuario comum: buscar via membership
+          const { data: memberships } = await supabase
+            .from('user_group_membership')
+            .select('company_group_id')
+            .eq('user_id', user.id)
+            .eq('is_active', true);
 
-        userGroupIds = memberships?.map(m => m.company_group_id) || [];
+          userGroupIds = memberships?.map(m => m.company_group_id) || [];
+        }
       }
 
       if (userGroupIds.length === 0) {
@@ -144,24 +153,28 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient();
 
-    // Verificar permissão: master pode tudo, dev só seus grupos
+    // Verificar permissão: master pode tudo, dev e admin só seus grupos
     if (!user.is_master) {
       const developerId = await getUserDeveloperId(user.id);
       
-      if (!developerId) {
-        return NextResponse.json({ error: 'Sem permissão para criar telas' }, { status: 403 });
-      }
+      if (developerId) {
+        // Desenvolvedor: verificar se o grupo pertence ao desenvolvedor
+        const { data: groupCheck } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('id', company_group_id)
+          .eq('developer_id', developerId)
+          .single();
 
-      // Verificar se o grupo pertence ao desenvolvedor
-      const { data: groupCheck } = await supabase
-        .from('company_groups')
-        .select('id')
-        .eq('id', company_group_id)
-        .eq('developer_id', developerId)
-        .single();
-
-      if (!groupCheck) {
-        return NextResponse.json({ error: 'Grupo não pertence a você' }, { status: 403 });
+        if (!groupCheck) {
+          return NextResponse.json({ error: 'Grupo não pertence a você' }, { status: 403 });
+        }
+      } else {
+        // Admin: verificar se é admin do grupo
+        const isAdmin = await isUserAdminOfGroup(user.id, company_group_id);
+        if (!isAdmin) {
+          return NextResponse.json({ error: 'Sem permissão para criar telas neste grupo' }, { status: 403 });
+        }
       }
     }
 

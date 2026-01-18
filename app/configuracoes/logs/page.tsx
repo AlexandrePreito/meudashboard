@@ -100,9 +100,11 @@ function LogsContent() {
   });
   const [currentUser, setCurrentUser] = useState<{ id?: string; is_master?: boolean; role?: string } | null>(null);
 
+  // Verifica se é usuário comum (declarado antes do useEffect)
+  const isRegularUser = !currentUser?.is_master && currentUser?.role === 'user';
+
   useEffect(() => {
     loadCurrentUser();
-    loadUsers();
   }, []);
 
   async function loadCurrentUser() {
@@ -126,18 +128,30 @@ function LogsContent() {
     }
   }
 
-  // Verifica se é usuário comum
-  const isRegularUser = !currentUser?.is_master && currentUser?.role === 'user';
+  useEffect(() => {
+    // Só carregar usuários se não for usuário comum e se currentUser já foi carregado
+    if (currentUser && !isRegularUser) {
+      loadUsers();
+    }
+  }, [currentUser]);
 
   useEffect(() => {
+    // Só carregar logs depois que currentUser foi definido
+    if (!currentUser) return;
+    
     if (activeTab === 'logs') {
       loadLogs(activeGroup);
     } else {
       loadSummary();
     }
-  }, [activeTab, page, filters, activeGroup]);
+  }, [activeTab, page, filters, activeGroup, currentUser]);
 
   async function loadUsers() {
+    // Usuários comuns não precisam carregar lista de usuários
+    if (isRegularUser) {
+      return;
+    }
+    
     try {
       const res = await fetch('/api/config/users');
       if (res.ok) {
@@ -157,12 +171,20 @@ function LogsContent() {
         limit: '30'
       });
       
-      if (filters.user_id) params.append('user_id', filters.user_id);
+      // Se for usuário comum, passar only_mine=true e NÃO passar group_id
+      if (isRegularUser) {
+        params.append('only_mine', 'true');
+      } else {
+        // Apenas para admins/masters/dev: permitir filtros e group_id
+        if (filters.user_id) params.append('user_id', filters.user_id);
+        if (currentGroup) params.append('group_id', currentGroup.id);
+      }
+      
+      // Filtros que todos podem usar
       if (filters.module) params.append('module', filters.module);
       if (filters.action_type) params.append('action_type', filters.action_type);
       if (filters.date_from) params.append('date_from', filters.date_from);
       if (filters.date_to) params.append('date_to', filters.date_to);
-      if (currentGroup) params.append('group_id', currentGroup.id);
 
       const res = await fetch(`/api/config/logs?${params}`);
       if (res.ok) {

@@ -79,30 +79,40 @@ function getNavItems(user: HeaderProps['user']) {
     return items;
   }
 
-  // Admin: apenas master
+  // MASTER: Admin
   if (user.is_master) {
     items.push({ href: '/admin', label: 'Admin' });
   }
 
-  // Desenvolvedor: apenas desenvolvedores
+  // DESENVOLVEDOR: Desenvolvedor
   if (user.is_developer) {
     items.push({ href: '/dev', label: 'Desenvolvedor' });
   }
   
+  // ADMIN (não master, não dev): Administrador
+  if (!user.is_master && !user.is_developer && user.role === 'admin') {
+    items.push({ href: '/administrador', label: 'Administrador' });
+    items.push({ href: '/powerbi', label: 'Power BI' });
+    items.push({ href: '/whatsapp', label: 'WhatsApp' });
+    items.push({ href: '/dashboard', label: 'Dashboards' });
+    // ADMIN NÃO TEM Configurações
+    return items;
+  }
+
   // Para developer: Power BI e WhatsApp vêm antes de Dashboards
   if (user.is_developer && !user.is_master) {
     items.push({ href: '/powerbi', label: 'Power BI' });
     items.push({ href: '/whatsapp', label: 'WhatsApp' });
     items.push({ href: '/dashboard', label: 'Dashboards' });
-  } else if (user.is_master || user.role === 'admin') {
-    // Para master e admin: ordem original
+  } else if (user.is_master) {
+    // Para master: ordem original
     items.push({ href: '/dashboard', label: 'Dashboards' });
     items.push({ href: '/powerbi', label: 'Power BI' });
     items.push({ href: '/whatsapp', label: 'WhatsApp' });
   }
 
-  // Configurações: master e admin (dev gerencia usuários em /dev/groups/[id])
-  if (user.is_master || user.role === 'admin') {
+  // Configurações: APENAS master
+  if (user.is_master) {
     items.push({ href: '/configuracoes', label: 'Configurações' });
   }
 

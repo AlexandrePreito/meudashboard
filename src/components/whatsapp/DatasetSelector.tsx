@@ -29,32 +29,73 @@ export default function DatasetSelector({
     async function loadDatasets() {
       setLoading(true);
       try {
-        // Buscar conexões - passar company_group_id se existir
-        const url = companyGroupId 
-          ? `/api/powerbi/connections?company_group_id=${companyGroupId}`
-          : '/api/powerbi/connections';
+        if (!companyGroupId) {
+          // Se não tem groupId, não mostrar datasets
+          setAvailableDatasets([]);
+          setLoading(false);
+          return;
+        }
+
+        // Buscar relatórios do grupo para obter datasets já usados
+        const reportsUrl = `/api/powerbi/reports?group_id=${companyGroupId}`;
+        const reportsRes = await fetch(reportsUrl);
+        const reportsData = await reportsRes.json();
         
-        const res = await fetch(url);
-        const data = await res.json();
+        const reports = reportsData.reports || [];
         
-        let connections = data.connections || [];
+        // Extrair datasets únicos dos relatórios (connection_id + dataset_id)
+        const usedDatasetsMap = new Map<string, any>();
         
-        // Para cada conexão, buscar datasets
-        const allDatasets: any[] = [];
-        for (const conn of connections) {
-          try {
-            const dsRes = await fetch(`/api/powerbi/datasets?connection_id=${conn.id}`);
-            const dsData = await dsRes.json();
-            (dsData.datasets || []).forEach((ds: any) => {
-              allDatasets.push({
-                connection_id: conn.id,
-                connection_name: conn.name,
-                dataset_id: ds.id,
-                dataset_name: ds.name
+        reports.forEach((report: any) => {
+          if (report.dataset_id && report.connection) {
+            const key = `${report.connection_id}-${report.dataset_id}`;
+            if (!usedDatasetsMap.has(key)) {
+              usedDatasetsMap.set(key, {
+                connection_id: report.connection_id,
+                connection_name: report.connection.name || '',
+                dataset_id: report.dataset_id,
+                dataset_name: report.dataset_id // Nome será atualizado se possível
               });
-            });
+            }
+          }
+        });
+
+        const usedDatasets = Array.from(usedDatasetsMap.values());
+
+        // Buscar nomes dos datasets do Power BI para melhorar a exibição
+        const allDatasets: any[] = [];
+        const connectionIds = [...new Set(usedDatasets.map(d => d.connection_id))];
+        
+        for (const connId of connectionIds) {
+          try {
+            const dsRes = await fetch(`/api/powerbi/datasets?connection_id=${connId}`);
+            const dsData = await dsRes.json();
+            
+            // Criar mapa de datasets do Power BI
+            const pbiDatasetsMap = new Map(
+              (dsData.datasets || []).map((ds: any) => [ds.id, ds.name])
+            );
+            
+            // Atualizar datasets usados com os nomes do Power BI
+            usedDatasets
+              .filter(d => d.connection_id === connId)
+              .forEach(dataset => {
+                const pbiName = pbiDatasetsMap.get(dataset.dataset_id);
+                if (pbiName) {
+                  dataset.dataset_name = pbiName;
+                }
+                allDatasets.push(dataset);
+              });
           } catch (err) {
-            console.error(`Erro ao buscar datasets da conexão ${conn.id}:`, err);
+            console.error(`Erro ao buscar datasets da conexão ${connId}:`, err);
+            // Mesmo com erro, adicionar o dataset usado (sem nome do Power BI)
+            usedDatasets
+              .filter(d => d.connection_id === connId)
+              .forEach(dataset => {
+                if (!allDatasets.find(d => d.connection_id === dataset.connection_id && d.dataset_id === dataset.dataset_id)) {
+                  allDatasets.push(dataset);
+                }
+              });
           }
         }
         

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
+import { isUserAdminOfGroup } from '@/lib/admin-helpers';
 
 // GET - Buscar tela por ID
 export async function GET(
@@ -74,6 +75,35 @@ export async function PUT(
       .eq('id', id)
       .single();
 
+    if (!currentScreen) {
+      return NextResponse.json({ error: 'Tela não encontrada' }, { status: 404 });
+    }
+
+    // Verificar permissão: master pode tudo, dev e admin só seus grupos
+    if (!user.is_master) {
+      const developerId = await getUserDeveloperId(user.id);
+      
+      if (developerId) {
+        // Desenvolvedor: verificar se o grupo pertence ao desenvolvedor
+        const { data: groupCheck } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('id', currentScreen.company_group_id)
+          .eq('developer_id', developerId)
+          .single();
+
+        if (!groupCheck) {
+          return NextResponse.json({ error: 'Sem permissão para editar esta tela' }, { status: 403 });
+        }
+      } else {
+        // Admin: verificar se é admin do grupo
+        const isAdmin = await isUserAdminOfGroup(user.id, currentScreen.company_group_id);
+        if (!isAdmin) {
+          return NextResponse.json({ error: 'Sem permissão para editar esta tela' }, { status: 403 });
+        }
+      }
+    }
+
     if (is_first && currentScreen) {
       await supabase
         .from('powerbi_dashboard_screens')
@@ -144,6 +174,42 @@ export async function DELETE(
     }
 
     const supabase = createAdminClient();
+
+    // Buscar tela para verificar permissão
+    const { data: currentScreen } = await supabase
+      .from('powerbi_dashboard_screens')
+      .select('company_group_id')
+      .eq('id', id)
+      .single();
+
+    if (!currentScreen) {
+      return NextResponse.json({ error: 'Tela não encontrada' }, { status: 404 });
+    }
+
+    // Verificar permissão: master pode tudo, dev e admin só seus grupos
+    if (!user.is_master) {
+      const developerId = await getUserDeveloperId(user.id);
+      
+      if (developerId) {
+        // Desenvolvedor: verificar se o grupo pertence ao desenvolvedor
+        const { data: groupCheck } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('id', currentScreen.company_group_id)
+          .eq('developer_id', developerId)
+          .single();
+
+        if (!groupCheck) {
+          return NextResponse.json({ error: 'Sem permissão para excluir esta tela' }, { status: 403 });
+        }
+      } else {
+        // Admin: verificar se é admin do grupo
+        const isAdmin = await isUserAdminOfGroup(user.id, currentScreen.company_group_id);
+        if (!isAdmin) {
+          return NextResponse.json({ error: 'Sem permissão para excluir esta tela' }, { status: 403 });
+        }
+      }
+    }
 
     const { error } = await supabase
       .from('powerbi_dashboard_screens')

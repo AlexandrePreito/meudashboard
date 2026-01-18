@@ -1,11 +1,11 @@
 /**
- * API Route - Developer Group [id]
- * Operações em grupo específico pelo desenvolvedor
+ * API Route - Admin Group [id]
+ * Operações em grupo específico pelo admin
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
+import { getAuthUser } from '@/lib/auth';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -19,20 +19,27 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    const developerId = await getUserDeveloperId(user.id);
-    if (!developerId) {
-      return NextResponse.json({ error: 'Você não é um desenvolvedor' }, { status: 403 });
-    }
-
     const { id } = await params;
     const supabase = createAdminClient();
 
-    // Buscar grupo verificando se pertence ao desenvolvedor
+    // Verificar se usuário é admin do grupo
+    const { data: membership } = await supabase
+      .from('user_group_membership')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('company_group_id', id)
+      .eq('is_active', true)
+      .single();
+
+    if (!membership || membership.role !== 'admin') {
+      return NextResponse.json({ error: 'Você não é admin deste grupo' }, { status: 403 });
+    }
+
+    // Buscar grupo
     const { data: group, error } = await supabase
       .from('company_groups')
       .select('*')
       .eq('id', id)
-      .eq('developer_id', developerId)
       .single();
 
     if (error || !group) {
@@ -105,20 +112,27 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    const developerId = await getUserDeveloperId(user.id);
-    if (!developerId) {
-      return NextResponse.json({ error: 'Você não é um desenvolvedor' }, { status: 403 });
-    }
-
     const { id } = await params;
     const supabase = createAdminClient();
 
-    // Verificar se grupo pertence ao desenvolvedor
+    // Verificar se usuário é admin do grupo
+    const { data: membership } = await supabase
+      .from('user_group_membership')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('company_group_id', id)
+      .eq('is_active', true)
+      .single();
+
+    if (!membership || membership.role !== 'admin') {
+      return NextResponse.json({ error: 'Você não é admin deste grupo' }, { status: 403 });
+    }
+
+    // Verificar se grupo existe
     const { data: existing } = await supabase
       .from('company_groups')
       .select('id')
       .eq('id', id)
-      .eq('developer_id', developerId)
       .single();
 
     if (!existing) {
@@ -184,20 +198,27 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    const developerId = await getUserDeveloperId(user.id);
-    if (!developerId) {
-      return NextResponse.json({ error: 'Você não é um desenvolvedor' }, { status: 403 });
-    }
-
     const { id } = await params;
     const supabase = createAdminClient();
 
-    // Verificar se grupo pertence ao desenvolvedor
+    // Verificar se usuário é admin do grupo
+    const { data: membership } = await supabase
+      .from('user_group_membership')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('company_group_id', id)
+      .eq('is_active', true)
+      .single();
+
+    if (!membership || membership.role !== 'admin') {
+      return NextResponse.json({ error: 'Você não é admin deste grupo' }, { status: 403 });
+    }
+
+    // Verificar se grupo existe
     const { data: existing } = await supabase
       .from('company_groups')
       .select('id')
       .eq('id', id)
-      .eq('developer_id', developerId)
       .single();
 
     if (!existing) {

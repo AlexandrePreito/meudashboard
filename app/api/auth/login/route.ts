@@ -63,15 +63,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Verificar se é admin de algum grupo
+    let userRole = user.is_master ? 'master' : 'user';
+    let groupIds: string[] = [];
+
+    if (!user.is_master && !user.is_developer_user) {
+      const { data: memberships } = await supabase
+        .from('user_group_membership')
+        .select('company_group_id, role')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+
+      groupIds = memberships?.map(m => m.company_group_id) || [];
+      
+      if (memberships?.some(m => m.role === 'admin')) {
+        userRole = 'admin';
+      }
+    }
+
     // Criar token JWT
     const tokenData = {
       id: user.id,
       email: user.email,
       name: user.full_name,
-      role: user.is_master ? 'master' : 'user',
+      role: userRole,
       groupId: null,
       developerId: user.developer_id,
       isDeveloperUser: user.is_developer_user || false,
+      groupIds: groupIds,
     };
 
     const token = jwt.sign(tokenData, jwtSecret, { expiresIn: '7d' });
@@ -118,10 +137,11 @@ export async function POST(request: NextRequest) {
         id: user.id,
         email: user.email,
         name: user.full_name,
-        role: user.is_master ? 'master' : 'user',
+        role: userRole,
         groupId: null,
         developerId: user.developer_id,
         isDeveloperUser: user.is_developer_user || false,
+        groupIds: groupIds,
         developer: developerInfo,
         group: membershipData,
       },
