@@ -185,7 +185,12 @@ export async function POST(request: Request) {
       .eq('id', company_group_id)
       .single();
 
-    const screenLimit = groupData?.developer?.max_powerbi_screens || 10;
+    // Tratar developer como objeto ou array (dependendo da relação do Supabase)
+    const developer = Array.isArray(groupData?.developer) 
+      ? groupData.developer[0] 
+      : groupData?.developer;
+    
+    const screenLimit = developer?.max_powerbi_screens || 10;
 
     // Contar telas existentes
     const { count: screensCount } = await supabase
