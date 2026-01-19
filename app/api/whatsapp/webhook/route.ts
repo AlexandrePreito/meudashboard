@@ -181,31 +181,39 @@ async function callClaudeWithRetry(
 // ============================================
 async function generateAudio(text: string): Promise<string | null> {
   try {
-    // Formatar texto para fala
+    console.log('━━━━ INICIANDO GERAÇÃO DE ÁUDIO ━━━━');
+    console.log('[generateAudio] Texto original length:', text.length);
+    
     const speechText = formatTextForSpeech(text);
+    console.log('[generateAudio] Texto formatado length:', speechText.length);
     
-    // Limitar tamanho do texto (OpenAI TTS tem limite)
-    const truncatedText = speechText.length > 4000 ? speechText.substring(0, 4000) + '...' : speechText;
+    const limitedText = speechText.slice(0, 4000);
+    console.log('[generateAudio] Texto limitado:', limitedText.substring(0, 100) + '...');
     
-    console.log('🔊 Gerando áudio para:', truncatedText.substring(0, 100) + '...');
+    if (!process.env.OPENAI_API_KEY) {
+      console.error('[generateAudio] ❌ OPENAI_API_KEY não configurada!');
+      return null;
+    }
     
+    console.log('[generateAudio] 🔊 Chamando OpenAI TTS...');
     const response = await openai.audio.speech.create({
-      model: 'tts-1',
-      voice: 'nova', // Voz feminina natural
-      input: truncatedText,
+      model: 'tts-1-hd',      // ← Modelo HD para qualidade
+      voice: 'shimmer',        // ← Voz mais natural
+      input: limitedText,
       response_format: 'mp3',
+      speed: 1.0
     });
     
-    // Converter para base64
+    console.log('[generateAudio] ✅ OpenAI respondeu');
     const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const base64Audio = buffer.toString('base64');
-    
-    console.log('✅ Áudio gerado com sucesso, tamanho:', base64Audio.length);
-    
-    return base64Audio;
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    console.log('[generateAudio] ✅ Base64 gerado, length:', base64.length);
+    console.log('━━━━ ÁUDIO GERADO COM SUCESSO ━━━━');
+    return base64;
   } catch (error: any) {
-    console.error('❌ Erro ao gerar áudio:', error.message);
+    console.error('━━━━ ERRO NA GERAÇÃO DE ÁUDIO ━━━━');
+    console.error('[generateAudio] Erro completo:', error);
+    console.error('[generateAudio] Mensagem:', error.message);
     return null;
   }
 }
@@ -215,40 +223,70 @@ async function generateAudio(text: string): Promise<string | null> {
 // ============================================
 async function sendWhatsAppAudio(instance: any, phone: string, audioBase64: string): Promise<boolean> {
   try {
-    const apiUrl = instance.api_url?.replace(/\/$/, '');
-    const url = `${apiUrl}/message/sendWhatsAppAudio/${instance.instance_name}`;
+    console.log('━━━━ ENVIANDO ÁUDIO WHATSAPP ━━━━');
+    console.log('[sendWhatsAppAudio] Instance:', instance?.instance_name);
+    console.log('[sendWhatsAppAudio] Phone:', phone);
+    console.log('[sendWhatsAppAudio] Base64 length:', audioBase64?.length || 0);
     
-    console.log('📤 Enviando áudio para:', phone);
-    console.log('URL:', url);
+    const apiUrl = instance.api_url?.replace(/\/$/, '');
+    
+    // TENTATIVA 1: sendWhatsAppAudio (método preferido)
+    const url = `${apiUrl}/message/sendWhatsAppAudio/${instance.instance_name}`;
+    console.log('[sendWhatsAppAudio] Tentativa 1 - URL:', url);
     
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'apikey': instance.api_key,
+        'apikey': instance.api_key || ''
       },
       body: JSON.stringify({
-        number: phone,
-        audio: `data:audio/mp3;base64,${audioBase64}`,
-        encoding: true, // Indica que é PTT (push to talk)
-      }),
+        number: phone.replace(/\D/g, ''),  // ← IMPORTANTE: Limpar número
+        audio: audioBase64                   // ← IMPORTANTE: Base64 PURO, sem prefixo
+      })
     });
     
-    const responseText = await response.text();
-    console.log('Resposta Evolution API (áudio):', {
-      status: response.status,
-      ok: response.ok,
-      body: responseText.substring(0, 300)
-    });
+    console.log('[sendWhatsAppAudio] Resposta status:', response.status);
     
-    if (!response.ok) {
-      console.error('Erro ao enviar áudio:', responseText);
-      return false;
+    if (response.ok) {
+      console.log('[sendWhatsAppAudio] ✅ Áudio enviado (tentativa 1)');
+      return true;
     }
     
-    return true;
-  } catch (error: any) {
-    console.error('Erro ao enviar áudio:', error.message);
+    const errorText = await response.text();
+    console.log('[sendWhatsAppAudio] ❌ Tentativa 1 falhou:', errorText);
+    
+    // TENTATIVA 2: sendMedia (fallback)
+    const url2 = `${apiUrl}/message/sendMedia/${instance.instance_name}`;
+    console.log('[sendWhatsAppAudio] Tentativa 2 - URL:', url2);
+    
+    const response2 = await fetch(url2, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': instance.api_key || ''
+      },
+      body: JSON.stringify({
+        number: phone.replace(/\D/g, ''),
+        mediatype: 'audio',
+        media: `data:audio/mp3;base64,${audioBase64}`,
+        fileName: 'audio.mp3'
+      })
+    });
+    
+    console.log('[sendWhatsAppAudio] Resposta 2 status:', response2.status);
+    
+    if (response2.ok) {
+      console.log('[sendWhatsAppAudio] ✅ Áudio enviado (tentativa 2)');
+      return true;
+    }
+    
+    const errorText2 = await response2.text();
+    console.log('[sendWhatsAppAudio] ❌ Tentativa 2 falhou:', errorText2);
+    return false;
+  } catch (error) {
+    console.error('━━━━ ERRO NO ENVIO DE ÁUDIO ━━━━');
+    console.error('[sendWhatsAppAudio] Erro:', error);
     return false;
   }
 }
@@ -760,102 +798,39 @@ Entre em contato com o suporte para configurar a conexão! 📞`;
 
     const recentAlert = alerts?.[0] || null;
 
-    // ========== SYSTEM PROMPT ==========
-    const systemPrompt = `Você é o assistente IA da empresa do usuário, integrado via WhatsApp.
+    // ========== SYSTEM PROMPT OTIMIZADO ==========
+    const currentMonth = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    const currentDate = new Date().toLocaleDateString('pt-BR', { 
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' 
+    });
+    
+    const systemPrompt = `Você é um assistente de dados via WhatsApp. Responda de forma CONCISA e DIRETA.
 
-## SUA PERSONALIDADE
-- Profissional mas amigável e acessível
-- Direto ao ponto, sem enrolação
-- Usa emojis com moderação (máximo 3 por mensagem)
-- LEMBRA do contexto da conversa anterior
-- Nunca repete informações já fornecidas
-- Adapta o nível de detalhe ao interesse do usuário
+# REGRAS OBRIGATÓRIAS
+1. Respostas com NO MÁXIMO 500 caracteres (exceto quando mostrar tabelas/listas)
+2. Use *negrito* para destaques, mas com moderação
+3. Máximo 2 emojis por resposta
+4. Valores: R$ 1,2M (milhões), R$ 45K (mil)
+5. SEMPRE informe o período no início: "📅 ${currentMonth}"
 
-## CONTEXTO DO MODELO DE DADOS
-${modelContext ? `${modelContext.slice(0, 6000)}\n` : 'Nenhum contexto de dados disponível no momento.\n'}
+# PERÍODO PADRÃO
+- Sem período especificado = ${currentMonth}
+- Em follow-ups ("e por região?") = manter período anterior
+- Data de hoje: ${currentDate}
 
-## FORMATAÇÃO PARA WHATSAPP
-- Use *negrito* para destaques importantes
-- Use _itálico_ para ênfases sutis
-- Valores monetários: R$ 1.234,56
-- Porcentagens: 15,5%
-- Use quebras de linha para separar seções
-- Máximo 3 emojis por mensagem
-- Listas curtas com emojis: ✔ ✗ → •
+# CONTEXTO DO MODELO
+${modelContext ? modelContext.slice(0, 4000) : 'Sem contexto configurado.'}
 
-## REGRAS PARA DADOS E ANÁLISES
-- Se precisar buscar dados, use a função execute_dax
-- NUNCA mencione termos técnicos como "tabela fato", "medida DAX", "coluna calculada"
-- Apresente dados de forma visual usando emojis como mini-gráficos
-- Sempre contextualize os números (compare, mostre tendências)
-- Se não tiver certeza dos dados, peça esclarecimento ao usuário
-- Formate valores grandes: 1,2M (milhão), 1,5K (mil)
+# AO BUSCAR DADOS (execute_dax)
+- Use APENAS medidas e colunas que existem no contexto acima
+- Se não encontrar a medida, diga "não encontrei dados para isso"
+- NÃO invente nomes de tabelas ou medidas
 
-## REGRAS DE RESPOSTA
-1. Respostas entre 100-800 palavras (ideal: 300-400)
-2. Para perguntas complexas, divida a resposta em seções claras
-3. Sempre termine com próximos passos ou sugestões relevantes
-4. Se não tiver dados suficientes, seja honesto mas sugira alternativas
-5. LEMBRE o contexto: se o usuário perguntou sobre janeiro, mantenha esse contexto
-6. Se o usuário fizer pergunta de acompanhamento, continue a conversa naturalmente
-
-## SUGESTÕES INTELIGENTES E CONTEXTUAIS
-Após CADA resposta, sugira 2-3 análises relacionadas ao tema discutido:
-
-━━━━━━━━━━━━━━━━━
-💡 *Posso analisar:*
-1️⃣ [Análise relacionada 1]
-2️⃣ [Análise relacionada 2]
-
-${recentAlert ? `
-## ALERTA RECENTE CONFIGURADO
-Nome: ${recentAlert.name}
-Dataset: ${recentAlert.dataset_id}
-Conexão: ${recentAlert.connection_id}
-` : ''}
-
-## REGRAS PARA PERÍODOS E DATAS (CRÍTICO - SEMPRE SEGUIR)
-**REGRA OBRIGATÓRIA:** Quando o usuário perguntar sobre dados SEM especificar período:
-1. SEMPRE usar o MÊS e ANO ATUAIS como filtro padrão
-2. SEMPRE informar o período usado NO INÍCIO da resposta
-
-**Mês/Ano vigente:** ${new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-
-**Aplicação automática:**
-- "Qual o faturamento?" → Faturamento de ${new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-- "Quantas vendas?" → Vendas de ${new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-- "Top produtos" → Top produtos de ${new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-- "Como está o estoque?" → Estoque atual
-- "Inadimplência?" → Inadimplência de ${new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-
-**SEMPRE comece a resposta com o período:**
-"📅 *${new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}*"
-
-**Se o usuário especificar período, use o que ele pediu:**
-- "janeiro" → janeiro/${new Date().getFullYear()}
-- "ano passado" → ${new Date().getFullYear() - 1}
-- "último trimestre" → últimos 3 meses
-- "ontem/semana passada/mês passado" → calcular a partir de hoje
-
-**Para perguntas de acompanhamento:**
-Se o usuário perguntar "e por região?" ou "e os top 10?", MANTENHA o mesmo período da pergunta anterior.
-
-## DATA E HORA ATUAL
-${new Date().toLocaleString('pt-BR', {
-  weekday: 'long',
-  year: 'numeric',
-  month: 'long',
-  day: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-  timeZone: 'America/Sao_Paulo'
-})} (Horário de Brasília)
-
-## IMPORTANTE
-- Você TEM memória das mensagens anteriores desta conversa
-- Use esse contexto para dar respostas mais inteligentes e personalizadas
-- Se o usuário fizer referência a algo que você disse antes, lembre-se disso
-`;
+# FORMATO DE RESPOSTA
+📅 *Período*
+[Dado principal em destaque]
+[Detalhes se necessário]
+[1-2 sugestões curtas de análise]`;
 
     // Tools para Claude
     const tools: Anthropic.Tool[] = connectionId && datasetId ? [
@@ -875,12 +850,29 @@ ${new Date().toLocaleString('pt-BR', {
       }
     ] : [];
 
-    // ========== CONSTRUIR HISTÓRICO ==========
+    // ========== CONSTRUIR HISTÓRICO COM CONTEXTO ==========
     const conversationHistory: any[] = [];
 
     if (recentMessages && recentMessages.length > 0) {
-      const orderedMessages = [...recentMessages].reverse();
-      for (const msg of orderedMessages) {
+      // Pegar apenas últimas 6 mensagens para não sobrecarregar
+      const relevantMessages = recentMessages.slice(0, 6).reverse();
+      
+      // Adicionar resumo do contexto se houver muitas mensagens
+      if (recentMessages.length > 6) {
+        conversationHistory.push({
+          role: 'user',
+          content: '[Contexto: usuário já fez perguntas anteriores sobre dados da empresa]'
+        });
+      }
+      
+      for (const msg of relevantMessages) {
+        // Limpar mensagens de sistema/erro do histórico
+        if (msg.message_content.includes('tive um problema') || 
+            msg.message_content.includes('Desculpe') ||
+            msg.message_content.startsWith('📊 *Escolha')) {
+          continue;
+        }
+        
         conversationHistory.push({
           role: msg.direction === 'incoming' ? 'user' : 'assistant',
           content: msg.message_content
@@ -888,23 +880,48 @@ ${new Date().toLocaleString('pt-BR', {
       }
     }
 
+    // Adicionar mensagem atual
     conversationHistory.push({
       role: 'user',
       content: messageText
     });
 
-    console.log('Histórico construído:', conversationHistory.length, 'mensagens');
+    console.log('[Histórico] Mensagens incluídas:', conversationHistory.length);
 
-    // ========== CHAMAR CLAUDE ==========
-    let response = await callClaudeWithRetry({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1200,
-      system: systemPrompt,
-      messages: conversationHistory,
-      tools: tools.length > 0 ? tools : undefined
-    });
+    // ========== CHAMAR CLAUDE COM TRATAMENTO DE ERRO ==========
+    let response;
+    let daxError: string | null = null;
+    
+    try {
+      response = await callClaudeWithRetry({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 800,  // ← REDUZIDO de 1200 para respostas mais concisas
+        system: systemPrompt,
+        messages: conversationHistory,
+        tools: tools.length > 0 ? tools : undefined
+      });
+    } catch (claudeError: any) {
+      console.error('[Claude] Erro na chamada:', claudeError.message);
+      
+      // Resposta de fallback quando Claude falha
+      const fallbackMessage = `Desculpe ${authorizedNumber.name?.split(' ')[0] || ''}, estou com alta demanda no momento. ⏳
 
-    // Processar tool calls
+Tente novamente em alguns segundos ou reformule sua pergunta de forma mais simples.`;
+      
+      await sendWhatsAppMessage(instance, phone, fallbackMessage);
+      await supabase.from('whatsapp_messages').insert({
+        company_group_id: authorizedNumber.company_group_id,
+        phone_number: phone,
+        message_content: fallbackMessage,
+        direction: 'outgoing',
+        sender_name: 'Assistente IA',
+        instance_id: instance.id
+      });
+      
+      return NextResponse.json({ status: 'error', reason: 'claude_error' });
+    }
+
+    // Processar tool calls com tratamento de erro
     let iterations = 0;
     const maxIterations = 2;
     const messages: any[] = [...conversationHistory];
@@ -920,7 +937,7 @@ ${new Date().toLocaleString('pt-BR', {
           const toolInput = toolUse.input as { query?: string };
           if (!toolInput.query) continue;
 
-          console.log('Executando DAX via WhatsApp:', toolInput.query);
+          console.log('[DAX] Executando query:', toolInput.query.substring(0, 200));
 
           const daxResult = await executeDaxQuery(
             connectionId,
@@ -929,13 +946,22 @@ ${new Date().toLocaleString('pt-BR', {
             supabase
           );
 
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: toolUse.id,
-            content: daxResult.success
-              ? JSON.stringify(daxResult.results, null, 2)
-              : `Erro: ${daxResult.error}`
-          });
+          if (daxResult.success) {
+            console.log('[DAX] ✅ Sucesso, linhas:', daxResult.results?.length || 0);
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: toolUse.id,
+              content: JSON.stringify(daxResult.results, null, 2)
+            });
+          } else {
+            console.error('[DAX] ❌ Erro:', daxResult.error);
+            daxError = daxResult.error || 'Erro desconhecido';
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: toolUse.id,
+              content: `Erro na consulta: ${daxError}. Tente usar uma medida ou tabela diferente.`
+            });
+          }
         }
       }
 
@@ -944,13 +970,18 @@ ${new Date().toLocaleString('pt-BR', {
       messages.push({ role: 'assistant', content: response.content });
       messages.push({ role: 'user', content: toolResults });
 
-      response = await callClaudeWithRetry({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1200,
-        system: systemPrompt,
-        messages,
-        tools: tools.length > 0 ? tools : undefined
-      });
+      try {
+        response = await callClaudeWithRetry({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 800,
+          system: systemPrompt,
+          messages,
+          tools: tools.length > 0 ? tools : undefined
+        });
+      } catch (retryError: any) {
+        console.error('[Claude] Erro no retry:', retryError.message);
+        break;
+      }
     }
 
     // Extrair resposta final
@@ -963,14 +994,28 @@ ${new Date().toLocaleString('pt-BR', {
 
     // ========== TRATAR RESPOSTA VAZIA ==========
     if (!assistantMessage.trim()) {
-      assistantMessage = `Desculpe ${authorizedNumber.name || ''}, tive um problema ao processar sua pergunta. 😕
+      // Se houve erro de DAX, dar feedback específico
+      if (daxError) {
+        assistantMessage = `📊 Não consegui encontrar esses dados.
 
-*Pode tentar:*
-- Reformular a pergunta
-- Ser mais específico
-- Usar o comando /ajuda
+*Possíveis causas:*
+• O período pode não ter dados
+• O filtro pode estar incorreto
 
-Estou aqui para ajudar! 💪`;
+*Tente perguntar:*
+• "Qual o faturamento total?"
+• "Vendas do mês passado"
+• "Top 5 produtos"`;
+      } else {
+        assistantMessage = `Não entendi sua pergunta. 🤔
+
+*Exemplos do que posso responder:*
+• Qual o faturamento de janeiro?
+• Vendas por filial
+• Top 10 produtos
+
+Pode reformular?`;
+      }
     }
 
     console.log('Resposta IA:', assistantMessage.substring(0, 200) + '...');
