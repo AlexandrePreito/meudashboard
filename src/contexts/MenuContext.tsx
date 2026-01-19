@@ -40,6 +40,8 @@ interface MenuContextType {
   setIsCollapsed: (value: boolean) => void;
   activeGroup: CompanyGroup | null;
   setActiveGroup: (group: CompanyGroup | null) => void;
+  selectedGroupIds: string[];
+  setSelectedGroupIds: (ids: string[]) => void;
   user: UserData | null;
   setUser: (user: UserData | null) => void;
   developer: DeveloperInfo | null;
@@ -70,6 +72,20 @@ export function MenuProvider({ children }: MenuProviderProps) {
     }
     return null;
   });
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>(() => {
+    // Tenta ler do localStorage no primeiro render
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('selected-group-ids');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return [];
+        }
+      }
+    }
+    return [];
+  });
   const [user, setUser] = useState<UserData | null>(null);
   const [developer, setDeveloper] = useState<DeveloperInfo | null>(null);
 
@@ -85,6 +101,14 @@ export function MenuProvider({ children }: MenuProviderProps) {
     }
   }
 
+  // Função para setar grupos selecionados e salvar no localStorage
+  function setSelectedGroupIdsState(ids: string[]) {
+    setSelectedGroupIds(ids);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('selected-group-ids', JSON.stringify(ids));
+    }
+  }
+
   return (
     <MenuContext.Provider
       value={{
@@ -92,6 +116,8 @@ export function MenuProvider({ children }: MenuProviderProps) {
         setIsCollapsed,
         activeGroup,
         setActiveGroup,
+        selectedGroupIds,
+        setSelectedGroupIds: setSelectedGroupIdsState,
         user,
         setUser,
         developer,

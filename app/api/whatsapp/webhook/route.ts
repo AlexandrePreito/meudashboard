@@ -403,22 +403,21 @@ export async function POST(request: Request) {
     }
 
     // ========== BUSCAR CONTEXTO E INSTÂNCIA EM PARALELO ==========
-    const [aiContextResult, instanceResult] = await Promise.all([
+    const [allContextsResult, instanceResult] = await Promise.all([
       supabase
         .from('ai_model_contexts')
-        .select('id, connection_id, dataset_id, context_content, context_name, dataset_name')
+        .select('id, connection_id, dataset_id, context_content, context_name, dataset_name, company_group_id')
         .eq('company_group_id', authorizedNumber.company_group_id)
-        .eq('is_active', true)
-        .limit(1)
-        .maybeSingle(),
+        .eq('is_active', true),
       getInstanceForAuthorizedNumber(authorizedNumber, supabase)
     ]);
 
-    const aiContext = aiContextResult.data;
+    const allContexts = allContextsResult.data || [];
+    const aiContext = allContexts[0] || null;
     instance = instanceResult;
 
-    const connectionId = aiContext?.connection_id || null;
-    const datasetId = aiContext?.dataset_id || null;
+    let connectionId = aiContext?.connection_id || null;
+    let datasetId = aiContext?.dataset_id || null;
 
     // ========== SALVAR MENSAGEM INCOMING ==========
     await supabase.from('whatsapp_messages').insert({
@@ -438,6 +437,28 @@ export async function POST(request: Request) {
     }
 
     console.log('[Webhook] Instância:', instance.instance_name, '| Dataset:', datasetId || 'N/A');
+
+    // ========== FALLBACK DE CONTEXTO ==========
+    let modelContext = aiContext?.context_content || '';
+
+    // Fallback: buscar por connection_id se não encontrou
+    if (!modelContext && connectionId) {
+      const { data: fallbackContext } = await supabase
+        .from('ai_model_contexts')
+        .select('context_content, connection_id, dataset_id')
+        .eq('connection_id', connectionId)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+      
+      if (fallbackContext?.context_content) {
+        modelContext = fallbackContext.context_content;
+        if (!connectionId) connectionId = fallbackContext.connection_id || null;
+        if (!datasetId) datasetId = fallbackContext.dataset_id || null;
+      }
+    }
+
+    console.log('[Webhook] Contexto carregado:', modelContext ? modelContext.length + ' chars' : 'NENHUM');
 
     // ========== VERIFICAR ÁUDIO ==========
     const isAudioMessage = !!messageContent.audioMessage;
@@ -551,58 +572,86 @@ export async function POST(request: Request) {
     // ========== BUSCAR HISTÓRICO (LIMITADO) ==========
     const { data: recentMessages } = await supabase
       .from('whatsapp_messages')
-      .select('message_content, direction')
+      .select('message_content, direction, created_at')
       .eq('phone_number', phone)
       .eq('company_group_id', authorizedNumber.company_group_id)
       .eq('archived', false)
       .order('created_at', { ascending: false })
-      .limit(4);  // ← REDUZIDO para 4 mensagens
-
-    // ========== CONTEXTO DO BANCO (COMPLETO!) ==========
-    const modelContext = aiContext?.context_content || '';
-    
-    console.log('[Webhook] Contexto carregado:', modelContext.length, 'chars');
+      .limit(10);  // ← ALTERADO DE 4 PARA 10
 
     // ========== SYSTEM PROMPT (REGRAS WhatsApp + CONTEXTO DO BANCO) ==========
     const currentMonth = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
     const currentDate = new Date().toLocaleDateString('pt-BR');
-    
-    const systemPrompt = `Você é um assistente de dados empresariais via WhatsApp.
+    const currentYear = new Date().getFullYear();
+    const currentMonthNumber = new Date().getMonth() + 1;
 
-# REGRAS OBRIGATÓRIAS
-1. Respostas CONCISAS (máx 800 caracteres)
-2. Use *negrito* para destaques importantes
-3. Valores monetários SEMPRE COMPLETOS: R$ 101.693.111,75 (NUNCA abrevie com M, K, milhões ou mil)
-4. SEMPRE termine com 3 sugestões numeradas de análise relacionadas
+    const systemPrompt = `Você é um assistente de análise de dados empresariais via WhatsApp.
 
-# REGRA DE PERÍODO (MUITO IMPORTANTE!)
-- Quando o usuário NÃO especificar data/período, SEMPRE use: ${currentMonth}
-- "Qual o faturamento?" = faturamento de ${currentMonth}
-- "Vendas por filial?" = vendas de ${currentMonth}
-- Data atual: ${currentDate}
+# REGRA CRÍTICA DE PERÍODO
+**SEMPRE que o usuário NÃO especificar data/período, use ${currentMonth} como padrão.**
+- "Qual o faturamento?" → Faturamento de ${currentMonth}
+- "Vendas por filial?" → Vendas de ${currentMonth}  
+- "Top 10 produtos?" → Top 10 de ${currentMonth}
+- "Ticket médio?" → Ticket médio de ${currentMonth}
 
-# ENTENDENDO RESPOSTAS NUMÉRICAS
-- Se o usuário responder "1", "2" ou "3", ele está escolhendo uma das sugestões anteriores
-- Consulte o histórico da conversa para ver qual era a sugestão correspondente e execute-a
-
-# FORMATO DE RESPOSTA
+**SEMPRE inicie a resposta informando o período:**
 📅 *${currentMonth}*
-💰 *[Dado principal com valor COMPLETO]*
-[Detalhes se necessário]
 
-📊 *Análises sugeridas:*
-1️⃣ [sugestão 1]
-2️⃣ [sugestão 2]
-3️⃣ [sugestão 3]
+# REGRA DE SUGESTÕES (OBRIGATÓRIO)
+**SEMPRE termine TODA resposta com exatamente 3 sugestões de aprofundamento relacionadas ao tema.**
+
+Formato:
+━━━━━━━━━━━━━━━━━
+📊 *Posso detalhar:*
+1️⃣ [Análise relacionada 1]
+2️⃣ [Análise relacionada 2]
+3️⃣ [Análise relacionada 3]
+
+Exemplos de sugestões por tema:
+- Faturamento → Por filial, Por vendedor/garçom, Por produto
+- Vendas → Por período, Por cliente, Por categoria
+- Produtos → Mais vendidos, Margem de lucro, Por filial
+- Clientes → Top clientes, Inadimplentes, Novos vs recorrentes
+
+# INTERPRETAÇÃO DE NÚMEROS
+Se o usuário responder apenas "1", "2" ou "3", ele está escolhendo uma das sugestões anteriores.
+Consulte o histórico e execute a análise correspondente.
+
+# FORMATAÇÃO WHATSAPP
+- Use *negrito* para destaques
+- Valores monetários COMPLETOS: R$ 1.234.567,89 (NUNCA abrevie)
+- Máximo 800 caracteres por resposta
+- Emojis com moderação (máx 5 por mensagem)
+- Sem asteriscos duplos, use simples: *texto*
+
+# FORMATO PADRÃO DE RESPOSTA
+📅 *${currentMonth}*
+
+💰 *[Métrica Principal]*
+R$ X.XXX.XXX,XX
+
+[Detalhes relevantes se houver]
+
+━━━━━━━━━━━━━━━━━
+📊 *Posso detalhar:*
+1️⃣ [Sugestão 1]
+2️⃣ [Sugestão 2]
+3️⃣ [Sugestão 3]
 
 # CONTEXTO DO MODELO DE DADOS
-${modelContext.slice(0, 8000)}
+${modelContext.slice(0, 10000)}
 
-# INSTRUÇÕES FINAIS
+# INSTRUÇÕES DAX
 - Use a ferramenta execute_dax para buscar dados
-- Siga EXATAMENTE os exemplos de query do contexto acima
-- Se uma query falhar, tente com medida similar do contexto
-- Nunca invente nomes de tabelas ou medidas`;
+- Siga EXATAMENTE os nomes de tabelas/medidas do contexto acima
+- Se uma query falhar, tente medida similar
+- NUNCA invente nomes de tabelas ou medidas
+- Para filtrar mês atual: Calendario[Mes] = ${currentMonthNumber} AND Calendario[Ano] = ${currentYear}
+
+# DATA ATUAL
+${currentDate} (${new Date().toLocaleDateString('pt-BR', { weekday: 'long' })})
+Mês: ${currentMonth}
+Ano: ${currentYear}`;
 
     // ========== TOOLS ==========
     const tools: Anthropic.Tool[] = [
@@ -623,17 +672,20 @@ ${modelContext.slice(0, 8000)}
     const conversationHistory: any[] = [];
 
     if (recentMessages && recentMessages.length > 0) {
-      const relevantMessages = recentMessages.slice(0, 4).reverse();
-      for (const msg of relevantMessages) {
-        // Ignorar mensagens de erro
+      const orderedMessages = [...recentMessages].reverse();
+      
+      for (const msg of orderedMessages) {
+        // Ignorar mensagens de erro do sistema
         if (msg.message_content.includes('tive um problema') || 
             msg.message_content.includes('Desculpe') ||
-            msg.message_content.includes('dificuldades técnicas')) {
+            msg.message_content.includes('dificuldades técnicas') ||
+            msg.message_content.includes('Erro técnico')) {
           continue;
         }
+        
         conversationHistory.push({
           role: msg.direction === 'incoming' ? 'user' : 'assistant',
-          content: msg.message_content.slice(0, 500)  // ← LIMITAR tamanho
+          content: msg.message_content.slice(0, 800)
         });
       }
     }

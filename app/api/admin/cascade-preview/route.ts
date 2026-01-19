@@ -1,13 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser } from '@/lib/auth';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-function getSupabase() {
-  return createClient(supabaseUrl, supabaseKey);
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,7 +17,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Parametros invalidos' }, { status: 400 });
     }
 
-    const supabase = getSupabase();
+    const supabase = createAdminClient();
     const cascade: any = { items: [], summary: {} };
 
     if (type === 'developer') {
@@ -41,33 +34,39 @@ export async function GET(request: NextRequest) {
       cascade.root = { type: 'developer', id: developer.id, name: developer.name };
 
       const { data: groups } = await supabase
-        .from('groups')
+        .from('company_groups')
         .select('id, name')
         .eq('developer_id', id);
 
       const groupIds = groups?.map(g => g.id) || [];
 
-      const { data: devUsers } = await supabase
-        .from('users')
-        .select('id, full_name, email')
-        .eq('developer_id', id);
-
+      // Buscar usuários via membership
       let groupUsers: any[] = [];
       if (groupIds.length > 0) {
-        const { data: gUsers } = await supabase
-          .from('users')
-          .select('id, full_name, email, group_id')
-          .in('group_id', groupIds);
-        groupUsers = gUsers || [];
+        const { data: memberships } = await supabase
+          .from('user_group_membership')
+          .select('user_id, company_group_id, user:users(id, full_name, email)')
+          .in('company_group_id', groupIds)
+          .eq('is_active', true);
+        
+        if (memberships) {
+          groupUsers = memberships.map(m => ({
+            id: m.user_id,
+            full_name: (m.user as any)?.full_name || '',
+            email: (m.user as any)?.email || '',
+            group_id: m.company_group_id
+          }));
+        }
       }
 
+      // Buscar telas Power BI
       let screens: any[] = [];
       if (groupIds.length > 0) {
         const { data: gScreens } = await supabase
-          .from('screens')
-          .select('id, name, group_id')
-          .in('group_id', groupIds);
-        screens = gScreens || [];
+          .from('powerbi_dashboard_screens')
+          .select('id, title, company_group_id')
+          .in('company_group_id', groupIds);
+        screens = (gScreens || []).map(s => ({ id: s.id, name: s.title, group_id: s.company_group_id }));
       }
 
       cascade.items = [
@@ -76,12 +75,6 @@ export async function GET(request: NextRequest) {
           id: developer.id,
           name: developer.name,
           children: [
-            ...(devUsers || []).map(u => ({
-              type: 'user',
-              id: u.id,
-              name: u.full_name || u.email,
-              parentType: 'developer'
-            })),
             ...(groups || []).map(g => ({
               type: 'group',
               id: g.id,
@@ -106,13 +99,13 @@ export async function GET(request: NextRequest) {
 
       cascade.summary = {
         groups: groups?.length || 0,
-        users: (devUsers?.length || 0) + groupUsers.length,
+        users: groupUsers.length,
         screens: screens.length
       };
 
     } else if (type === 'group') {
       const { data: group } = await supabase
-        .from('groups')
+        .from('company_groups')
         .select('id, name, developer_id')
         .eq('id', id)
         .single();
@@ -123,15 +116,26 @@ export async function GET(request: NextRequest) {
 
       cascade.root = { type: 'group', id: group.id, name: group.name };
 
-      const { data: users } = await supabase
-        .from('users')
-        .select('id, full_name, email')
-        .eq('group_id', id);
+      // Buscar usuários via membership
+      const { data: memberships } = await supabase
+        .from('user_group_membership')
+        .select('user_id, user:users(id, full_name, email)')
+        .eq('company_group_id', id)
+        .eq('is_active', true);
 
-      const { data: screens } = await supabase
-        .from('screens')
-        .select('id, name')
-        .eq('group_id', id);
+      const users = (memberships || []).map(m => ({
+        id: m.user_id,
+        full_name: (m.user as any)?.full_name || '',
+        email: (m.user as any)?.email || ''
+      }));
+
+      // Buscar telas Power BI
+      const { data: screensData } = await supabase
+        .from('powerbi_dashboard_screens')
+        .select('id, title')
+        .eq('company_group_id', id);
+
+      const screens = (screensData || []).map(s => ({ id: s.id, name: s.title }));
 
       cascade.items = [
         {
@@ -139,12 +143,12 @@ export async function GET(request: NextRequest) {
           id: group.id,
           name: group.name,
           children: [
-            ...(users || []).map(u => ({
+            ...users.map(u => ({
               type: 'user',
               id: u.id,
               name: u.full_name || u.email
             })),
-            ...(screens || []).map(s => ({
+            ...screens.map(s => ({
               type: 'screen',
               id: s.id,
               name: s.name
@@ -154,8 +158,8 @@ export async function GET(request: NextRequest) {
       ];
 
       cascade.summary = {
-        users: users?.length || 0,
-        screens: screens?.length || 0
+        users: users.length,
+        screens: screens.length
       };
     }
 

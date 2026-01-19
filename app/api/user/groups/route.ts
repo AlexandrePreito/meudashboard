@@ -22,12 +22,14 @@ export async function GET() {
     let groups: Array<{ id: string; name: string; slug: string; logo_url: string | null; primary_color: string | null }> = [];
     let developerId: string | null = null;
 
-    // 1. Se master, busca TODOS os grupos ativos
+    // 1. Se master, busca TODOS os grupos ativos (não excluídos)
     if (user.is_master) {
       const { data, error } = await supabase
         .from('company_groups')
         .select('id, name, slug, logo_url, primary_color, use_developer_logo, use_developer_colors')
         .eq('status', 'active')
+        .neq('status', 'deleted')
+        .neq('status', 'inactive')
         .order('name');
 
       if (error) {
@@ -40,12 +42,14 @@ export async function GET() {
       developerId = await getUserDeveloperId(user.id);
       
       if (developerId) {
-        // Desenvolvedor: busca grupos do seu developer_id
+        // Desenvolvedor: busca grupos do seu developer_id (não excluídos)
         const { data, error } = await supabase
           .from('company_groups')
           .select('id, name, slug, logo_url, primary_color, use_developer_logo, use_developer_colors')
           .eq('developer_id', developerId)
           .eq('status', 'active')
+          .neq('status', 'deleted')
+          .neq('status', 'inactive')
           .order('name');
 
         if (error) {
@@ -79,7 +83,12 @@ export async function GET() {
 
         groups = (data || [])
           .map((item: any) => item.company_group)
-          .filter((group: any) => group !== null && group.status !== 'inactive');
+          .filter((group: any) => 
+            group !== null && 
+            group.status === 'active' && 
+            group.status !== 'deleted' && 
+            group.status !== 'inactive'
+          );
       }
     }
 

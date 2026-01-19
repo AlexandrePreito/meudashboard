@@ -23,18 +23,26 @@ export async function GET(request: NextRequest) {
     // Se não passou group_id, retornar lista de grupos onde é admin
     if (!groupId) {
       if (user.is_master) {
-        // Master: retornar todos os grupos
+        // Master: retornar todos os grupos ativos (não excluídos)
         const { data: allGroups } = await supabase
           .from('company_groups')
           .select('id, name, slug, status, logo_url, primary_color, secondary_color')
+          .eq('status', 'active')
+          .neq('status', 'deleted')
+          .neq('status', 'inactive')
           .order('name');
         
         return NextResponse.json({ groups: allGroups || [] });
       }
 
-      // Buscar grupos onde é admin
+      // Buscar grupos onde é admin (apenas ativos)
       const { getUserAdminGroupsWithData } = await import('@/lib/admin-helpers');
-      const groups = await getUserAdminGroupsWithData(user.id);
+      const allAdminGroups = await getUserAdminGroupsWithData(user.id);
+      const groups = allAdminGroups.filter((g: any) => 
+        g.status === 'active' && 
+        g.status !== 'deleted' && 
+        g.status !== 'inactive'
+      );
 
       if (groups.length === 0) {
         return NextResponse.json({ error: 'Você não é administrador de nenhum grupo.' }, { status: 403 });

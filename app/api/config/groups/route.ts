@@ -51,6 +51,9 @@ export async function GET() {
         created_at,
         updated_at
       `)
+      .eq('status', 'active')
+      .neq('status', 'deleted')
+      .neq('status', 'inactive')
       .order('name', { ascending: true });
 
     // Se não for master, filtrar apenas grupos que é admin

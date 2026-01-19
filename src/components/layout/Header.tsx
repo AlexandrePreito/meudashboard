@@ -122,7 +122,7 @@ function getNavItems(user: HeaderProps['user']) {
 export default function Header({ user }: HeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { activeGroup, setActiveGroup, setIsCollapsed, developer, setDeveloper } = useMenu();
+  const { activeGroup, setActiveGroup, setIsCollapsed, developer, setDeveloper, selectedGroupIds, setSelectedGroupIds } = useMenu();
   const [groups, setGroups] = useState<CompanyGroup[]>([]);
   const [showGroupDropdown, setShowGroupDropdown] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -267,12 +267,18 @@ export default function Header({ user }: HeaderProps) {
                 setActiveGroup(updatedGroup);
               }
             } else {
-              // Grupo antigo não existe mais, seleciona o primeiro
-              setActiveGroup(freshGroups[0]);
+              // Grupo antigo não existe mais
+              // Se é Master, mantém null (Todos). Senão, seleciona o primeiro
+              if (!user.is_master) {
+                setActiveGroup(freshGroups[0]);
+              }
             }
           } else {
-            // Não tinha grupo selecionado, seleciona o primeiro
-            setActiveGroup(freshGroups[0]);
+            // Não tinha grupo selecionado
+            // Se é Master, mantém null (Todos). Senão, seleciona o primeiro
+            if (!user.is_master) {
+              setActiveGroup(freshGroups[0]);
+            }
           }
         }
       }
@@ -292,10 +298,55 @@ export default function Header({ user }: HeaderProps) {
     }
   }
 
-  function selectGroup(group: CompanyGroup) {
-    console.log('Selecionando grupo:', group.name);
-    setActiveGroup(group);
-    setShowGroupDropdown(false);
+  function toggleGroupSelection(groupId: string) {
+    if (user.is_master) {
+      // Master: seleção múltipla com checkboxes
+      setSelectedGroupIds(prev => {
+        if (prev.includes(groupId)) {
+          return prev.filter(id => id !== groupId);
+        } else {
+          return [...prev, groupId];
+        }
+      });
+    } else {
+      // Outros usuários: seleção única (comportamento antigo)
+      const group = groups.find(g => g.id === groupId);
+      if (group) {
+        setActiveGroup(group);
+        setShowGroupDropdown(false);
+      }
+    }
+  }
+
+  function toggleAllGroups() {
+    if (user.is_master) {
+      if (selectedGroupIds.length === groups.length) {
+        // Desmarcar todos
+        setSelectedGroupIds([]);
+        setActiveGroup(null);
+      } else {
+        // Marcar todos
+        setSelectedGroupIds(groups.map(g => g.id));
+        setActiveGroup(null);
+      }
+    }
+  }
+
+  function getSelectedGroupsText() {
+    if (!user.is_master) {
+      return activeGroup?.name || 'Grupo';
+    }
+    
+    if (selectedGroupIds.length === 0) {
+      return 'Todos';
+    }
+    
+    if (selectedGroupIds.length === 1) {
+      const group = groups.find(g => g.id === selectedGroupIds[0]);
+      return group?.name || 'Grupo';
+    }
+    
+    return `${selectedGroupIds.length} grupos`;
   }
 
   function isActiveNav(href: string) {
@@ -396,22 +447,51 @@ export default function Header({ user }: HeaderProps) {
                   className="flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   <span className="text-sm font-medium text-gray-700 max-w-[150px] truncate">
-                    {activeGroup?.name || 'Grupo'}
+                    {getSelectedGroupsText()}
                   </span>
                   <ChevronDown size={16} className={`text-gray-400 transition-transform ${showGroupDropdown ? 'rotate-180' : ''}`} />
                 </button>
 
                 {showGroupDropdown && groups.length > 0 && (
-                  <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50">
+                  <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50 max-h-96 overflow-y-auto">
+                    {/* Opção "Todos" apenas para Master */}
+                    {user.is_master && (
+                      <button
+                        onClick={toggleAllGroups}
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors border-b border-gray-100 flex items-center gap-2 ${
+                          selectedGroupIds.length === groups.length ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedGroupIds.length === groups.length}
+                          onChange={toggleAllGroups}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <span>Todos os Grupos</span>
+                      </button>
+                    )}
                     {groups.map((group) => (
                       <button
                         key={group.id}
-                        onClick={() => selectGroup(group)}
-                        className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${
-                          activeGroup?.id === group.id ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
+                        onClick={() => toggleGroupSelection(group.id)}
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors flex items-center gap-2 ${
+                          user.is_master 
+                            ? (selectedGroupIds.includes(group.id) ? 'bg-blue-50 text-blue-600' : 'text-gray-700')
+                            : (activeGroup?.id === group.id ? 'bg-blue-50 text-blue-600' : 'text-gray-700')
                         }`}
                       >
-                        {group.name}
+                        {user.is_master && (
+                          <input
+                            type="checkbox"
+                            checked={selectedGroupIds.includes(group.id)}
+                            onChange={() => toggleGroupSelection(group.id)}
+                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        )}
+                        <span>{group.name}</span>
                       </button>
                     ))}
                   </div>
@@ -455,22 +535,51 @@ export default function Header({ user }: HeaderProps) {
                     className="flex items-center gap-1 px-2 py-1.5 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
                   >
                     <span className="text-sm font-medium text-gray-700 max-w-[100px] truncate">
-                      {activeGroup?.name || 'Grupo'}
+                      {getSelectedGroupsText()}
                     </span>
                     <ChevronDown size={14} className={`text-gray-400 transition-transform ${showGroupDropdown ? 'rotate-180' : ''}`} />
                   </button>
 
                   {showGroupDropdown && groups.length > 0 && (
-                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50">
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50 max-h-96 overflow-y-auto">
+                      {/* Opção "Todos" apenas para Master */}
+                      {user.is_master && (
+                        <button
+                          onClick={toggleAllGroups}
+                          className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors border-b border-gray-100 flex items-center gap-2 ${
+                            selectedGroupIds.length === groups.length ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedGroupIds.length === groups.length}
+                            onChange={toggleAllGroups}
+                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <span>Todos os Grupos</span>
+                        </button>
+                      )}
                       {groups.map((group) => (
                         <button
                           key={group.id}
-                          onClick={() => selectGroup(group)}
-                          className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${
-                            activeGroup?.id === group.id ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
+                          onClick={() => toggleGroupSelection(group.id)}
+                          className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors flex items-center gap-2 ${
+                            user.is_master 
+                              ? (selectedGroupIds.includes(group.id) ? 'bg-blue-50 text-blue-600' : 'text-gray-700')
+                              : (activeGroup?.id === group.id ? 'bg-blue-50 text-blue-600' : 'text-gray-700')
                           }`}
                         >
-                          {group.name}
+                          {user.is_master && (
+                            <input
+                              type="checkbox"
+                              checked={selectedGroupIds.includes(group.id)}
+                              onChange={() => toggleGroupSelection(group.id)}
+                              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          )}
+                          <span>{group.name}</span>
                         </button>
                       ))}
                     </div>

@@ -70,5 +70,13 @@ export async function getUserAdminGroupsWithData(userId: string) {
     .eq('role', 'admin')
     .eq('is_active', true);
 
-  return memberships?.map((m: any) => m.company_groups).filter(Boolean) || [];
+  // Filtrar apenas grupos ativos (não excluídos ou inativos)
+  return memberships
+    ?.map((m: any) => m.company_groups)
+    .filter((group: any) => 
+      group !== null && 
+      group.status === 'active' && 
+      group.status !== 'deleted' && 
+      group.status !== 'inactive'
+    ) || [];
 }

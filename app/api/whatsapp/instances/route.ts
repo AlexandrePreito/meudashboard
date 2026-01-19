@@ -391,10 +391,25 @@ export async function PUT(request: Request) {
         .eq('instance_id', body.id);
 
       const instanceGroupIds = instanceGroups?.map(ig => ig.company_group_id) || [];
-      const hasAccess = instanceGroupIds.some(gid => userGroupIds.includes(gid));
 
-      if (!hasAccess) {
+      if (instanceGroupIds.length === 0) {
+        return NextResponse.json({ error: 'Instância não está vinculada a nenhum grupo' }, { status: 404 });
+      }
+
+      // Verificar quais grupos da instância pertencem ao dev/admin
+      const userLinkedGroups = instanceGroupIds.filter(gid => userGroupIds.includes(gid));
+
+      if (userLinkedGroups.length === 0) {
         return NextResponse.json({ error: 'Sem permissão para editar esta instância' }, { status: 403 });
+      }
+
+      // Se a instância está vinculada a grupos de outros devs, não pode editar
+      const allGroupsBelongToUser = instanceGroupIds.length === userLinkedGroups.length;
+      
+      if (!allGroupsBelongToUser) {
+        return NextResponse.json({ 
+          error: 'Esta instância está vinculada a outros grupos. Você não pode editá-la, apenas desvinculá-la do(s) seu(s) grupo(s).' 
+        }, { status: 403 });
       }
     }
 
@@ -487,7 +502,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     }
 
-    // Admin e Developer: pode excluir apenas se instância está vinculada SOMENTE ao seu grupo
+    // Admin e Developer: verificar grupos vinculados à instância
     if (userRole === 'admin' || userRole === 'developer') {
       const { data: instanceGroups } = await supabase
         .from('whatsapp_instance_groups')
@@ -496,28 +511,76 @@ export async function DELETE(request: Request) {
 
       const instanceGroupIds = instanceGroups?.map(ig => ig.company_group_id) || [];
 
-      // Verificar se todos os grupos da instância pertencem ao admin
-      const hasFullAccess = instanceGroupIds.every(gid => userGroupIds.includes(gid));
-
-      if (!hasFullAccess || instanceGroupIds.length === 0) {
+      if (instanceGroupIds.length === 0) {
         return NextResponse.json({ 
-          error: 'Você só pode excluir instâncias vinculadas exclusivamente ao seu grupo' 
+          error: 'Instância não está vinculada a nenhum grupo' 
+        }, { status: 404 });
+      }
+
+      // Verificar quais grupos da instância pertencem ao dev/admin
+      const userLinkedGroups = instanceGroupIds.filter(gid => userGroupIds.includes(gid));
+
+      if (userLinkedGroups.length === 0) {
+        return NextResponse.json({ 
+          error: 'Você não tem acesso a esta instância' 
         }, { status: 403 });
+      }
+
+      // Verificar se TODOS os grupos vinculados pertencem ao dev/admin
+      const allGroupsBelongToUser = instanceGroupIds.length === userLinkedGroups.length;
+
+      if (allGroupsBelongToUser) {
+        // Todos os grupos pertencem ao dev/admin: pode excluir completamente
+        const { error } = await supabase
+          .from('whatsapp_instances')
+          .delete()
+          .eq('id', id);
+
+        if (error) {
+          console.error('Erro ao excluir instância:', error);
+          return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        return NextResponse.json({ 
+          success: true, 
+          message: 'Instância excluída com sucesso' 
+        });
+      } else {
+        // Há grupos de outros devs: apenas desvincular os grupos do dev/admin
+        const { error: unlinkError } = await supabase
+          .from('whatsapp_instance_groups')
+          .delete()
+          .eq('instance_id', id)
+          .in('company_group_id', userLinkedGroups);
+
+        if (unlinkError) {
+          console.error('Erro ao desvincular grupos:', unlinkError);
+          return NextResponse.json({ error: unlinkError.message }, { status: 500 });
+        }
+
+        return NextResponse.json({ 
+          success: true, 
+          message: 'Instância desvinculada do(s) seu(s) grupo(s). A instância continua disponível para outros grupos.' 
+        });
       }
     }
 
-    // Excluir instância (CASCADE já remove vínculos)
-    const { error } = await supabase
-      .from('whatsapp_instances')
-      .delete()
-      .eq('id', id);
+    // Master: pode excluir sempre
+    if (userRole === 'master') {
+      const { error } = await supabase
+        .from('whatsapp_instances')
+        .delete()
+        .eq('id', id);
 
-    if (error) {
-      console.error('Erro ao excluir instância:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) {
+        console.error('Erro ao excluir instância:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ success: true });
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ error: 'Operação não permitida' }, { status: 403 });
   } catch (error: any) {
     console.error('Erro:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

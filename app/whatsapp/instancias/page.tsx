@@ -105,6 +105,8 @@ function InstanciasContent() {
         loadAllGroups();
       } else if (data.user.is_developer) {
         setUserRole('developer');
+        // Carregar grupos do desenvolvedor
+        await loadDeveloperGroups();
       } else if (data.user.role === 'admin') {
         setUserRole('admin');
         setUserGroupIds(data.groupIds || []);
@@ -128,6 +130,19 @@ function InstanciasContent() {
       }
     } catch (err) {
       console.error('Erro ao carregar grupos:', err);
+    }
+  }
+
+  async function loadDeveloperGroups() {
+    try {
+      const res = await fetch('/api/user/groups');
+      if (res.ok) {
+        const data = await res.json();
+        const groupIds = (data.groups || []).map((g: any) => g.id);
+        setUserGroupIds(groupIds);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar grupos do desenvolvedor:', err);
     }
   }
 
@@ -161,7 +176,52 @@ function InstanciasContent() {
     setShowModal(true);
   }
 
+  function canEditInstance(instance: Instance): boolean {
+    // Master sempre pode editar
+    if (userRole === 'master') return true;
+    
+    // Verificar se a instância está vinculada a mais grupos além dos do dev/admin
+    const linkedGroupsCount = instance.groups?.length || 0;
+    if (linkedGroupsCount === 0) return false;
+    
+    // Se está vinculada a apenas 1 grupo e é do dev/admin, pode editar
+    if (linkedGroupsCount === 1) {
+      const groupId = instance.groups?.[0]?.company_group?.id;
+      return userGroupIds.includes(groupId || '');
+    }
+    
+    // Se está vinculada a múltiplos grupos, verificar se todos são do dev/admin
+    const allGroupsBelongToUser = instance.groups?.every((g: any) => 
+      userGroupIds.includes(g.company_group?.id)
+    ) || false;
+    
+    return allGroupsBelongToUser;
+  }
+
+  function canDeleteInstance(instance: Instance): boolean {
+    // Master sempre pode excluir
+    if (userRole === 'master') return true;
+    
+    // Verificar se a instância está vinculada a grupos
+    const linkedGroupsCount = instance.groups?.length || 0;
+    if (linkedGroupsCount === 0) return false;
+    
+    // Verificar se todos os grupos vinculados pertencem ao dev/admin
+    const allGroupsBelongToUser = instance.groups?.every((g: any) => 
+      userGroupIds.includes(g.company_group?.id)
+    ) || false;
+    
+    // Só pode excluir se todos os grupos forem do dev/admin
+    return allGroupsBelongToUser;
+  }
+
   function openEdit(instance: Instance) {
+    // Verificar se pode editar antes de abrir o modal
+    if (!canEditInstance(instance)) {
+      toast.error('Esta instância está vinculada a outros grupos. Você não pode editá-la, apenas desvinculá-la do(s) seu(s) grupo(s).');
+      return;
+    }
+    
     setEditingInstance(instance);
     setFormData({
       name: instance.name,
@@ -259,12 +319,31 @@ function InstanciasContent() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Excluir esta instância?')) return;
+    // Buscar informações da instância
+    const instance = instances.find(i => i.id === id);
+    
+    if (!instance) {
+      toast.error('Instância não encontrada');
+      return;
+    }
+
+    // Verificar se pode excluir
+    if (!canDeleteInstance(instance)) {
+      toast.error('Esta instância está vinculada a outros grupos. Você não pode excluí-la, apenas desvinculá-la do(s) seu(s) grupo(s).');
+      return;
+    }
+
+    // Se chegou aqui, pode excluir (todos os grupos são do dev)
+    const confirmMessage = 'Excluir esta instância? Esta ação não pode ser desfeita.';
+    
+    if (!confirm(confirmMessage)) return;
 
     try {
       const res = await fetch(`/api/whatsapp/instances?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
-        toast.success('Instância excluída!');
+        const data = await res.json();
+        // Mostrar mensagem retornada pela API
+        toast.success(data.message || 'Instância excluída com sucesso!');
         loadInstances(activeGroup);
       } else {
         const data = await res.json();
@@ -502,15 +581,25 @@ function InstanciasContent() {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => openEdit(instance)}
-                      className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      title="Editar"
+                      disabled={!canEditInstance(instance)}
+                      className={`p-2 rounded-lg transition-colors ${
+                        canEditInstance(instance)
+                          ? 'text-gray-400 hover:text-blue-600 hover:bg-blue-50'
+                          : 'text-gray-300 cursor-not-allowed opacity-50'
+                      }`}
+                      title={canEditInstance(instance) ? 'Editar' : 'Esta instância está vinculada a outros grupos e não pode ser editada'}
                     >
                       <Edit size={16} />
                     </button>
                     <button
                       onClick={() => handleDelete(instance.id)}
-                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Excluir"
+                      disabled={!canDeleteInstance(instance)}
+                      className={`p-2 rounded-lg transition-colors ${
+                        canDeleteInstance(instance)
+                          ? 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+                          : 'text-gray-300 cursor-not-allowed opacity-50'
+                      }`}
+                      title={canDeleteInstance(instance) ? 'Excluir' : 'Esta instância está vinculada a outros grupos e não pode ser excluída'}
                     >
                       <Trash2 size={16} />
                     </button>
