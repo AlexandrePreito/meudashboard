@@ -385,16 +385,19 @@ export async function POST(request: Request) {
 
     // Verificar se o número é autorizado
     console.log('Buscando número autorizado...');
-    let authorizedNumber = null;
+    let authorizedNumber: any = null;
     let allGroupIds: string[] = [];
+    let allAuthorizedRecords: any[] = [];
     try {
       // Buscar TODOS os registros do número (pode ter múltiplos grupos)
-      const { data: allAuthorizedRecords, error } = await supabase
+      const { data: authRecords, error } = await supabase
         .from('whatsapp_authorized_numbers')
         .select('id, name, phone_number, company_group_id, instance_id, is_active')
         .eq('phone_number', phone)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
+      
+      allAuthorizedRecords = authRecords || [];
       
       if (error) {
         console.error('Erro ao buscar número autorizado:', error);
@@ -402,10 +405,10 @@ export async function POST(request: Request) {
       }
       
       // Usar o primeiro registro para informações básicas (nome, etc)
-      authorizedNumber = allAuthorizedRecords?.[0] || null;
+      authorizedNumber = allAuthorizedRecords[0] || null;
       
       // Extrair TODOS os company_group_ids
-      allGroupIds = allAuthorizedRecords?.map(record => record.company_group_id).filter(Boolean) || [];
+      allGroupIds = allAuthorizedRecords.map(record => record.company_group_id).filter(Boolean);
       
       // Garantir que sempre tenha pelo menos o grupo do authorizedNumber
       if (allGroupIds.length === 0 && authorizedNumber?.company_group_id) {
@@ -415,7 +418,7 @@ export async function POST(request: Request) {
       console.log('═══════════════════════════════════════');
       console.log('🔍 [DEBUG] PHASE 1: Número Autorizado');
       console.log('Telefone:', phone);
-      console.log('Total de registros encontrados:', allAuthorizedRecords?.length || 0);
+      console.log('Total de registros encontrados:', allAuthorizedRecords.length);
       console.log('allGroupIds:', JSON.stringify(allGroupIds));
       console.log('allGroupIds length:', allGroupIds.length);
       console.log('Authorized Number:', authorizedNumber?.name);
@@ -698,7 +701,7 @@ Por favor, envie sua pergunta como *texto* para que eu possa ajudar! 😊`;
       );
       
       // IMPORTANTE: Atualizar authorizedNumber para o grupo correto
-      const matchingAuth = allAuthorizedRecords?.find(
+      const matchingAuth = allAuthorizedRecords.find(
         rec => rec.company_group_id === userSelection.company_group_id
       );
       if (matchingAuth) {
@@ -724,7 +727,7 @@ Por favor, envie sua pergunta como *texto* para que eu possa ajudar! 😊`;
         const selectedContext = allContexts[choice - 1];
         
         // ATUALIZAR authorizedNumber para o grupo correto
-        const matchingAuth = allAuthorizedRecords?.find(
+        const matchingAuth = allAuthorizedRecords.find(
           rec => rec.company_group_id === selectedContext.company_group_id
         );
         if (matchingAuth) {
