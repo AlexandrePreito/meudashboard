@@ -301,7 +301,7 @@ export default function Header({ user }: HeaderProps) {
   function toggleGroupSelection(groupId: string) {
     if (user.is_master) {
       // Master: seleção múltipla com checkboxes
-      setSelectedGroupIds(prev => {
+      setSelectedGroupIds((prev: string[]) => {
         if (prev.includes(groupId)) {
           return prev.filter(id => id !== groupId);
         } else {
