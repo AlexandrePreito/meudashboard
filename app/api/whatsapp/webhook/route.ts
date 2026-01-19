@@ -558,22 +558,43 @@ export async function POST(request: Request) {
       .order('created_at', { ascending: false })
       .limit(4);  // ← REDUZIDO para 4 mensagens
 
-    // ========== CONTEXTO REDUZIDO ==========
-    const modelContext = aiContext?.context_content?.slice(0, 3000) || '';  // ← REDUZIDO de 6000 para 3000
-
-    // ========== SYSTEM PROMPT MÍNIMO ==========
-    const currentMonth = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    // ========== CONTEXTO DO BANCO (COMPLETO!) ==========
+    const modelContext = aiContext?.context_content || '';
     
-    const systemPrompt = `Assistente de dados WhatsApp. REGRAS:
-- Respostas CURTAS (máx 400 caracteres)
-- Formato: "📅 ${currentMonth}\n[dado principal]\n[sugestão breve]"
-- Valores: R$ 1,2M (milhões), R$ 45K (mil)
-- Período padrão: ${currentMonth}
+    console.log('[Webhook] Contexto carregado:', modelContext.length, 'chars');
 
-CONTEXTO:
-${modelContext.slice(0, 2500)}
+    // ========== SYSTEM PROMPT (REGRAS WhatsApp + CONTEXTO DO BANCO) ==========
+    const currentMonth = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    const currentDate = new Date().toLocaleDateString('pt-BR');
+    
+    const systemPrompt = `Você é um assistente de dados empresariais via WhatsApp.
 
-Use execute_dax para buscar dados. Não invente medidas.`;
+# REGRAS DE FORMATAÇÃO WHATSAPP
+- Respostas CONCISAS (máx 800 caracteres)
+- Use *negrito* para destaques
+- Formato monetário: R$ 1,2M (milhões), R$ 45K (mil)
+- Período padrão quando não especificado: ${currentMonth}
+- Data atual: ${currentDate}
+- SEMPRE termine com 3 sugestões de análise relacionadas
+
+# FORMATO DE RESPOSTA
+📅 *[Período]*
+💰 *[Dado principal em destaque]*
+[Detalhes breves se necessário]
+
+📊 *Análises sugeridas:*
+1️⃣ [sugestão relacionada 1]
+2️⃣ [sugestão relacionada 2]
+3️⃣ [sugestão relacionada 3]
+
+# CONTEXTO DO MODELO DE DADOS
+${modelContext.slice(0, 8000)}
+
+# INSTRUÇÕES FINAIS
+- Use a ferramenta execute_dax para buscar dados
+- Siga EXATAMENTE os exemplos de query do contexto acima
+- Se uma query falhar, tente com medida similar do contexto
+- Nunca invente nomes de tabelas ou medidas`;
 
     // ========== TOOLS ==========
     const tools: Anthropic.Tool[] = [
@@ -620,7 +641,7 @@ Use execute_dax para buscar dados. Não invente medidas.`;
     try {
       response = await callClaudeWithRetry({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 600,  // ← REDUZIDO de 800 para 600
+        max_tokens: 1000,  // ← Espaço para respostas completas com 3 sugestões
         system: systemPrompt,
         messages: conversationHistory,
         tools
@@ -654,9 +675,9 @@ Use execute_dax para buscar dados. Não invente medidas.`;
           const toolInput = toolUse.input as { query?: string };
           if (!toolInput.query) continue;
 
-          console.log('[Webhook] DAX query...');
+          console.log('[Webhook] DAX query:', toolInput.query?.substring(0, 300));
           const daxResult = await executeDaxQuery(connectionId, datasetId, toolInput.query, supabase);
-          console.log('[Webhook] DAX resultado | Tempo:', Date.now() - startTime, 'ms');
+          console.log('[Webhook] DAX resultado:', daxResult.success ? `✅ ${daxResult.results?.length || 0} linhas` : `❌ ${daxResult.error}`);
 
           if (daxResult.success) {
             toolResults.push({
@@ -682,7 +703,7 @@ Use execute_dax para buscar dados. Não invente medidas.`;
         try {
           response = await callClaudeWithRetry({
             model: 'claude-sonnet-4-20250514',
-            max_tokens: 600,
+            max_tokens: 1000,
             system: systemPrompt,
             messages,
             tools
@@ -704,9 +725,19 @@ Use execute_dax para buscar dados. Não invente medidas.`;
 
     if (!assistantMessage.trim()) {
       if (daxError) {
-        assistantMessage = `📊 Não encontrei esses dados.\n\n*Tente:*\n• "Faturamento total"\n• "Vendas do mês"`;
+        assistantMessage = `📊 Não encontrei esses dados específicos.
+
+📊 *Análises sugeridas:*
+1️⃣ Qual o faturamento total?
+2️⃣ Vendas por filial
+3️⃣ Top 10 produtos vendidos`;
       } else {
-        assistantMessage = `Não entendi. 🤔\n\n*Exemplos:*\n• Faturamento de janeiro\n• Top 10 produtos`;
+        assistantMessage = `Não entendi sua pergunta. 🤔
+
+📊 *Análises sugeridas:*
+1️⃣ Faturamento do mês
+2️⃣ Vendas por garçom
+3️⃣ Ticket médio`;
       }
     }
 
