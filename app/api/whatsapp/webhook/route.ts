@@ -446,18 +446,6 @@ export async function POST(request: Request) {
     }
     // ========== FIM CONTROLE DE DUPLICIDADE ==========
 
-    // Salvar mensagem recebida
-    await supabase.from('whatsapp_messages').insert({
-      company_group_id: authorizedNumber.company_group_id,
-      phone_number: phone,
-      message_content: messageText,
-      direction: 'incoming',
-      sender_name: authorizedNumber.name || phone,
-      external_id: messageData?.key?.id || null,
-      instance_id: authorizedNumber.instance_id || null,
-      authorized_number_id: authorizedNumber.id
-    });
-
     // Verificar limite de mensagens WhatsApp do mês
     const now = new Date();
     const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
@@ -708,7 +696,15 @@ Por favor, envie sua pergunta como *texto* para que eu possa ajudar! 😊`;
         ctx.connection_id === userSelection.selected_connection_id && 
         ctx.dataset_id === userSelection.selected_dataset_id
       );
-      console.log('Usando seleção prévia do usuário');
+      
+      // IMPORTANTE: Atualizar authorizedNumber para o grupo correto
+      const matchingAuth = allAuthorizedRecords?.find(
+        rec => rec.company_group_id === userSelection.company_group_id
+      );
+      if (matchingAuth) {
+        authorizedNumber = matchingAuth;
+        console.log('Usando seleção prévia - Grupo:', userSelection.company_group_id);
+      }
     }
     // Se NÃO tem seleção e há múltiplos datasets
     else if (allContexts && allContexts.length > 1) {
@@ -727,15 +723,24 @@ Por favor, envie sua pergunta como *texto* para que eu possa ajudar! 😊`;
         // Usuário escolheu um dataset
         const selectedContext = allContexts[choice - 1];
         
-        // SALVAR a escolha
+        // ATUALIZAR authorizedNumber para o grupo correto
+        const matchingAuth = allAuthorizedRecords?.find(
+          rec => rec.company_group_id === selectedContext.company_group_id
+        );
+        if (matchingAuth) {
+          authorizedNumber = matchingAuth;
+        }
+        
+        // SALVAR a escolha (upsert para evitar duplicatas)
         const { error: insertError } = await supabase
           .from('whatsapp_user_selections')
-          .insert({
+          .upsert({
             phone_number: phone,
             company_group_id: selectedContext.company_group_id,
             selected_connection_id: selectedContext.connection_id,
-            selected_dataset_id: selectedContext.dataset_id
-          });
+            selected_dataset_id: selectedContext.dataset_id,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'phone_number' });
 
         if (insertError) {
           console.error('Erro ao salvar seleção:', insertError);
@@ -1006,6 +1011,17 @@ Entre em contato com o suporte para configurar a conexão! 📞`;
       return NextResponse.json({ status: 'success', sent, reason: 'no_connection_configured' });
     }
 
+    // ========== SALVAR MENSAGEM INCOMING (com grupo correto) ==========
+    await supabase.from('whatsapp_messages').insert({
+      company_group_id: authorizedNumber.company_group_id,
+      phone_number: phone,
+      message_content: messageText,
+      direction: 'incoming',
+      sender_name: authorizedNumber.name || phone,
+      external_id: messageData?.key?.id || null,
+      instance_id: authorizedNumber.instance_id || null,
+      authorized_number_id: authorizedNumber.id
+    });
 
     // ============================================
     // BUSCAR HISTÓRICO DE CONVERSAÇÃO (últimas 10 mensagens do grupo específico)
