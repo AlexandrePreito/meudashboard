@@ -579,6 +579,42 @@ export async function POST(request: Request) {
       .order('created_at', { ascending: false })
       .limit(10);  // ← ALTERADO DE 4 PARA 10
 
+    // ========== INTERPRETAR ESCOLHA DE OPÇÕES 1, 2, 3 ==========
+    const userInput = messageText.trim();
+    let processedMessage = messageText;
+
+    if (['1', '2', '3'].includes(userInput)) {
+      // Buscar última mensagem do assistente para extrair a sugestão
+      const { data: lastAssistantMsg } = await supabase
+        .from('whatsapp_messages')
+        .select('message_content')
+        .eq('phone_number', phone)
+        .eq('company_group_id', authorizedNumber.company_group_id)
+        .eq('direction', 'outgoing')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (lastAssistantMsg?.message_content) {
+        const content = lastAssistantMsg.message_content;
+        
+        // Extrair as sugestões numeradas (1️⃣, 2️⃣, 3️⃣ ou 1., 2., 3.)
+        const suggestionPatterns = [
+          /1️⃣\s*([^\n]+)/,
+          /2️⃣\s*([^\n]+)/,
+          /3️⃣\s*([^\n]+)/,
+        ];
+        
+        const choiceIndex = parseInt(userInput) - 1;
+        const match = content.match(suggestionPatterns[choiceIndex]);
+        
+        if (match && match[1]) {
+          processedMessage = match[1].trim();
+          console.log(`[Webhook] Usuário escolheu opção ${userInput}: "${processedMessage}"`);
+        }
+      }
+    }
+
     // ========== SYSTEM PROMPT (REGRAS WhatsApp + CONTEXTO DO BANCO) ==========
     const currentMonth = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
     const currentDate = new Date().toLocaleDateString('pt-BR');
@@ -617,6 +653,10 @@ Exemplos de sugestões por tema:
 Se o usuário responder apenas "1", "2" ou "3", ele está escolhendo uma das sugestões anteriores.
 Consulte o histórico e execute a análise correspondente.
 
+# QUANDO USUÁRIO ESCOLHE OPÇÃO
+Se a mensagem do usuário for uma das sugestões anteriores (ex: "Faturamento por filial"), 
+execute a consulta DAX correspondente usando o mesmo período da resposta anterior.
+
 # FORMATAÇÃO WHATSAPP
 - Use *negrito* para destaques
 - Valores monetários COMPLETOS: R$ 1.234.567,89 (NUNCA abrevie)
@@ -641,12 +681,51 @@ R$ X.XXX.XXX,XX
 # CONTEXTO DO MODELO DE DADOS
 ${modelContext.slice(0, 10000)}
 
-# INSTRUÇÕES DAX
+# INSTRUÇÕES DAX - CRÍTICO ⚠️
 - Use a ferramenta execute_dax para buscar dados
-- Siga EXATAMENTE os nomes de tabelas/medidas do contexto acima
-- Se uma query falhar, tente medida similar
-- NUNCA invente nomes de tabelas ou medidas
-- Para filtrar mês atual: Calendario[Mes] = ${currentMonthNumber} AND Calendario[Ano] = ${currentYear}
+- Siga EXATAMENTE os nomes de tabelas/medidas do contexto
+
+## ⚠️ REGRA OBRIGATÓRIA DE FILTRO DE DATA
+**TODA query DEVE incluir filtro de período usando CALCULATE ou FILTER.**
+NUNCA execute uma medida sem filtro de data.
+
+### FORMATO CORRETO (USE SEMPRE):
+\`\`\`dax
+EVALUATE
+ROW(
+    "Faturamento", 
+    CALCULATE(
+        [QA_Faturamento],
+        Calendario[Ano] = ${currentYear},
+        Calendario[MesNum] = ${currentMonthNumber}
+    )
+)
+\`\`\`
+
+### PARA QUERIES COM AGRUPAMENTO:
+\`\`\`dax
+EVALUATE
+CALCULATETABLE(
+    SUMMARIZECOLUMNS(
+        Empresa[Filial],
+        "Vendas", [QA_Venda_Total]
+    ),
+    Calendario[Ano] = ${currentYear},
+    Calendario[MesNum] = ${currentMonthNumber}
+)
+\`\`\`
+
+### ❌ NUNCA FAÇA ISSO (sem filtro):
+\`\`\`dax
+EVALUATE ROW("Faturamento", [QA_Faturamento])  // ERRADO!
+\`\`\`
+
+### COLUNAS DE DATA DISPONÍVEIS:
+- Calendario[Ano] = ano (ex: ${currentYear})
+- Calendario[MesNum] = número do mês (1-12, atual: ${currentMonthNumber})
+- Calendario[Data] = data completa
+- Calendario[Mês Ano] = texto "${currentMonth}"
+- Se não funcionar, tente: Calendario[Mes], Calendario[NumMes], Calendario[MêsNum]
 
 # DATA ATUAL
 ${currentDate} (${new Date().toLocaleDateString('pt-BR', { weekday: 'long' })})
@@ -690,7 +769,7 @@ Ano: ${currentYear}`;
       }
     }
 
-    conversationHistory.push({ role: 'user', content: messageText });
+    conversationHistory.push({ role: 'user', content: processedMessage });
 
     console.log('[Webhook] Histórico:', conversationHistory.length, 'msgs | Tempo:', Date.now() - startTime, 'ms');
 
