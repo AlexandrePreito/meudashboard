@@ -301,13 +301,11 @@ export default function Header({ user }: HeaderProps) {
   function toggleGroupSelection(groupId: string) {
     if (user.is_master) {
       // Master: seleção múltipla com checkboxes
-      setSelectedGroupIds((prev: string[]) => {
-        if (prev.includes(groupId)) {
-          return prev.filter(id => id !== groupId);
-        } else {
-          return [...prev, groupId];
-        }
-      });
+      if (selectedGroupIds.includes(groupId)) {
+        setSelectedGroupIds(selectedGroupIds.filter(id => id !== groupId));
+      } else {
+        setSelectedGroupIds([...selectedGroupIds, groupId]);
+      }
     } else {
       // Outros usuários: seleção única (comportamento antigo)
       const group = groups.find(g => g.id === groupId);
