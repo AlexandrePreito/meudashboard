@@ -748,6 +748,8 @@ Ano: ${currentYear}`;
     conversationHistory.push({ role: 'user', content: processedMessage });
 
     console.log('[Webhook] Histórico:', conversationHistory.length, 'msgs | Tempo:', Date.now() - startTime, 'ms');
+    console.log('[Webhook] System prompt length:', systemPrompt.length);
+    console.log('[Webhook] Contexto carregado:', modelContext ? modelContext.length + ' chars' : 'NENHUM');
 
     // ========== CHAMAR CLAUDE ==========
     let response;
@@ -763,7 +765,12 @@ Ano: ${currentYear}`;
       });
       console.log('[Webhook] Claude respondeu | Tempo:', Date.now() - startTime, 'ms');
     } catch (claudeError: any) {
-      console.error('[Webhook] Claude erro:', claudeError.message);
+      console.error('[Webhook] Claude erro COMPLETO:', JSON.stringify({
+        message: claudeError.message,
+        status: claudeError.status,
+        type: claudeError.type,
+        stack: claudeError.stack?.substring(0, 500)
+      }));
       
       const fallbackMsg = `Desculpe ${authorizedNumber.name?.split(' ')[0] || ''}, estou sobrecarregado. ⏳\n\nTente novamente em alguns segundos.`;
       await sendWhatsAppMessage(instance, phone, fallbackMsg);
