@@ -328,6 +328,126 @@ async function getInstanceForAuthorizedNumber(authorizedNumber: any, supabase: a
 }
 
 // ============================================
+// FUNÇÃO PARA IDENTIFICAR INTENÇÃO DA PERGUNTA
+// ============================================
+function identifyQuestionIntent(question: string): string {
+  const q = question.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  
+  // Faturamento
+  if (q.match(/faturamento.*(filial|loja|unidade)/)) return 'faturamento_filial';
+  if (q.match(/faturamento.*(vendedor|garcom|funcionario)/)) return 'faturamento_vendedor';
+  if (q.match(/faturamento.*(produto|item)/)) return 'faturamento_produto';
+  if (q.match(/faturamento|faturou|receita total|vendeu quanto/)) return 'faturamento_total';
+  
+  // Vendas por
+  if (q.match(/vendas?.*(filial|loja)/)) return 'faturamento_filial';
+  if (q.match(/vendas?.*(vendedor|garcom|funcionario)/)) return 'faturamento_vendedor';
+  if (q.match(/vendas?.*(produto|item)/)) return 'faturamento_produto';
+  
+  // Rankings
+  if (q.match(/top.*(vendedor|garcom|funcionario)|melhor vendedor|quem (mais )?vendeu/)) return 'top_vendedores';
+  if (q.match(/top.*(produto|item)|produto.*(mais|melhor)/)) return 'top_produtos';
+  if (q.match(/top.*(filial|loja)|filial.*(mais|melhor)/)) return 'top_filiais';
+  
+  // Métricas
+  if (q.match(/ticket.*(medio|médio)/)) return 'ticket_medio';
+  if (q.match(/margem|lucro/)) return 'margem';
+  if (q.match(/cmv|custo/)) return 'cmv';
+  
+  // Financeiro
+  if (q.match(/contas?.*(pagar|vencer)|a pagar/)) return 'contas_pagar';
+  if (q.match(/contas?.*(receber)|a receber/)) return 'contas_receber';
+  if (q.match(/saldo|caixa|banco/)) return 'saldo';
+  
+  return 'outros';
+}
+
+// ============================================
+// FUNÇÃO PARA BUSCAR QUERIES QUE FUNCIONARAM
+// ============================================
+async function getWorkingQueries(
+  supabase: any, 
+  datasetId: string, 
+  intent: string
+): Promise<string[]> {
+  try {
+    const { data } = await supabase
+      .from('ai_query_learning')
+      .select('dax_query, times_reused')
+      .eq('dataset_id', datasetId)
+      .eq('question_intent', intent)
+      .eq('success', true)
+      .order('times_reused', { ascending: false })
+      .limit(3);
+    
+    return data?.map((r: any) => r.dax_query) || [];
+  } catch (e) {
+    console.error('[Learning] Erro ao buscar queries:', e);
+    return [];
+  }
+}
+
+// ============================================
+// FUNÇÃO PARA SALVAR RESULTADO DA QUERY
+// ============================================
+async function saveQueryResult(
+  supabase: any,
+  datasetId: string,
+  companyGroupId: string,
+  userQuestion: string,
+  intent: string,
+  daxQuery: string,
+  success: boolean,
+  errorMessage?: string,
+  executionTimeMs?: number,
+  resultRows?: number
+): Promise<void> {
+  try {
+    const crypto = require('crypto');
+    const queryHash = crypto.createHash('md5').update(daxQuery).digest('hex');
+    
+    // Verificar se query já existe
+    const { data: existing } = await supabase
+      .from('ai_query_learning')
+      .select('id, times_reused')
+      .eq('dataset_id', datasetId)
+      .eq('dax_query_hash', queryHash)
+      .maybeSingle();
+    
+    if (existing && success) {
+      // Query já existe e deu sucesso: incrementar uso
+      await supabase
+        .from('ai_query_learning')
+        .update({ 
+          times_reused: existing.times_reused + 1,
+          last_used_at: new Date().toISOString()
+        })
+        .eq('id', existing.id);
+      console.log('[Learning] Query reutilizada, times_reused:', existing.times_reused + 1);
+    } else if (!existing) {
+      // Query nova: inserir
+      await supabase
+        .from('ai_query_learning')
+        .insert({
+          dataset_id: datasetId,
+          company_group_id: companyGroupId,
+          user_question: userQuestion.substring(0, 500),
+          question_intent: intent,
+          dax_query: daxQuery,
+          dax_query_hash: queryHash,
+          success,
+          error_message: errorMessage?.substring(0, 500),
+          execution_time_ms: executionTimeMs,
+          result_rows: resultRows
+        });
+      console.log('[Learning] Nova query salva, success:', success);
+    }
+  } catch (e) {
+    console.error('[Learning] Erro ao salvar:', e);
+  }
+}
+
+// ============================================
 // POST - WEBHOOK DO EVOLUTION API
 // ============================================
 export async function POST(request: Request) {
@@ -615,6 +735,23 @@ export async function POST(request: Request) {
       }
     }
 
+    // ========== BUSCAR QUERIES QUE FUNCIONARAM (APRENDIZADO) ==========
+    const questionIntent = identifyQuestionIntent(processedMessage);
+    const workingQueries = await getWorkingQueries(supabase, datasetId, questionIntent);
+
+    let learningContext = '';
+    if (workingQueries.length > 0) {
+      learningContext = `
+
+# QUERIES QUE FUNCIONARAM PARA PERGUNTAS SIMILARES
+Use estas queries como referência (já testadas e funcionam neste dataset):
+${workingQueries.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+
+Prefira usar/adaptar estas queries em vez de criar do zero.
+`;
+      console.log('[Learning] Encontradas', workingQueries.length, 'queries para intent:', questionIntent);
+    }
+
     // ========== SYSTEM PROMPT (REGRAS WhatsApp + CONTEXTO DO BANCO) ==========
     const currentMonth = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
     const currentDate = new Date().toLocaleDateString('pt-BR');
@@ -707,6 +844,7 @@ R$ X.XXX.XXX,XX
 
 # CONTEXTO DO MODELO DE DADOS
 ${modelContext.slice(0, 10000)}
+${learningContext}
 
 # INSTRUÇÕES DAX
 - Use a ferramenta execute_dax para buscar dados
@@ -821,6 +959,20 @@ Ano: ${currentYear}`;
           console.log('[Webhook] DAX query:', toolInput.query?.substring(0, 300));
           const daxResult = await executeDaxQuery(connectionId, datasetId, toolInput.query, supabase);
           console.log('[Webhook] DAX resultado:', daxResult.success ? `✅ ${daxResult.results?.length || 0} linhas` : `❌ ${daxResult.error}`);
+
+          // Salvar resultado para aprendizado
+          await saveQueryResult(
+            supabase,
+            datasetId,
+            authorizedNumber.company_group_id,
+            processedMessage,
+            questionIntent,
+            toolInput.query,
+            daxResult.success,
+            daxResult.error,
+            undefined, // executionTimeMs - pode adicionar depois se quiser
+            daxResult.results?.length
+          );
 
           if (daxResult.success) {
           toolResults.push({
