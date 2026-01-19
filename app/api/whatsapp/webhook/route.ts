@@ -683,23 +683,24 @@ ${modelContext.slice(0, 10000)}
 
 # INSTRUÇÕES DAX
 - Use a ferramenta execute_dax para buscar dados
-- Siga EXATAMENTE os nomes de tabelas, colunas e medidas do CONTEXTO DO MODELO acima
-- NUNCA invente nomes - use apenas o que está documentado no contexto
+- Leia o CONTEXTO DO MODELO DE DADOS acima para descobrir os nomes EXATOS de tabelas, colunas e medidas
+- NUNCA invente nomes - use SOMENTE o que está documentado no contexto
 
-## REGRA OBRIGATÓRIA DE FILTRO DE DATA
-- Quando o usuário NÃO especificar período, SEMPRE filtre pelo mês/ano atual
-- Use as colunas da tabela Calendario conforme documentado no contexto (Calendario[Mês] e Calendario[Ano])
+## REGRA DE FILTRO DE DATA
+- Quando o usuário NÃO especificar período, filtre pelo mês/ano atual
+- Consulte a documentação da tabela de datas (Calendario ou similar) no contexto para saber os nomes corretos das colunas
 - Mês atual: ${currentMonthNumber} | Ano atual: ${currentYear}
-- NUNCA execute medida sem filtro de data (retornaria total histórico)
+- SEMPRE aplique filtro de data nas queries (sem filtro = total histórico = ERRADO)
 
 ## FORMATO DAS QUERIES
-- Sempre use EVALUATE ROW(...) ou EVALUATE SUMMARIZECOLUMNS(...)
-- Sempre use CALCULATE([Medida], filtros...) para aplicar filtros de data
+- Use EVALUATE ROW(...) para valores únicos
+- Use EVALUATE SUMMARIZECOLUMNS(...) para agrupamentos
+- Use CALCULATE([Medida], filtros...) para aplicar filtros
 
-# DATA ATUAL PARA REFERÊNCIA
+# REFERÊNCIA TEMPORAL
 Hoje: ${currentDate}
-Mês atual: ${currentMonthNumber} (${currentMonth})
-Ano atual: ${currentYear}`;
+Mês: ${currentMonthNumber}
+Ano: ${currentYear}`;
 
     // ========== TOOLS ==========
     const tools: Anthropic.Tool[] = [
