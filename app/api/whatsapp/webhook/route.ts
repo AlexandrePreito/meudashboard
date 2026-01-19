@@ -681,32 +681,25 @@ R$ X.XXX.XXX,XX
 # CONTEXTO DO MODELO DE DADOS
 ${modelContext.slice(0, 10000)}
 
-# INSTRUÇÕES DAX - CRÍTICO
+# INSTRUÇÕES DAX
 - Use a ferramenta execute_dax para buscar dados
-- Siga EXATAMENTE os nomes de tabelas/medidas do contexto
+- Siga EXATAMENTE os nomes de tabelas, colunas e medidas do CONTEXTO DO MODELO acima
+- NUNCA invente nomes - use apenas o que está documentado no contexto
 
 ## REGRA OBRIGATÓRIA DE FILTRO DE DATA
-TODA query DEVE incluir filtro usando CALCULATE com:
-- Calendario[Ano] = ${currentYear}
-- Calendario[MesNum] = ${currentMonthNumber}
+- Quando o usuário NÃO especificar período, SEMPRE filtre pelo mês/ano atual
+- Use as colunas da tabela Calendario conforme documentado no contexto (Calendario[Mês] e Calendario[Ano])
+- Mês atual: ${currentMonthNumber} | Ano atual: ${currentYear}
+- NUNCA execute medida sem filtro de data (retornaria total histórico)
 
-FORMATO CORRETO: EVALUATE ROW("Resultado", CALCULATE([Medida], Calendario[Ano] = ${currentYear}, Calendario[MesNum] = ${currentMonthNumber}))
+## FORMATO DAS QUERIES
+- Sempre use EVALUATE ROW(...) ou EVALUATE SUMMARIZECOLUMNS(...)
+- Sempre use CALCULATE([Medida], filtros...) para aplicar filtros de data
 
-PARA AGRUPAMENTO: EVALUATE CALCULATETABLE(SUMMARIZECOLUMNS(Coluna, "Total", [Medida]), Calendario[Ano] = ${currentYear}, Calendario[MesNum] = ${currentMonthNumber})
-
-NUNCA execute medida sem filtro de data. Sem filtro = dados de todos os anos = ERRADO.
-
-COLUNAS DE DATA DISPONÍVEIS:
-- Calendario[Ano] = ano (ex: ${currentYear})
-- Calendario[MesNum] = número do mês (1-12, atual: ${currentMonthNumber})
-- Calendario[Data] = data completa
-- Calendario[Mês Ano] = texto "${currentMonth}"
-- Se não funcionar, tente: Calendario[Mes], Calendario[NumMes], Calendario[MêsNum]
-
-# DATA ATUAL
-${currentDate} (${new Date().toLocaleDateString('pt-BR', { weekday: 'long' })})
-Mês: ${currentMonth}
-Ano: ${currentYear}`;
+# DATA ATUAL PARA REFERÊNCIA
+Hoje: ${currentDate}
+Mês atual: ${currentMonthNumber} (${currentMonth})
+Ano atual: ${currentYear}`;
 
     // ========== TOOLS ==========
     const tools: Anthropic.Tool[] = [
