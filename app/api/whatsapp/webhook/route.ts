@@ -375,14 +375,14 @@ export async function POST(request: Request) {
 
     // ========== BUSCAR NÚMERO AUTORIZADO ==========
     const { data: authRecords } = await supabase
-      .from('whatsapp_authorized_numbers')
-      .select('id, name, phone_number, company_group_id, instance_id, is_active')
-      .eq('phone_number', phone)
-      .eq('is_active', true)
+        .from('whatsapp_authorized_numbers')
+        .select('id, name, phone_number, company_group_id, instance_id, is_active')
+        .eq('phone_number', phone)
+        .eq('is_active', true)
       .limit(1);
     
     authorizedNumber = authRecords?.[0] || null;
-    
+
     if (!authorizedNumber) {
       console.log('[Webhook] Número não autorizado:', phone);
       return NextResponse.json({ status: 'ignored', reason: 'unauthorized' });
@@ -392,7 +392,7 @@ export async function POST(request: Request) {
     const externalId = messageData?.key?.id;
     if (externalId) {
       const { data: existingMessage } = await supabase
-        .from('whatsapp_messages')
+      .from('whatsapp_messages')
         .select('id')
         .eq('external_id', externalId)
         .maybeSingle();
@@ -420,9 +420,9 @@ export async function POST(request: Request) {
     let datasetId = aiContext?.dataset_id || null;
 
     // ========== SALVAR MENSAGEM INCOMING ==========
-    await supabase.from('whatsapp_messages').insert({
-      company_group_id: authorizedNumber.company_group_id,
-      phone_number: phone,
+      await supabase.from('whatsapp_messages').insert({
+        company_group_id: authorizedNumber.company_group_id,
+        phone_number: phone,
       message_content: messageText,
       direction: 'incoming',
       sender_name: authorizedNumber.name || phone,
@@ -444,13 +444,13 @@ export async function POST(request: Request) {
     // Fallback: buscar por connection_id se não encontrou
     if (!modelContext && connectionId) {
       const { data: fallbackContext } = await supabase
-        .from('ai_model_contexts')
+      .from('ai_model_contexts')
         .select('context_content, connection_id, dataset_id')
         .eq('connection_id', connectionId)
         .eq('is_active', true)
-        .limit(1)
-        .maybeSingle();
-      
+      .limit(1)
+      .maybeSingle();
+
       if (fallbackContext?.context_content) {
         modelContext = fallbackContext.context_content;
         if (!connectionId) connectionId = fallbackContext.connection_id || null;
@@ -467,11 +467,11 @@ export async function POST(request: Request) {
     if (isAudioMessage && !messageText.trim()) {
       const audioMsg = `Desculpe ${authorizedNumber?.name || ''}, não consigo processar áudios ainda. 🎤\n\nEnvie sua pergunta como *texto*!`;
       await sendWhatsAppMessage(instance, phone, audioMsg);
-      await supabase.from('whatsapp_messages').insert({
-        company_group_id: authorizedNumber.company_group_id,
-        phone_number: phone,
+          await supabase.from('whatsapp_messages').insert({
+            company_group_id: authorizedNumber.company_group_id,
+            phone_number: phone,
         message_content: audioMsg,
-        direction: 'outgoing',
+            direction: 'outgoing',
         sender_name: 'Assistente IA',
         instance_id: instance.id
       });
@@ -492,11 +492,11 @@ export async function POST(request: Request) {
         : `Olá ${authorizedNumber.name?.split(' ')[0] || ''}! 👋\n\nAinda não tenho acesso aos seus dados. Contate o suporte.`;
 
       await sendWhatsAppMessage(instance, phone, welcomeMessage);
-      await supabase.from('whatsapp_messages').insert({
-        company_group_id: authorizedNumber.company_group_id,
-        phone_number: phone,
-        message_content: welcomeMessage,
-        direction: 'outgoing',
+        await supabase.from('whatsapp_messages').insert({
+          company_group_id: authorizedNumber.company_group_id,
+          phone_number: phone,
+          message_content: welcomeMessage,
+          direction: 'outgoing',
         sender_name: 'Assistente IA',
         instance_id: instance.id
       });
@@ -509,16 +509,16 @@ export async function POST(request: Request) {
     if (userCommand === '/ajuda' || userCommand === 'ajuda') {
       const helpMsg = `🤖 *Comandos:*\n/ajuda - Esta mensagem\n/limpar - Limpar histórico\n/status - Ver status\n\n*Exemplos:*\n- Faturamento do mês\n- Top 5 produtos\n- Vendas por filial`;
       await sendWhatsAppMessage(instance, phone, helpMsg);
-      await supabase.from('whatsapp_messages').insert({
-        company_group_id: authorizedNumber.company_group_id,
-        phone_number: phone,
+        await supabase.from('whatsapp_messages').insert({
+          company_group_id: authorizedNumber.company_group_id,
+          phone_number: phone,
         message_content: helpMsg,
-        direction: 'outgoing',
+          direction: 'outgoing',
         sender_name: 'Assistente IA',
         instance_id: instance.id
-      });
+        });
       return NextResponse.json({ status: 'success', reason: 'help' });
-    }
+      }
 
     if (userCommand === '/limpar' || userCommand === 'limpar') {
       await supabase
@@ -529,25 +529,25 @@ export async function POST(request: Request) {
 
       const clearMsg = `🗑️ Histórico limpo! Como posso ajudar?`;
       await sendWhatsAppMessage(instance, phone, clearMsg);
-      await supabase.from('whatsapp_messages').insert({
-        company_group_id: authorizedNumber.company_group_id,
-        phone_number: phone,
+        await supabase.from('whatsapp_messages').insert({
+          company_group_id: authorizedNumber.company_group_id,
+          phone_number: phone,
         message_content: clearMsg,
-        direction: 'outgoing',
-        sender_name: 'Assistente IA',
+          direction: 'outgoing',
+          sender_name: 'Assistente IA',
         instance_id: instance.id
-      });
+        });
       return NextResponse.json({ status: 'success', reason: 'cleared' });
-    }
+      }
 
     if (userCommand === '/status' || userCommand === 'status') {
       const statusMsg = `📊 *Status*\n*Usuário:* ${authorizedNumber.name || phone}\n*Dataset:* ${datasetId ? '✅' : '❌'}\n*Conexão:* ${connectionId ? '✅' : '❌'}`;
       await sendWhatsAppMessage(instance, phone, statusMsg);
-      await supabase.from('whatsapp_messages').insert({
-        company_group_id: authorizedNumber.company_group_id,
-        phone_number: phone,
+        await supabase.from('whatsapp_messages').insert({
+          company_group_id: authorizedNumber.company_group_id,
+          phone_number: phone,
         message_content: statusMsg,
-        direction: 'outgoing',
+          direction: 'outgoing',
         sender_name: 'Assistente IA',
         instance_id: instance.id
       });
@@ -558,11 +558,11 @@ export async function POST(request: Request) {
     if (!connectionId || !datasetId) {
       const noDataMsg = `Desculpe ${authorizedNumber.name?.split(' ')[0] || ''}, ainda não tenho acesso aos seus dados. Contate o suporte.`;
       await sendWhatsAppMessage(instance, phone, noDataMsg);
-      await supabase.from('whatsapp_messages').insert({
-        company_group_id: authorizedNumber.company_group_id,
-        phone_number: phone,
+        await supabase.from('whatsapp_messages').insert({
+          company_group_id: authorizedNumber.company_group_id,
+          phone_number: phone,
         message_content: noDataMsg,
-        direction: 'outgoing',
+          direction: 'outgoing',
         sender_name: 'Assistente IA',
         instance_id: instance.id
       });
@@ -586,11 +586,11 @@ export async function POST(request: Request) {
     if (['1', '2', '3'].includes(userInput)) {
       // Buscar última mensagem do assistente para extrair a sugestão
       const { data: lastAssistantMsg } = await supabase
-        .from('whatsapp_messages')
+      .from('whatsapp_messages')
         .select('message_content')
         .eq('phone_number', phone)
-        .eq('company_group_id', authorizedNumber.company_group_id)
-        .eq('direction', 'outgoing')
+      .eq('company_group_id', authorizedNumber.company_group_id)
+      .eq('direction', 'outgoing')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -622,6 +622,33 @@ export async function POST(request: Request) {
     const currentMonthNumber = new Date().getMonth() + 1;
 
     const systemPrompt = `Você é um assistente de análise de dados empresariais via WhatsApp.
+
+# ⚠️ REGRA CRÍTICA - FILTRO DE DATA OBRIGATÓRIO EM TODA QUERY
+**NUNCA execute uma query DAX sem filtro de período.**
+
+Quando o usuário NÃO especificar data/período:
+- Mês atual: ${currentMonthNumber}
+- Ano atual: ${currentYear}
+
+## FORMATO OBRIGATÓRIO DAS QUERIES:
+**IMPORTANTE: Os nomes de tabelas/colunas abaixo são EXEMPLOS. Use os nomes REAIS do CONTEXTO DO MODELO.**
+
+Para valor único (exemplo de formato):
+EVALUATE ROW("Nome", CALCULATE([Medida], TabelaData[ColunaMes] = ${currentMonthNumber}, TabelaData[ColunaAno] = ${currentYear}))
+
+Para agrupamentos (exemplo de formato):
+EVALUATE CALCULATETABLE(SUMMARIZECOLUMNS(Coluna, "Total", [Medida]), TabelaData[ColunaMes] = ${currentMonthNumber}, TabelaData[ColunaAno] = ${currentYear})
+
+Para rankings Top N (exemplo de formato):
+EVALUATE TOPN(N, CALCULATETABLE(SUMMARIZECOLUMNS(Coluna, "Total", [Medida]), TabelaData[ColunaMes] = ${currentMonthNumber}, TabelaData[ColunaAno] = ${currentYear}), [Total], DESC)
+
+**Consulte o CONTEXTO DO MODELO acima para descobrir os nomes reais da tabela de datas e suas colunas.**
+
+## VALIDAÇÃO
+Se um valor individual for maior que o total, a query está ERRADA (faltou filtro de data).
+
+## MANTER CONTEXTO TEMPORAL
+Ao responder sugestões (1, 2, 3), use o MESMO período da resposta anterior.
 
 # REGRA CRÍTICA DE PERÍODO
 **SEMPRE que o usuário NÃO especificar data/período, use ${currentMonth} como padrão.**
@@ -719,7 +746,7 @@ Ano: ${currentYear}`;
 
     // ========== CONSTRUIR HISTÓRICO ==========
     const conversationHistory: any[] = [];
-
+    
     if (recentMessages && recentMessages.length > 0) {
       const orderedMessages = [...recentMessages].reverse();
       
@@ -751,9 +778,9 @@ Ano: ${currentYear}`;
     
     try {
       response = await callClaudeWithRetry({
-        model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-20250514',
         max_tokens: 1000,  // ← Espaço para respostas completas com 3 sugestões
-        system: systemPrompt,
+      system: systemPrompt,
         messages: conversationHistory,
         tools
       });
@@ -796,9 +823,9 @@ Ano: ${currentYear}`;
           console.log('[Webhook] DAX resultado:', daxResult.success ? `✅ ${daxResult.results?.length || 0} linhas` : `❌ ${daxResult.error}`);
 
           if (daxResult.success) {
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: toolUse.id,
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: toolUse.id,
               content: JSON.stringify(daxResult.results?.slice(0, 20), null, 2)  // ← LIMITAR a 20 linhas
             });
           } else {
@@ -813,17 +840,17 @@ Ano: ${currentYear}`;
       }
 
       if (toolResults.length > 0) {
-        messages.push({ role: 'assistant', content: response.content });
-        messages.push({ role: 'user', content: toolResults });
+      messages.push({ role: 'assistant', content: response.content });
+      messages.push({ role: 'user', content: toolResults });
 
         try {
-          response = await callClaudeWithRetry({
-            model: 'claude-sonnet-4-20250514',
+      response = await callClaudeWithRetry({
+        model: 'claude-sonnet-4-20250514',
             max_tokens: 1000,
-            system: systemPrompt,
-            messages,
+        system: systemPrompt,
+        messages,
             tools
-          });
+      });
           console.log('[Webhook] Claude 2ª resposta | Tempo:', Date.now() - startTime, 'ms');
         } catch (retryError: any) {
           console.error('[Webhook] Claude retry erro:', retryError.message);
@@ -847,7 +874,7 @@ Ano: ${currentYear}`;
 1️⃣ Qual o faturamento total?
 2️⃣ Vendas por filial
 3️⃣ Top 10 produtos vendidos`;
-      } else {
+          } else {
         assistantMessage = `Não entendi sua pergunta. 🤔
 
 📊 *Análises sugeridas:*
@@ -861,7 +888,7 @@ Ano: ${currentYear}`;
 
     // ========== ENVIAR RESPOSTA ==========
     let sent = false;
-
+    
     if (respondWithAudio) {
       const audioBase64 = await generateAudio(assistantMessage);
       if (audioBase64) {
@@ -888,8 +915,8 @@ Ano: ${currentYear}`;
 
     console.log('[Webhook] ✅ Finalizado | Tempo total:', Date.now() - startTime, 'ms');
 
-    return NextResponse.json({
-      status: 'success',
+    return NextResponse.json({ 
+      status: 'success', 
       sent,
       time_ms: Date.now() - startTime
     });
@@ -897,9 +924,9 @@ Ano: ${currentYear}`;
   } catch (error: any) {
     console.error('[Webhook] ❌ ERRO GERAL:', error.message);
     console.error('[Webhook] Stack:', error.stack);
-
+    
     const errorMsg = '⚠️ Erro técnico. Tente novamente em instantes.';
-
+    
     try {
       if (instance && phone) {
         await sendWhatsAppMessage(instance, phone, errorMsg);
@@ -917,15 +944,15 @@ Ano: ${currentYear}`;
     } catch (sendError) {
       console.error('[Webhook] Erro ao enviar erro:', sendError);
     }
-
+    
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
 // GET - Verificação do webhook
 export async function GET(request: Request) {
-  return NextResponse.json({
-    status: 'ok',
+  return NextResponse.json({ 
+    status: 'ok', 
     message: 'Webhook WhatsApp ativo',
     timestamp: new Date().toISOString()
   });
