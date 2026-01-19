@@ -681,46 +681,22 @@ R$ X.XXX.XXX,XX
 # CONTEXTO DO MODELO DE DADOS
 ${modelContext.slice(0, 10000)}
 
-# INSTRUÇÕES DAX - CRÍTICO ⚠️
+# INSTRUÇÕES DAX - CRÍTICO
 - Use a ferramenta execute_dax para buscar dados
 - Siga EXATAMENTE os nomes de tabelas/medidas do contexto
 
-## ⚠️ REGRA OBRIGATÓRIA DE FILTRO DE DATA
-**TODA query DEVE incluir filtro de período usando CALCULATE ou FILTER.**
-NUNCA execute uma medida sem filtro de data.
+## REGRA OBRIGATÓRIA DE FILTRO DE DATA
+TODA query DEVE incluir filtro usando CALCULATE com:
+- Calendario[Ano] = ${currentYear}
+- Calendario[MesNum] = ${currentMonthNumber}
 
-### FORMATO CORRETO (USE SEMPRE):
-\`\`\`dax
-EVALUATE
-ROW(
-    "Faturamento", 
-    CALCULATE(
-        [QA_Faturamento],
-        Calendario[Ano] = ${currentYear},
-        Calendario[MesNum] = ${currentMonthNumber}
-    )
-)
-\`\`\`
+FORMATO CORRETO: EVALUATE ROW("Resultado", CALCULATE([Medida], Calendario[Ano] = ${currentYear}, Calendario[MesNum] = ${currentMonthNumber}))
 
-### PARA QUERIES COM AGRUPAMENTO:
-\`\`\`dax
-EVALUATE
-CALCULATETABLE(
-    SUMMARIZECOLUMNS(
-        Empresa[Filial],
-        "Vendas", [QA_Venda_Total]
-    ),
-    Calendario[Ano] = ${currentYear},
-    Calendario[MesNum] = ${currentMonthNumber}
-)
-\`\`\`
+PARA AGRUPAMENTO: EVALUATE CALCULATETABLE(SUMMARIZECOLUMNS(Coluna, "Total", [Medida]), Calendario[Ano] = ${currentYear}, Calendario[MesNum] = ${currentMonthNumber})
 
-### ❌ NUNCA FAÇA ISSO (sem filtro):
-\`\`\`dax
-EVALUATE ROW("Faturamento", [QA_Faturamento])  // ERRADO!
-\`\`\`
+NUNCA execute medida sem filtro de data. Sem filtro = dados de todos os anos = ERRADO.
 
-### COLUNAS DE DATA DISPONÍVEIS:
+COLUNAS DE DATA DISPONÍVEIS:
 - Calendario[Ano] = ano (ex: ${currentYear})
 - Calendario[MesNum] = número do mês (1-12, atual: ${currentMonthNumber})
 - Calendario[Data] = data completa
