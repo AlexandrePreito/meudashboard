@@ -197,6 +197,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Campos obrigatórios faltando' }, { status: 400 });
     }
 
+    // Verificar se já existe instância com esse nome
+    const { data: existingInstance } = await supabase
+      .from('whatsapp_instances')
+      .select('id')
+      .eq('instance_name', instance_name)
+      .maybeSingle();
+
+    if (existingInstance) {
+      return NextResponse.json(
+        { error: 'Já existe uma instância com esse nome. Use a instância existente.' },
+        { status: 400 }
+      );
+    }
+
     // Verificar conexão com Evolution API
     let isConnected = false;
     let phoneNumber = null;

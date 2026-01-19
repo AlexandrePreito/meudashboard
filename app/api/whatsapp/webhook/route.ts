@@ -299,65 +299,36 @@ async function sendWhatsAppMessage(instance: any, phone: string, message: string
 // ============================================
 async function getInstanceForAuthorizedNumber(
   authorizedNumber: any, 
-  instanceName: string | null, 
   supabase: any
 ): Promise<any> {
-  let instance = null;
-
-  // 1. Primeiro tenta buscar pela instância que enviou o webhook
-  if (instanceName) {
-    const { data: instanceByName } = await supabase
-      .from('whatsapp_instances')
-      .select('*')
-      .eq('instance_name', instanceName)
-      .eq('is_connected', true)
-      .maybeSingle();
-    
-    instance = instanceByName;
-    console.log('Instância encontrada pelo nome:', instanceName, instance ? 'SIM' : 'NÃO');
-  }
-
-  // 2. Se não encontrou pelo nome, tenta pelo instance_id do número autorizado
-  if (!instance && authorizedNumber?.instance_id) {
-    const { data: instanceById } = await supabase
+  // 1. Primeiro tenta pela instância vinculada ao número autorizado
+  if (authorizedNumber?.instance_id) {
+    const { data: instance } = await supabase
       .from('whatsapp_instances')
       .select('*')
       .eq('id', authorizedNumber.instance_id)
       .eq('is_connected', true)
       .maybeSingle();
     
-    instance = instanceById;
-    console.log('Instância encontrada pelo ID:', authorizedNumber.instance_id, instance ? 'SIM' : 'NÃO');
+    if (instance) {
+      console.log('✅ Instância encontrada pelo número autorizado:', instance.instance_name);
+      return instance;
+    }
   }
 
-  // 3. Fallback: qualquer instância conectada do mesmo grupo
-  if (!instance && authorizedNumber?.company_group_id) {
-    const { data: groupInstance } = await supabase
-      .from('whatsapp_instances')
-      .select('*')
-      .eq('company_group_id', authorizedNumber.company_group_id)
-      .eq('is_connected', true)
-      .limit(1)
-      .maybeSingle();
-    
-    instance = groupInstance;
-    console.log('Usando instância do grupo:', instance?.instance_name);
+  // 2. Fallback: qualquer instância conectada
+  const { data: anyInstance } = await supabase
+    .from('whatsapp_instances')
+    .select('*')
+    .eq('is_connected', true)
+    .limit(1)
+    .maybeSingle();
+  
+  if (anyInstance) {
+    console.log('⚠️ Usando instância fallback:', anyInstance.instance_name);
   }
-
-  // 4. Último fallback: qualquer instância conectada
-  if (!instance) {
-    const { data: anyInstance } = await supabase
-      .from('whatsapp_instances')
-      .select('*')
-      .eq('is_connected', true)
-      .limit(1)
-      .maybeSingle();
-    
-    instance = anyInstance;
-    console.log('Usando instância fallback:', instance?.instance_name);
-  }
-
-  return instance;
+  
+  return anyInstance;
 }
 
 // POST - Webhook do Evolution API
@@ -503,7 +474,7 @@ export async function POST(request: Request) {
     }
 
     // ========== BUSCAR INSTÂNCIA ==========
-    instance = await getInstanceForAuthorizedNumber(authorizedNumber, instanceName, supabase);
+    instance = await getInstanceForAuthorizedNumber(authorizedNumber, supabase);
 
     if (!instance) {
       console.log('Nenhuma instância conectada');
