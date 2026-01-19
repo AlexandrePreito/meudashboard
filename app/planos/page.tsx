@@ -12,7 +12,6 @@ import {
   Monitor,
   Users,
   Building2,
-  Code,
   ChevronDown,
   ChevronUp,
   ArrowRight,
@@ -83,132 +82,69 @@ function BrandName({ className = "", size = "text-xl" }: { className?: string; s
   );
 }
 
-const planosUsuarios = [
+const planos = [
   {
     nome: 'Starter',
     descricao: 'Para pequenas equipes',
-    preco: 99,
+    preco: 97,
     destaque: false,
     recursos: {
       usuarios: 5,
-      telas: 3,
-      whatsapp: 100,
-      alertas: 10,
-      ia: 50,
-      suporte: 'Chat',
-      whiteLabel: false
+      grupos: 1,
+      telas: 5,
+      atualizacoes: 5,
+      alertas: false,
+      ia: false,
+      whatsapp: false,
+      suporte: 'Email'
     }
   },
   {
-    nome: 'Basico',
-    descricao: 'Para equipes em crescimento',
-    preco: 299,
-    destaque: false,
-    recursos: {
-      usuarios: 15,
-      telas: 10,
-      whatsapp: 500,
-      alertas: 50,
-      ia: 200,
-      suporte: 'Chat',
-      whiteLabel: false
-    }
-  },
-  {
-    nome: 'Pro',
+    nome: 'Business',
     descricao: 'O mais escolhido',
-    preco: 599,
+    preco: 397,
     destaque: true,
     recursos: {
-      usuarios: 50,
-      telas: 30,
-      whatsapp: 2000,
-      alertas: 200,
-      ia: 1000,
-      suporte: 'Chat prioritario',
-      whiteLabel: true
+      usuarios: 20,
+      grupos: 5,
+      telas: 25,
+      atualizacoes: 30,
+      alertas: 15,
+      ia: 50,
+      whatsapp: true,
+      suporte: 'Email + Chat'
     }
   },
   {
     nome: 'Enterprise',
-    descricao: 'Para grandes operacoes',
+    descricao: 'Para grandes operações',
+    preco: 697,
+    destaque: false,
+    recursos: {
+      usuarios: 50,
+      grupos: 10,
+      telas: 50,
+      atualizacoes: 100,
+      alertas: 30,
+      ia: 100,
+      whatsapp: true,
+      suporte: 'Prioritário'
+    }
+  },
+  {
+    nome: 'Personalizado',
+    descricao: 'Sob medida para você',
     preco: null,
     destaque: false,
     recursos: {
       usuarios: 'Ilimitado',
-      telas: 'Ilimitado',
-      whatsapp: 'Ilimitado',
-      alertas: 'Ilimitado',
-      ia: 'Ilimitado',
-      suporte: 'Chat dedicado',
-      whiteLabel: true
-    }
-  }
-];
-
-const planosDevs = [
-  {
-    nome: 'Dev Starter',
-    descricao: 'Para comecar a revender',
-    preco: 999,
-    destaque: false,
-    recursos: {
-      grupos: 5,
-      usuarios: 15,
-      telas: 15,
-      whatsapp: 500,
-      alertas: 50,
-      ia: 200,
-      suporte: 'Chat',
-      whiteLabel: true
-    }
-  },
-  {
-    nome: 'Dev Pro',
-    descricao: 'O mais escolhido',
-    preco: 2499,
-    destaque: true,
-    recursos: {
-      grupos: 15,
-      usuarios: 45,
-      telas: 45,
-      whatsapp: 2000,
-      alertas: 200,
-      ia: 1000,
-      suporte: 'Chat prioritario',
-      whiteLabel: true
-    }
-  },
-  {
-    nome: 'Dev Business',
-    descricao: 'Para operacoes maiores',
-    preco: 4999,
-    destaque: false,
-    recursos: {
-      grupos: 40,
-      usuarios: 120,
-      telas: 120,
-      whatsapp: 5000,
-      alertas: 500,
-      ia: 3000,
-      suporte: 'Chat prioritario',
-      whiteLabel: true
-    }
-  },
-  {
-    nome: 'Dev Enterprise',
-    descricao: 'Escala ilimitada',
-    preco: null,
-    destaque: false,
-    recursos: {
       grupos: 'Ilimitado',
-      usuarios: 'Ilimitado',
       telas: 'Ilimitado',
-      whatsapp: 'Ilimitado',
+      atualizacoes: 'Ilimitado',
       alertas: 'Ilimitado',
       ia: 'Ilimitado',
-      suporte: 'Chat dedicado',
-      whiteLabel: true
+      whatsapp: true,
+      suporte: 'Dedicado'
     }
   }
 ];
@@ -231,22 +167,15 @@ const faqs = [
     resposta: 'Sim! Voce pode fazer upgrade ou downgrade do seu plano a qualquer momento. As mudancas sao aplicadas no proximo ciclo de cobranca.'
   },
   {
-    pergunta: 'O que e o plano Desenvolvedor?',
-    resposta: 'O plano Desenvolvedor e para empresas que criam dashboards para seus clientes e querem hospedar tudo em um so lugar, com sua propria marca (white-label).'
-  },
-  {
     pergunta: 'Como funciona o suporte?',
     resposta: 'Oferecemos suporte via chat em todos os planos. Planos Pro e superiores tem atendimento prioritario com tempo de resposta reduzido.'
   }
 ];
 
 export default function PlanosPage() {
-  const [tipoPlano, setTipoPlano] = useState<'usuarios' | 'desenvolvedores'>('usuarios');
   const [faqAberto, setFaqAberto] = useState<number | null>(null);
   const [scrollY, setScrollY] = useState(0);
   const [isInitialSpin, setIsInitialSpin] = useState(true);
-
-  const planos = tipoPlano === 'usuarios' ? planosUsuarios : planosDevs;
 
   const whatsappLink = `https://wa.me/5562982289559?text=${encodeURIComponent('Ola! Gostaria de saber mais sobre o MeuDashboard.')}`;
 
@@ -430,38 +359,8 @@ export default function PlanosPage() {
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">Escolha seu plano</h2>
             <p className="text-gray-600 max-w-2xl mx-auto mb-8">
-              Planos flexiveis para todos os tamanhos de empresa. Comece pequeno e escale conforme crescer.
+              Planos flexíveis para todos os tamanhos de empresa. Comece pequeno e escale conforme crescer. Precisa de algo diferente? <strong>Criamos um plano sob medida para você.</strong>
             </p>
-            
-            {/* Toggle Usuarios/Desenvolvedores */}
-            <div className="inline-flex items-center bg-white rounded-xl p-1 border border-gray-200">
-              <button
-                onClick={() => setTipoPlano('usuarios')}
-                className={`flex-1 px-6 py-3 rounded-lg font-medium transition-all ${
-                  tipoPlano === 'usuarios'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <Users className="w-5 h-5" />
-                  <span>Para Empresas</span>
-                </div>
-              </button>
-              <button
-                onClick={() => setTipoPlano('desenvolvedores')}
-                className={`flex-1 px-6 py-3 rounded-lg font-medium transition-all ${
-                  tipoPlano === 'desenvolvedores'
-                    ? 'bg-purple-600 text-white shadow-md'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <Code className="w-5 h-5" />
-                  <span>Desenvolvedores</span>
-                </div>
-              </button>
-            </div>
           </div>
 
           {/* Cards de Planos */}
@@ -510,60 +409,100 @@ export default function PlanosPage() {
                   </a>
                 </div>
                 <div className="border-t border-gray-100 p-6 space-y-3">
-                  {tipoPlano === 'desenvolvedores' && (
-                    <div className="flex items-center gap-3">
-                      <Building2 className="w-5 h-5 text-purple-500" />
-                      <span className="text-sm text-gray-600">
-                        <strong>{('grupos' in plano.recursos) ? String(plano.recursos.grupos) : ''}</strong> {('grupos' in plano.recursos) && typeof plano.recursos.grupos === 'number' ? 'grupos/clientes' : ''}
-                      </span>
-                    </div>
-                  )}
                   <div className="flex items-center gap-3">
                     <Users className="w-5 h-5 text-blue-500" />
                     <span className="text-sm text-gray-600">
-                      <strong>{plano.recursos.usuarios}</strong> {typeof plano.recursos.usuarios === 'number' ? 'usuarios' : ''}
+                      {typeof plano.recursos.usuarios === 'number' ? (
+                        <><strong>{plano.recursos.usuarios}</strong> usuários</>
+                      ) : (
+                        <strong>{plano.recursos.usuarios}</strong>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Building2 className="w-5 h-5 text-purple-500" />
+                    <span className="text-sm text-gray-600">
+                      {typeof plano.recursos.grupos === 'number' ? (
+                        <><strong>{plano.recursos.grupos}</strong> {plano.recursos.grupos === 1 ? 'grupo' : 'grupos'}</>
+                      ) : (
+                        <strong>{plano.recursos.grupos}</strong>
+                      )}
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
                     <Monitor className="w-5 h-5 text-cyan-500" />
                     <span className="text-sm text-gray-600">
-                      <strong>{plano.recursos.telas}</strong> {typeof plano.recursos.telas === 'number' ? 'telas' : ''}
+                      {typeof plano.recursos.telas === 'number' ? (
+                        <><strong>{plano.recursos.telas}</strong> telas Power BI</>
+                      ) : (
+                        <strong>{plano.recursos.telas}</strong>
+                      )}
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <MessageSquare className="w-5 h-5 text-green-500" />
+                    <Zap className="w-5 h-5 text-amber-500" />
                     <span className="text-sm text-gray-600">
-                      <strong>{plano.recursos.whatsapp}</strong> {typeof plano.recursos.whatsapp === 'number' ? 'msg/mes' : ''}
+                      {typeof plano.recursos.atualizacoes === 'number' ? (
+                        <><strong>{plano.recursos.atualizacoes}</strong> atualizações/dia</>
+                      ) : (
+                        <strong>{plano.recursos.atualizacoes}</strong>
+                      )}
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <Bell className="w-5 h-5 text-amber-500" />
-                    <span className="text-sm text-gray-600">
-                      <strong>{plano.recursos.alertas}</strong> {typeof plano.recursos.alertas === 'number' ? 'alertas' : ''}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Brain className="w-5 h-5 text-purple-500" />
-                    <span className="text-sm text-gray-600">
-                      <strong>{plano.recursos.ia}</strong> {typeof plano.recursos.ia === 'number' ? 'creditos IA' : ''}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Headphones className="w-5 h-5 text-rose-500" />
-                    <span className="text-sm text-gray-600">{plano.recursos.suporte}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {plano.recursos.whiteLabel ? (
+                    {plano.recursos.alertas ? (
                       <>
-                        <Check className="w-5 h-5 text-green-500" />
-                        <span className="text-sm text-gray-600">White Label</span>
+                        <Bell className="w-5 h-5 text-green-500" />
+                        <span className="text-sm text-gray-600">
+                          {typeof plano.recursos.alertas === 'number' ? (
+                            <><strong>{plano.recursos.alertas}</strong> alertas</>
+                          ) : (
+                            <strong>{plano.recursos.alertas}</strong>
+                          )}
+                        </span>
                       </>
                     ) : (
                       <>
-                        <X className="w-5 h-5 text-gray-300" />
-                        <span className="text-sm text-gray-400">White Label</span>
+                        <Bell className="w-5 h-5 text-gray-300" />
+                        <span className="text-sm text-gray-400">Sem alertas</span>
                       </>
                     )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {plano.recursos.ia ? (
+                      <>
+                        <Brain className="w-5 h-5 text-purple-500" />
+                        <span className="text-sm text-gray-600">
+                          {typeof plano.recursos.ia === 'number' ? (
+                            <><strong>{plano.recursos.ia}</strong> msgs IA/dia</>
+                          ) : (
+                            <strong>{plano.recursos.ia}</strong>
+                          )}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Brain className="w-5 h-5 text-gray-300" />
+                        <span className="text-sm text-gray-400">Sem Chat IA</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {plano.recursos.whatsapp ? (
+                      <>
+                        <MessageSquare className="w-5 h-5 text-green-500" />
+                        <span className="text-sm text-gray-600">WhatsApp integrado</span>
+                      </>
+                    ) : (
+                      <>
+                        <MessageSquare className="w-5 h-5 text-gray-300" />
+                        <span className="text-sm text-gray-400">Sem WhatsApp</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Headphones className="w-5 h-5 text-rose-500" />
+                    <span className="text-sm text-gray-600">Suporte {plano.recursos.suporte}</span>
                   </div>
                 </div>
               </div>

@@ -103,11 +103,25 @@ export default function AdminLogsPage() {
   
   // Filtros
   const [selectedUserId, setSelectedUserId] = useState<string>('');
-  const [dateFilter, setDateFilter] = useState<'today' | 'month' | 'period' | 'all'>('today');
+  const [dateFilter, setDateFilter] = useState<'today' | 'month' | 'period' | 'all'>('month');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
 
-  // Inicializar e aplicar filtro de data
+  // Inicializar datas no primeiro carregamento
+  useEffect(() => {
+    if (!groupId) return;
+    
+    const today = new Date();
+    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    
+    // Inicializar com "Este Mês" por padrão para mostrar mais logs
+    if (!dateFrom && !dateTo) {
+      setDateFrom(firstDayOfMonth.toISOString().split('T')[0]);
+      setDateTo(today.toISOString().split('T')[0]);
+    }
+  }, [groupId]);
+
+  // Aplicar filtro de data quando mudar
   useEffect(() => {
     const today = new Date();
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -161,13 +175,24 @@ export default function AdminLogsPage() {
       }
 
       const data = await res.json();
+      console.log('📊 Logs carregados:', {
+        logs: data.logs?.length || 0,
+        total: data.total || 0,
+        users: data.users?.length || 0,
+        page: data.page,
+        totalPages: data.totalPages
+      });
+      
       setLogs(data.logs || []);
       setUsageSummary(data.usage_summary || []);
       setUsers(data.users || []);
       setTotalPages(data.totalPages || 1);
       setTotal(data.total || 0);
-    } catch (err) {
-      console.error('Erro ao carregar logs:', err);
+    } catch (err: any) {
+      console.error('❌ Erro ao carregar logs:', err);
+      setLogs([]);
+      setUsers([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
@@ -175,7 +200,13 @@ export default function AdminLogsPage() {
 
   useEffect(() => {
     if (!groupId) return;
-    loadData();
+    
+    // Aguardar um pouco para garantir que as datas foram inicializadas
+    const timer = setTimeout(() => {
+      loadData();
+    }, 200);
+    
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId, page, selectedUserId, dateFrom, dateTo]);
 

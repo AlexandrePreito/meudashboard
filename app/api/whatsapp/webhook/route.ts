@@ -430,13 +430,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: 'ignored', reason: 'unauthorized number' });
     }
 
+    // ========== CONTROLE DE DUPLICIDADE ==========
+    const externalId = messageData?.key?.id;
+    if (externalId) {
+      const { data: existingMessage } = await supabase
+        .from('whatsapp_messages')
+        .select('id')
+        .eq('external_id', externalId)
+        .maybeSingle();
+      
+      if (existingMessage) {
+        console.log('[Webhook] Mensagem já processada, ignorando:', externalId);
+        return NextResponse.json({ status: 'ignored', reason: 'duplicate' });
+      }
+    }
+    // ========== FIM CONTROLE DE DUPLICIDADE ==========
+
     // Salvar mensagem recebida
     await supabase.from('whatsapp_messages').insert({
       company_group_id: authorizedNumber.company_group_id,
       phone_number: phone,
       message_content: messageText,
       direction: 'incoming',
-      sender_name: authorizedNumber.name || phone
+      sender_name: authorizedNumber.name || phone,
+      external_id: messageData?.key?.id || null,
+      instance_id: authorizedNumber.instance_id || null,
+      authorized_number_id: authorizedNumber.id
     });
 
     // Verificar limite de mensagens WhatsApp do mês
@@ -989,13 +1008,13 @@ Entre em contato com o suporte para configurar a conexão! 📞`;
 
 
     // ============================================
-    // BUSCAR HISTÓRICO DE CONVERSAÇÃO (últimas 10 mensagens de todos os grupos)
+    // BUSCAR HISTÓRICO DE CONVERSAÇÃO (últimas 10 mensagens do grupo específico)
     // ============================================
     const { data: recentMessages } = await supabase
       .from('whatsapp_messages')
       .select('message_content, direction, created_at')
       .eq('phone_number', phone)
-      .in('company_group_id', allGroupIds.length > 0 ? allGroupIds : [authorizedNumber?.company_group_id || ''])
+      .eq('company_group_id', authorizedNumber.company_group_id)
       .eq('archived', false)
       .order('created_at', { ascending: false })
       .limit(10);
