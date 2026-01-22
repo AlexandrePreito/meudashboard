@@ -70,8 +70,3 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }
-```
-
-**Agora teste novamente:**
-```
-http://localhost:3000/api/powerbi/datasets?group_id=b7f7344f-f7ab-4fcb-adb7-7c322dca6c5f

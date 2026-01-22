@@ -166,3 +166,80 @@ export async function getAuthUserWithDeveloper(): Promise<(AuthUser & { develope
     return null;
   }
 }
+
+export async function getUserGroupMembership(): Promise<{ user_id: string; company_group_id: string; role: string } | null> {
+  try {
+    const user = await getAuthUser();
+    if (!user) {
+      console.log('❌ getUserGroupMembership: Usuário não autenticado');
+      return null;
+    }
+
+    const adminSupabase = createAdminClient();
+    
+    // Master users podem não ter membership direto
+    if (user.is_master) {
+      // Buscar primeiro grupo ativo para master
+      const { data: firstGroup } = await adminSupabase
+        .from('company_groups')
+        .select('id')
+        .eq('status', 'active')
+        .limit(1)
+        .maybeSingle();
+      
+      if (firstGroup) {
+        return {
+          user_id: user.id,
+          company_group_id: firstGroup.id,
+          role: 'admin'
+        };
+      }
+      return null;
+    }
+
+    // Verificar se é desenvolvedor (não confiar em user.is_developer)
+    const developerId = await getUserDeveloperId(user.id);
+    
+    if (developerId) {
+      // Desenvolvedores: buscar grupos pelo developer_id
+      const { data: firstGroup } = await adminSupabase
+        .from('company_groups')
+        .select('id')
+        .eq('developer_id', developerId)
+        .eq('status', 'active')
+        .limit(1)
+        .maybeSingle();
+      
+      if (firstGroup) {
+        return {
+          user_id: user.id,
+          company_group_id: firstGroup.id,
+          role: 'developer'
+        };
+      }
+      return null;
+    }
+
+    // Usuários comuns: buscar membership direto
+    const { data: membership } = await adminSupabase
+      .from('user_group_membership')
+      .select('company_group_id, role')
+      .eq('user_id', user.id)
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle();
+
+    if (!membership) {
+      return null;
+    }
+
+    return {
+      user_id: user.id,
+      company_group_id: membership.company_group_id,
+      role: membership.role
+    };
+  } catch (error: any) {
+    console.error('❌ getUserGroupMembership erro:', error);
+    return null;
+  }
+}
