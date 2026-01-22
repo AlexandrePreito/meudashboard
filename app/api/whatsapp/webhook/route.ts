@@ -1311,6 +1311,70 @@ Ano: ${currentYear}`;
 
     console.log('[Webhook] Resposta:', assistantMessage.length, 'chars | Total:', Date.now() - startTime, 'ms');
 
+    // ========== DETECTAR E SALVAR PERGUNTAS NÃO RESPONDIDAS ==========
+    const evasivePatterns = [
+      'não encontrei',
+      'não consegui', 
+      'não tenho acesso',
+      'não possuo',
+      'não foi possível',
+      'não tenho informações',
+      'não tenho dados',
+      'sem dados',
+      'dados não disponíveis',
+      'informação não disponível',
+      'não entendi'
+    ];
+
+    const assistantMessageLower = assistantMessage.toLowerCase();
+    const isEvasiveResponse = evasivePatterns.some(pattern => 
+      assistantMessageLower.includes(pattern)
+    );
+
+    if (isEvasiveResponse || daxError) {
+      try {
+        // Verificar se já existe pergunta similar pendente
+        const { data: existingQuestion } = await supabase
+          .from('ai_unanswered_questions')
+          .select('id, user_count, attempt_count')
+          .eq('company_group_id', authorizedNumber.company_group_id)
+          .ilike('user_question', processedMessage)
+          .eq('status', 'pending')
+          .maybeSingle();
+
+        if (existingQuestion) {
+          // Atualizar pergunta existente
+          await supabase
+            .from('ai_unanswered_questions')
+            .update({
+              attempt_count: existingQuestion.attempt_count + 1,
+              user_count: existingQuestion.user_count + 1,
+              last_asked_at: new Date().toISOString(),
+              error_message: daxError || 'Resposta evasiva da IA'
+            })
+            .eq('id', existingQuestion.id);
+          console.log('[Webhook] Pergunta pendente atualizada:', existingQuestion.id);
+        } else {
+          // Criar nova pergunta pendente
+          await supabase
+            .from('ai_unanswered_questions')
+            .insert({
+              company_group_id: authorizedNumber.company_group_id,
+              connection_id: connectionId,
+              dataset_id: datasetId,
+              user_question: processedMessage,
+              phone_number: phone,
+              attempted_dax: null,
+              error_message: daxError || 'Resposta evasiva da IA',
+              status: 'pending'
+            });
+          console.log('[Webhook] Nova pergunta pendente criada:', processedMessage);
+        }
+      } catch (saveError: any) {
+        console.error('[Webhook] Erro ao salvar pergunta pendente:', saveError.message);
+      }
+    }
+
     // ========== ENVIAR RESPOSTA ==========
     let sent = false;
     
