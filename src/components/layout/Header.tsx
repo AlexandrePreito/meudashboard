@@ -282,39 +282,39 @@ export default function Header({ user }: HeaderProps) {
         }
         
         if (freshGroups.length > 0) {
-          setActiveGroup((currentActiveGroup) => {
-            if (currentActiveGroup) {
-              // SEGURANÇA: Verificar se o activeGroup pertence ao desenvolvedor atual
-              const updatedGroup = freshGroups.find((g: CompanyGroup) => g.id === currentActiveGroup.id);
-              if (updatedGroup) {
-                // Grupo existe e pertence ao dev atual - atualiza com dados frescos
-                if (JSON.stringify(updatedGroup) !== JSON.stringify(currentActiveGroup)) {
-                  return updatedGroup;
-                }
-                return currentActiveGroup;
-              } else {
-                // Grupo antigo NÃO pertence mais ao desenvolvedor atual (SEGURANÇA)
-                console.warn('[SEGURANÇA Header] Grupo ativo salvo não pertence ao desenvolvedor atual:', currentActiveGroup.id, 'Limpando...');
-                // Limpar do localStorage
-                if (typeof window !== 'undefined') {
-                  localStorage.removeItem('active-group');
-                  localStorage.removeItem('selected-group-ids');
-                }
-                // Se é Master, mantém null (Todos). Senão, seleciona o primeiro
-                if (!user.is_master) {
-                  return freshGroups[0];
-                }
-                return null;
+          const currentActiveGroup = activeGroup;
+          if (currentActiveGroup) {
+            // SEGURANÇA: Verificar se o activeGroup pertence ao desenvolvedor atual
+            const updatedGroup = freshGroups.find((g: CompanyGroup) => g.id === currentActiveGroup.id);
+            if (updatedGroup) {
+              // Grupo existe e pertence ao dev atual - atualiza com dados frescos
+              if (JSON.stringify(updatedGroup) !== JSON.stringify(currentActiveGroup)) {
+                setActiveGroup(updatedGroup);
               }
             } else {
-              // Não tinha grupo selecionado
+              // Grupo antigo NÃO pertence mais ao desenvolvedor atual (SEGURANÇA)
+              console.warn('[SEGURANÇA Header] Grupo ativo salvo não pertence ao desenvolvedor atual:', currentActiveGroup.id, 'Limpando...');
+              // Limpar do localStorage
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('active-group');
+                localStorage.removeItem('selected-group-ids');
+              }
               // Se é Master, mantém null (Todos). Senão, seleciona o primeiro
               if (!user.is_master) {
-                return freshGroups[0];
+                setActiveGroup(freshGroups[0]);
+              } else {
+                setActiveGroup(null);
               }
-              return null;
             }
-          });
+          } else {
+            // Não tinha grupo selecionado
+            // Se é Master, mantém null (Todos). Senão, seleciona o primeiro
+            if (!user.is_master) {
+              setActiveGroup(freshGroups[0]);
+            } else {
+              setActiveGroup(null);
+            }
+          }
         } else {
           // SEGURANÇA: Se não há grupos, limpar activeGroup também
           setActiveGroup((currentActiveGroup) => {
