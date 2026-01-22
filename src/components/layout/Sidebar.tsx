@@ -45,7 +45,8 @@ import {
   GraduationCap,
   Book,
   AlertCircle,
-  Clock
+  Clock,
+  Zap
 } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
 import { usePlanPermissions } from '@/hooks/usePlanPermissions';
@@ -117,7 +118,7 @@ function getIconComponent(iconName?: string | null) {
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { isCollapsed, setIsCollapsed, activeGroup, user } = useMenu();
+  const { isCollapsed, setIsCollapsed, activeGroup, user, developer } = useMenu();
   // Módulos removidos - sempre disponível
   // const { canUseAI, canUseAlerts, canUseWhatsApp, isStarterPlan } = usePlanPermissions();
   const [screens, setScreens] = useState<Screen[]>([]);
@@ -141,10 +142,9 @@ export default function Sidebar() {
       return true;
     }
     
-    // Developer: acesso somente aos grupos vinculados ao dev
+    // Developer: acesso sempre (pode ter grupos vinculados)
     if (user?.is_developer) {
-      // Precisa ter um grupo ativo vinculado ao dev
-      return !!activeGroup?.id;
+      return true;
     }
     
     // Admin: acesso somente ao grupo dele
@@ -157,13 +157,38 @@ export default function Sidebar() {
     return false;
   };
 
+  // Determinar logo e nome da marca (mesma lógica do Header)
+  const brandLogo = user?.is_master 
+    ? null // Master: usa AnimatedLogo (null = não mostra logo customizado)
+    : user?.is_developer
+    ? developer?.logo_url || null // Developer: sempre logo do desenvolvedor
+    : activeGroup?.use_developer_logo !== false
+    ? developer?.logo_url || activeGroup?.logo_url || null // Admin/Visualizador: respeitar configurações do grupo
+    : activeGroup?.logo_url || null; // Caso contrário, usa logo do grupo
+
+  const brandName = user?.is_master
+    ? 'MeuDashboard'
+    : user?.is_developer
+    ? developer?.name || 'MeuDashboard'
+    : activeGroup?.use_developer_logo !== false
+    ? developer?.name || activeGroup?.name || 'MeuDashboard'
+    : activeGroup?.name || 'MeuDashboard';
+
+  const primaryColorValue = user?.is_master
+    ? '#3B82F6'
+    : user?.is_developer
+    ? developer?.primary_color || '#0ea5e9'
+    : activeGroup?.use_developer_colors !== false && developer?.primary_color
+    ? developer.primary_color
+    : activeGroup?.primary_color || developer?.primary_color || '#0ea5e9';
+
   // User comum sempre vê as telas no sidebar, independente da página
   const showScreens = isRegularUser || pathname === '/dashboard' || pathname.startsWith('/tela') || pathname.startsWith('/powerbi');
 
   const showPowerBIMenu = pathname.startsWith('/powerbi') && !isRegularUser;
   const showConfigMenu = pathname.startsWith('/configuracoes');
   const showWhatsAppMenu = pathname.startsWith('/whatsapp') || pathname.startsWith('/alertas');
-  const showAssistenteIAMenu = pathname.startsWith('/assistente-ia') && canAccessAssistenteIA();
+  const showAssistenteIAMenu = canAccessAssistenteIA(); // Sempre mostrar se tiver acesso, não apenas quando estiver na página
   const showAdminMenu = pathname.startsWith('/admin');
   const showDevMenu = pathname.startsWith('/dev');
   const showAdministradorMenu = pathname.startsWith('/administrador/');
@@ -293,6 +318,103 @@ export default function Sidebar() {
         </button>
 
         <div className="flex flex-col h-full overflow-y-auto py-4">
+          {/* Logo no topo */}
+          {!isCollapsed && (
+            <div className="px-4 pb-4 border-b border-gray-100 mb-4">
+              <div className="flex items-center gap-2">
+                {user?.is_master ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 via-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
+                      <Zap size={18} className="text-white" />
+                    </div>
+                    <span className="font-bold text-lg" style={{ color: '#2563eb' }}>
+                      <span className="text-[1.2em]">M</span>eu<span className="text-[1.2em]">D</span>ashboard
+                    </span>
+                  </div>
+                ) : brandLogo ? (
+                  <img
+                    src={brandLogo}
+                    alt={brandName}
+                    className="h-8 w-auto max-w-[180px] object-contain"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg" style={{ backgroundColor: primaryColorValue }}>
+                      <Zap size={16} className="text-white" />
+                    </div>
+                    <span className="font-bold text-base truncate max-w-[150px]" style={{ color: primaryColorValue }}>
+                      {brandName}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          {/* Menu Principal para DEVELOPER */}
+          {user?.is_developer && !user?.is_master && !showConfigMenu && !showPowerBIMenu && !showWhatsAppMenu && !showAdministradorMenu && !showAdminMenu && !showDevMenu && !pathname.startsWith('/tela') && !pathname.startsWith('/dashboard') && (
+            <>
+              {!isCollapsed && (
+                <div className="px-4 pt-4 pb-2">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    Menu Principal
+                  </h3>
+                </div>
+              )}
+              <nav className="px-2 pb-4 border-b border-gray-100 mb-2">
+                <Link
+                  href="/powerbi"
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 ${
+                    pathname.startsWith('/powerbi')
+                      ? 'nav-active'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                  title="Power BI"
+                >
+                  <BarChart3 size={20} />
+                  {!isCollapsed && <span className="font-medium">Power BI</span>}
+                </Link>
+                <Link
+                  href="/whatsapp"
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 ${
+                    pathname.startsWith('/whatsapp') || pathname.startsWith('/alertas')
+                      ? 'nav-active'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                  title="WhatsApp"
+                >
+                  <MessageSquare size={20} />
+                  {!isCollapsed && <span className="font-medium">WhatsApp</span>}
+                </Link>
+                {canAccessAssistenteIA() && (
+                  <Link
+                    href="/assistente-ia/evolucao"
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 ${
+                      pathname.startsWith('/assistente-ia')
+                        ? 'nav-active'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                    title="Assistente IA"
+                  >
+                    <TrendingUp size={20} />
+                    {!isCollapsed && <span className="font-medium">Assistente IA</span>}
+                  </Link>
+                )}
+                <Link
+                  href="/dashboard"
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 ${
+                    pathname === '/dashboard'
+                      ? 'nav-active'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                  title="Dashboard"
+                >
+                  <LayoutDashboard size={20} />
+                  {!isCollapsed && <span className="font-medium">Dashboard</span>}
+                </Link>
+              </nav>
+            </>
+          )}
+
           {/* Menu Principal para ADMIN */}
           {isAdmin && !showConfigMenu && !showPowerBIMenu && !showWhatsAppMenu && !showAdministradorMenu && !showAdminMenu && !showDevMenu && !pathname.startsWith('/tela') && !pathname.startsWith('/dashboard') && (
             <>
