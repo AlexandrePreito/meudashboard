@@ -3,6 +3,11 @@
     {
       "path": "/api/alertas/cron",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/whatsapp/webhook/process-queue",
+      "schedule": "*/2 * * * *"
     }
-  ]
+  ],
+  "buildCommand": "npm install && npm run build"
 }
