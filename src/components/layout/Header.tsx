@@ -317,17 +317,14 @@ export default function Header({ user }: HeaderProps) {
           }
         } else {
           // SEGURANÇA: Se não há grupos, limpar activeGroup também
-          setActiveGroup((currentActiveGroup) => {
-            if (currentActiveGroup && !user.is_master) {
-              console.warn('[SEGURANÇA Header] Nenhum grupo disponível, limpando activeGroup');
-              if (typeof window !== 'undefined') {
-                localStorage.removeItem('active-group');
-                localStorage.removeItem('selected-group-ids');
-              }
-              return null;
+          if (activeGroup && !user.is_master) {
+            console.warn('[SEGURANÇA Header] Nenhum grupo disponível, limpando activeGroup');
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('active-group');
+              localStorage.removeItem('selected-group-ids');
             }
-            return currentActiveGroup;
-          });
+          }
+          setActiveGroup(null);
         }
       } else {
         // SEGURANÇA: Se a API retornou erro, tentar ler o erro da resposta
@@ -355,16 +352,13 @@ export default function Header({ user }: HeaderProps) {
         // Só limpar se for erro 500 ou outro erro crítico
         if (res.status !== 401 && res.status !== 403) {
           setGroups([]);
-          setActiveGroup((currentActiveGroup) => {
-            if (!user.is_master && currentActiveGroup) {
-              if (typeof window !== 'undefined') {
-                localStorage.removeItem('active-group');
-                localStorage.removeItem('selected-group-ids');
-              }
-              return null;
+          if (!user.is_master && activeGroup) {
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('active-group');
+              localStorage.removeItem('selected-group-ids');
             }
-            return currentActiveGroup;
-          });
+            setActiveGroup(null);
+          }
         }
       }
     } catch (error: any) {
@@ -388,16 +382,13 @@ export default function Header({ user }: HeaderProps) {
       }
       // SEGURANÇA: Em caso de erro de rede ou outro erro, limpar grupos para evitar mostrar dados incorretos
       setGroups([]);
-      setActiveGroup((currentActiveGroup) => {
-        if (!user.is_master && currentActiveGroup) {
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('active-group');
-            localStorage.removeItem('selected-group-ids');
-          }
-          return null;
+      if (!user.is_master && activeGroup) {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('active-group');
+          localStorage.removeItem('selected-group-ids');
         }
-        return currentActiveGroup;
-      });
+        setActiveGroup(null);
+      }
     } finally {
       setIsLoadingGroups(false);
     }
