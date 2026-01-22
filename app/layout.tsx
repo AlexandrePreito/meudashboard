@@ -13,8 +13,19 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Detectar URL base automaticamente
+const getBaseUrl = () => {
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    return process.env.NEXT_PUBLIC_SITE_URL;
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  return 'http://localhost:3000';
+};
+
 export const metadata: Metadata = {
-  metadataBase: new URL('https://meudashboard.org'),
+  metadataBase: new URL(getBaseUrl()),
   title: {
     default: 'MeuDashboard - Dashboards e Relatórios Power BI',
     template: '%s | MeuDashboard'
@@ -49,7 +60,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'pt_BR',
-    url: 'https://meudashboard.org',
+    url: getBaseUrl(),
     siteName: 'MeuDashboard',
     title: 'MeuDashboard - Dashboards e Relatórios Power BI',
     description: 'Plataforma de gestão de dashboards e relatórios Power BI. Visualize seus dados de forma inteligente com integração de IA.',
@@ -72,7 +83,7 @@ export const metadata: Metadata = {
     // google: 'seu-codigo-google-search-console', // Adicionar depois
   },
   alternates: {
-    canonical: 'https://meudashboard.org',
+    canonical: getBaseUrl(),
   },
 };
 
