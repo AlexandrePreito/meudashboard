@@ -5,9 +5,10 @@ import { getUserGroupMembership } from '@/lib/auth';
 // POST: Resolver/Ignorar pergunta
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const membership = await getUserGroupMembership();
 
@@ -58,7 +59,7 @@ export async function POST(
     const { data, error } = await supabase
       .from('ai_unanswered_questions')
       .update(updates)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('company_group_id', membership.company_group_id)
       .select()
       .single();
