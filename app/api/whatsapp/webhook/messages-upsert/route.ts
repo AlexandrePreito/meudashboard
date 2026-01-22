@@ -54,8 +54,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: 'ignored', reason: 'unauthorized' });
     }
 
-    // Verificar permissão de chat
-    if (!isGroup && !authorized.can_use_chat) {
+    // Verificar permissão de chat (apenas para números individuais, não grupos)
+    if (!isGroup && authorized.can_use_chat === false) {
       console.log('[Webhook] Chat desabilitado para:', phone);
       return NextResponse.json({ status: 'ignored', reason: 'chat_disabled' });
     }
@@ -76,21 +76,38 @@ export async function POST(request: NextRequest) {
       console.error('[Webhook] Erro ao salvar mensagem:', insertError.message);
     }
 
-    // Buscar conexão Power BI ativa
-    const { data: connection, error: connError } = await supabase
-      .from('powerbi_connections')
-      .select('id, dataset_id')
+    // CORREÇÃO: Buscar conexão E dataset de ai_model_contexts
+    const { data: aiContext, error: contextError } = await supabase
+      .from('ai_model_contexts')
+      .select('id, connection_id, dataset_id, context_content, context_name')
       .eq('company_group_id', companyGroupId)
       .eq('is_active', true)
-      .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (connError) {
-      console.error('[Webhook] Erro ao buscar conexão:', connError.message);
+    if (contextError) {
+      console.error('[Webhook] Erro ao buscar contexto:', contextError.message);
     }
 
-    if (!connection) {
+    // Se não tem contexto de IA, buscar conexão Power BI diretamente
+    let connectionId = aiContext?.connection_id || null;
+    let datasetId = aiContext?.dataset_id || null;
+
+    if (!connectionId) {
+      // Fallback: buscar conexão Power BI
+      const { data: connection } = await supabase
+        .from('powerbi_connections')
+        .select('id')
+        .eq('company_group_id', companyGroupId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      connectionId = connection?.id || null;
+    }
+
+    if (!connectionId) {
       console.log('[Webhook] Sem conexão Power BI');
       const errorMsg = '⚠️ Nenhuma conexão Power BI configurada. Entre em contato com o administrador.';
       await sendWhatsAppMessage(supabase, remoteJid, errorMsg);
@@ -103,20 +120,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: 'error', message: 'no_connection' });
     }
 
-    console.log('[Webhook] Conexão encontrada:', connection.id, '| Dataset:', connection.dataset_id);
+    console.log('[Webhook] Conexão:', connectionId, '| Dataset:', datasetId);
 
-    // Buscar contexto do modelo
-    const modelContext = await getModelContext(
+    // Usar o contexto do ai_model_contexts ou buscar via helper
+    const modelContext = aiContext?.context_content || await getModelContext(
       companyGroupId,
-      connection.id,
-      connection.dataset_id
+      connectionId,
+      datasetId || ''
     );
 
     // Buscar exemplos de treinamento
     const examples = await getTrainingExamples(
       companyGroupId,
-      connection.id,
-      connection.dataset_id,
+      connectionId,
+      datasetId || '',
       20
     );
 
@@ -276,8 +293,8 @@ export async function POST(request: NextRequest) {
             .from('ai_unanswered_questions')
             .insert({
               company_group_id: companyGroupId,
-              connection_id: connection.id,
-              dataset_id: connection.dataset_id,
+              connection_id: connectionId,
+              dataset_id: datasetId,
               user_question: messageText,
               phone_number: phone,
               attempted_dax: daxQuery || null,
@@ -340,7 +357,6 @@ export async function POST(request: NextRequest) {
 }
 
 // Helper: Enviar mensagem WhatsApp
-// CORREÇÃO: Recebe supabase como parâmetro em vez de criar novo cliente
 async function sendWhatsAppMessage(supabase: any, remoteJid: string, message: string) {
   // Buscar instância ativa
   const { data: instance, error } = await supabase
