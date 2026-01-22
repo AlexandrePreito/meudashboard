@@ -40,7 +40,12 @@ import {
   Package,
   Truck,
   Factory,
-  CreditCard
+  CreditCard,
+  Sparkles,
+  GraduationCap,
+  Book,
+  AlertCircle,
+  Clock
 } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
 import { usePlanPermissions } from '@/hooks/usePlanPermissions';
@@ -124,12 +129,41 @@ export default function Sidebar() {
   // Verificar se é admin (não master, não dev)
   const isAdmin = !user?.is_master && !user?.is_developer && user?.role === 'admin';
 
+  // Função helper para verificar se usuário pode acessar Assistente IA
+  const canAccessAssistenteIA = () => {
+    // Visualizador: SEM acesso
+    if (user?.role === 'viewer' || user?.role === 'operator') {
+      return false;
+    }
+    
+    // Master: acesso a TODOS
+    if (user?.is_master) {
+      return true;
+    }
+    
+    // Developer: acesso somente aos grupos vinculados ao dev
+    if (user?.is_developer) {
+      // Precisa ter um grupo ativo vinculado ao dev
+      return !!activeGroup?.id;
+    }
+    
+    // Admin: acesso somente ao grupo dele
+    if (user?.role === 'admin') {
+      // Precisa ter um grupo ativo e ser admin desse grupo
+      return !!activeGroup?.id;
+    }
+    
+    // Outros roles: sem acesso
+    return false;
+  };
+
   // User comum sempre vê as telas no sidebar, independente da página
   const showScreens = isRegularUser || pathname === '/dashboard' || pathname.startsWith('/tela') || pathname.startsWith('/powerbi');
 
   const showPowerBIMenu = pathname.startsWith('/powerbi') && !isRegularUser;
   const showConfigMenu = pathname.startsWith('/configuracoes');
   const showWhatsAppMenu = pathname.startsWith('/whatsapp') || pathname.startsWith('/alertas');
+  const showAssistenteIAMenu = pathname.startsWith('/assistente-ia') && canAccessAssistenteIA();
   const showAdminMenu = pathname.startsWith('/admin');
   const showDevMenu = pathname.startsWith('/dev');
   const showAdministradorMenu = pathname.startsWith('/administrador/');
@@ -175,6 +209,13 @@ export default function Sidebar() {
     { href: '/alertas', icon: Bell, label: 'Alertas', requiresPermission: 'alerts' },
     { href: '/alertas/historico', icon: History, label: 'Histórico', requiresPermission: 'alerts' },
     { href: '/whatsapp/webhook', icon: Webhook, label: 'Webhook', requiresPermission: 'whatsapp', hideForDeveloper: true, hideForAdmin: true },
+  ];
+
+  const assistenteIAMenuItems = [
+    { href: '/assistente-ia/evolucao', icon: TrendingUp, label: 'Evolução' },
+    { href: '/assistente-ia/treinar', icon: GraduationCap, label: 'Treinar IA' },
+    { href: '/assistente-ia/pendentes', icon: Clock, label: 'Perguntas Pendentes' },
+    { href: '/assistente-ia/contextos', icon: Brain, label: 'Contextos' },
   ];
 
   useEffect(() => {
@@ -299,6 +340,20 @@ export default function Sidebar() {
                   <MessageSquare size={20} />
                   {!isCollapsed && <span className="font-medium">WhatsApp</span>}
                 </Link>
+                {canAccessAssistenteIA() && (
+                  <Link
+                    href="/assistente-ia/evolucao"
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 ${
+                      pathname.startsWith('/assistente-ia')
+                        ? 'nav-active'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                    title="Assistente IA"
+                  >
+                    <TrendingUp size={20} />
+                    {!isCollapsed && <span className="font-medium">Assistente IA</span>}
+                  </Link>
+                )}
                 <Link
                   href="/dashboard"
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 ${
@@ -495,6 +550,41 @@ export default function Sidebar() {
                   
                   // Módulos removidos - sempre disponível
                   // Verificação de permissão removida
+                  
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 ${
+                        isActive
+                          ? 'nav-active'
+                          : 'text-gray-600 hover:bg-gray-50'
+                      }`}
+                      title={item.label}
+                    >
+                      <Icon size={20} />
+                      {!isCollapsed && <span className="font-medium">{item.label}</span>}
+                    </Link>
+                  );
+                })}
+              </nav>
+            </>
+          )}
+
+          {showAssistenteIAMenu && canAccessAssistenteIA() && (
+            <>
+              {!isCollapsed && (
+                <div className="px-4 pt-4 pb-2">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    Assistente IA
+                  </h3>
+                </div>
+              )}
+              <nav className="px-2 pb-4 border-b border-gray-100 mb-2">
+                {assistenteIAMenuItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = pathname === item.href || 
+                    (item.href !== '/assistente-ia/treinar' && pathname.startsWith(item.href));
                   
                   return (
                     <Link
