@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
+import { getAuthUser } from '@/lib/auth';
 
+// GET - Listar datasets (baseado nos relatórios)
 export async function GET(request: Request) {
   try {
     const user = await getAuthUser();
@@ -10,113 +11,62 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const connectionId = searchParams.get('connection_id');
-
-    if (!connectionId) {
-      return NextResponse.json({ error: 'connection_id é obrigatório' }, { status: 400 });
-    }
+    const groupId = searchParams.get('group_id');
 
     const supabase = createAdminClient();
 
-    const { data: connection, error: connError } = await supabase
-      .from('powerbi_connections')
-      .select('*')
-      .eq('id', connectionId)
-      .single();
-
-    if (connError || !connection) {
-      return NextResponse.json({ error: 'Conexão não encontrada' }, { status: 404 });
-    }
-
-    // Validar que usuário tem acesso ao grupo da conexão
-    if (!user.is_master) {
-      const developerId = await getUserDeveloperId(user.id);
-
-      let hasAccess = false;
-
-      if (developerId) {
-        // Desenvolvedor: verificar se o grupo pertence a ele
-        const { data: group } = await supabase
-          .from('company_groups')
-          .select('id')
-          .eq('id', connection.company_group_id)
-          .eq('developer_id', developerId)
-          .single();
-
-        hasAccess = !!group;
-      } else {
-        // Usuario comum: verificar membership
-        const { data: membership } = await supabase
-          .from('user_group_membership')
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('company_group_id', connection.company_group_id)
-          .eq('is_active', true)
-          .single();
-
-        hasAccess = !!membership;
-      }
-
-      if (!hasAccess) {
-        return NextResponse.json({ error: 'Sem permissão para acessar esta conexão' }, { status: 403 });
+    // Se tem filtro de grupo, primeiro buscar as conexões desse grupo
+    let validConnectionIds: string[] = [];
+    
+    if (groupId) {
+      const { data: groupConnections } = await supabase
+        .from('powerbi_connections')
+        .select('id')
+        .eq('company_group_id', groupId);
+      
+      validConnectionIds = groupConnections?.map(c => c.id) || [];
+      
+      if (validConnectionIds.length === 0) {
+        return NextResponse.json({ datasets: [] });
       }
     }
 
-    // Obter token
-    const tokenUrl = `https://login.microsoftonline.com/${connection.tenant_id}/oauth2/v2.0/token`;
-    const tokenResponse = await fetch(tokenUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'client_credentials',
-        client_id: connection.client_id,
-        client_secret: connection.client_secret,
-        scope: 'https://analysis.windows.net/powerbi/api/.default',
-      }),
+    // Buscar relatórios
+    let query = supabase
+      .from('powerbi_reports')
+      .select('id, name, dataset_id, connection_id');
+
+    if (groupId && validConnectionIds.length > 0) {
+      query = query.in('connection_id', validConnectionIds);
+    }
+
+    const { data: reports, error } = await query;
+
+    if (error) {
+      console.error('Erro ao buscar datasets:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Agrupar por dataset_id único
+    const datasetsMap = new Map();
+    reports?.forEach((report: any) => {
+      if (!datasetsMap.has(report.dataset_id)) {
+        datasetsMap.set(report.dataset_id, {
+          id: report.dataset_id,
+          dataset_id: report.dataset_id,
+          name: report.name,
+          connection_id: report.connection_id,
+          report_id: report.id
+        });
+      }
     });
 
-    if (!tokenResponse.ok) {
-      return NextResponse.json({ error: 'Erro ao obter token do Power BI' }, { status: 500 });
-    }
+    const datasets = Array.from(datasetsMap.values());
 
-    const tokenData = await tokenResponse.json();
-    const accessToken = tokenData.access_token;
+    return NextResponse.json({ datasets });
 
-    // Buscar datasets e reports em paralelo
-    const [datasetsRes, reportsRes] = await Promise.all([
-      fetch(
-        `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/datasets`,
-        { headers: { 'Authorization': `Bearer ${accessToken}` } }
-      ),
-      fetch(
-        `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/reports`,
-        { headers: { 'Authorization': `Bearer ${accessToken}` } }
-      )
-    ]);
-
-    let datasets: any[] = [];
-    let reports: any[] = [];
-
-    if (datasetsRes.ok) {
-      const datasetsData = await datasetsRes.json();
-      datasets = (datasetsData.value || []).map((d: any) => ({
-        id: d.id,
-        name: d.name
-      }));
-    }
-
-    if (reportsRes.ok) {
-      const reportsData = await reportsRes.json();
-      reports = (reportsData.value || []).map((r: any) => ({
-        id: r.id,
-        name: r.name,
-        datasetId: r.datasetId
-      }));
-    }
-
-    return NextResponse.json({ datasets, reports });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Erro:', error);
-    return NextResponse.json({ error: error.message || 'Erro interno' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }

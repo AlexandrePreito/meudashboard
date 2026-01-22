@@ -24,71 +24,135 @@ export async function GET() {
 
     // 1. Se master, busca TODOS os grupos ativos (não excluídos)
     if (user.is_master) {
-      const { data, error } = await supabase
-        .from('company_groups')
-        .select('id, name, slug, logo_url, primary_color, use_developer_logo, use_developer_colors')
-        .eq('status', 'active')
-        .neq('status', 'deleted')
-        .neq('status', 'inactive')
-        .order('name');
-
-      if (error) {
-        console.error('Erro ao buscar grupos (master):', error);
-        return NextResponse.json({ error: 'Erro ao buscar grupos' }, { status: 500 });
-      }
-      groups = data || [];
-    } else {
-      // 2. Verificar se e desenvolvedor
-      developerId = await getUserDeveloperId(user.id);
-      
-      if (developerId) {
-        // Desenvolvedor: busca grupos do seu developer_id (não excluídos)
+      try {
         const { data, error } = await supabase
           .from('company_groups')
           .select('id, name, slug, logo_url, primary_color, use_developer_logo, use_developer_colors')
-          .eq('developer_id', developerId)
           .eq('status', 'active')
-          .neq('status', 'deleted')
-          .neq('status', 'inactive')
           .order('name');
 
         if (error) {
-          console.error('Erro ao buscar grupos (developer):', error);
-          return NextResponse.json({ error: 'Erro ao buscar grupos' }, { status: 500 });
+          console.error('[ERROR /api/user/groups] Erro ao buscar grupos (master):', {
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            code: error.code
+          });
+          return NextResponse.json({ error: 'Erro ao buscar grupos', details: error.message }, { status: 500 });
         }
         groups = data || [];
-      } else {
-        // 3. Usuario normal: busca atraves de membership
-        const { data, error } = await supabase
-          .from('user_group_membership')
-          .select(`
-            company_group:company_groups (
-              id,
-              name,
-              slug,
-              logo_url,
-              primary_color,
-              use_developer_logo,
-              use_developer_colors,
-              developer_id
-            )
-          `)
-          .eq('user_id', user.id)
-          .eq('is_active', true);
+      } catch (masterError: any) {
+        console.error('[ERROR /api/user/groups] Exceção ao buscar grupos (master):', {
+          message: masterError?.message || 'Erro desconhecido',
+          stack: masterError?.stack?.substring(0, 500) || 'N/A'
+        });
+        return NextResponse.json({ error: 'Erro ao buscar grupos', details: masterError?.message || 'Erro desconhecido' }, { status: 500 });
+      }
+    } else {
+      // 2. Verificar se e desenvolvedor
+      try {
+        developerId = await getUserDeveloperId(user.id);
+        
+        // DEBUG: Log para rastrear developer_id encontrado
+        console.log('[DEBUG /api/user/groups]', {
+          userId: user.id,
+          userEmail: user.email,
+          developerId: developerId || 'NÃO ENCONTRADO',
+          isMaster: user.is_master
+        });
+      } catch (devIdError: any) {
+        console.error('[ERROR /api/user/groups] Erro ao buscar developer_id:', {
+          message: devIdError?.message || 'Erro desconhecido',
+          stack: devIdError?.stack?.substring(0, 500) || 'N/A',
+          userId: user.id
+        });
+        // Continuar sem developerId, vai buscar via membership
+        developerId = null;
+      }
+      
+      if (developerId) {
+        // Desenvolvedor: busca grupos do seu developer_id (não excluídos)
+        try {
+          const { data, error } = await supabase
+            .from('company_groups')
+            .select('id, name, slug, logo_url, primary_color, use_developer_logo, use_developer_colors')
+            .eq('developer_id', developerId)
+            .eq('status', 'active')
+            .order('name');
 
-        if (error) {
-          console.error('Erro ao buscar grupos (membership):', error);
-          return NextResponse.json({ error: 'Erro ao buscar grupos' }, { status: 500 });
+          if (error) {
+            console.error('[ERROR /api/user/groups] Erro ao buscar grupos (developer):', {
+              message: error.message,
+              details: error.details,
+              hint: error.hint,
+              code: error.code,
+              developerId
+            });
+            return NextResponse.json({ error: 'Erro ao buscar grupos', details: error.message }, { status: 500 });
+          }
+          groups = data || [];
+        
+          // DEBUG: Log dos grupos retornados
+          console.log('[DEBUG /api/user/groups] Grupos retornados para dev:', {
+            developerId,
+            totalGrupos: groups.length,
+            grupoIds: groups.map(g => g.id),
+            grupoNames: groups.map(g => g.name)
+          });
+        } catch (devGroupsError: any) {
+          console.error('[ERROR /api/user/groups] Exceção ao buscar grupos (developer):', {
+            message: devGroupsError?.message || 'Erro desconhecido',
+            stack: devGroupsError?.stack?.substring(0, 500) || 'N/A',
+            developerId
+          });
+          return NextResponse.json({ error: 'Erro ao buscar grupos', details: devGroupsError?.message || 'Erro desconhecido' }, { status: 500 });
         }
+      }
+      
+      if (!developerId) {
+        // 3. Usuario normal: busca atraves de membership
+        try {
+          const { data, error } = await supabase
+            .from('user_group_membership')
+            .select(`
+              company_group:company_groups (
+                id,
+                name,
+                slug,
+                logo_url,
+                primary_color,
+                use_developer_logo,
+                use_developer_colors,
+                developer_id,
+                status
+              )
+            `)
+            .eq('user_id', user.id)
+            .eq('is_active', true);
 
-        groups = (data || [])
-          .map((item: any) => item.company_group)
-          .filter((group: any) => 
-            group !== null && 
-            group.status === 'active' && 
-            group.status !== 'deleted' && 
-            group.status !== 'inactive'
-          );
+          if (error) {
+            console.error('[ERROR /api/user/groups] Erro ao buscar grupos (membership):', {
+              message: error.message,
+              details: error.details,
+              hint: error.hint,
+              code: error.code
+            });
+            return NextResponse.json({ error: 'Erro ao buscar grupos', details: error.message }, { status: 500 });
+          }
+
+          groups = (data || [])
+            .map((item: any) => item.company_group)
+            .filter((group: any) => 
+              group !== null && 
+              group.status === 'active'
+            );
+        } catch (membershipError: any) {
+          console.error('[ERROR /api/user/groups] Exceção ao buscar grupos (membership):', {
+            message: membershipError?.message || 'Erro desconhecido',
+            stack: membershipError?.stack?.substring(0, 500) || 'N/A'
+          });
+          return NextResponse.json({ error: 'Erro ao buscar grupos', details: membershipError?.message || 'Erro desconhecido' }, { status: 500 });
+        }
       }
     }
 
@@ -97,11 +161,22 @@ export async function GET() {
 
     if (developerId) {
       // Desenvolvedor: busca pelo seu developer_id
-      const { data: devData } = await supabase
+      const { data: devData, error: devError } = await supabase
         .from('developers')
         .select('id, name, logo_url, primary_color, max_daily_refreshes, max_powerbi_screens, max_users, max_companies')
         .eq('id', developerId)
         .single();
+      
+      if (devError) {
+        console.error('[DEBUG /api/user/groups] Erro ao buscar developer:', devError);
+      } else {
+        console.log('[DEBUG /api/user/groups] Developer encontrado:', {
+          id: devData?.id,
+          name: devData?.name,
+          logo_url: devData?.logo_url
+        });
+      }
+      
       developerInfo = devData;
     } else if (groups.length > 0) {
       // Usuario comum: busca o developer do primeiro grupo com developer e plan
@@ -133,8 +208,16 @@ export async function GET() {
       groups,
       developer: developerInfo  // dados do desenvolvedor para tema
     });
-  } catch (error) {
-    console.error('Erro ao buscar grupos:', error);
-    return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });
+  } catch (error: any) {
+    console.error('[ERROR /api/user/groups] Erro completo:', {
+      message: error?.message || 'Erro desconhecido',
+      stack: error?.stack?.substring(0, 500) || 'N/A',
+      name: error?.name || 'Error',
+      errorString: String(error)
+    });
+    return NextResponse.json({ 
+      error: 'Erro interno do servidor',
+      details: error?.message || 'Erro desconhecido'
+    }, { status: 500 });
   }
 }

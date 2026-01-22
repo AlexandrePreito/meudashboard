@@ -30,24 +30,93 @@ export async function GET(request: Request) {
       if (developerId) {
         userRole = 'developer';
         // Buscar grupos do desenvolvedor
-        const { data: devGroups } = await supabase
+        const { data: devGroups, error: devGroupsError } = await supabase
           .from('company_groups')
           .select('id')
           .eq('developer_id', developerId)
           .eq('status', 'active');
-        userGroupIds = devGroups?.map(g => g.id) || [];
+
+        if (devGroupsError) {
+          console.error('[ERROR /api/alertas] Erro ao buscar grupos do dev:', {
+            message: devGroupsError.message,
+            details: devGroupsError.details,
+            hint: devGroupsError.hint,
+            code: devGroupsError.code
+          });
+          return NextResponse.json({ error: 'Erro ao buscar grupos do desenvolvedor', details: devGroupsError.message }, { status: 500 });
+        }
+
+        userGroupIds = devGroups?.map(g => String(g.id)) || [];
+        
+        console.log('[DEBUG /api/alertas] Grupos do desenvolvedor:', {
+          developerId,
+          userGroupIds,
+          totalGrupos: userGroupIds.length,
+          requestedGroupId: groupId || 'nenhum'
+        });
+        
+        // SEGURANÇA: Validar group_id se passado
+        if (groupId) {
+          const groupIdStr = String(groupId);
+          
+          if (userGroupIds.length === 0) {
+            console.warn('[SEGURANÇA /api/alertas] Dev sem grupos mas tentando acessar grupo específico:', {
+              developerId,
+              requestedGroupId: groupIdStr
+            });
+            return NextResponse.json({ error: 'Nenhum grupo encontrado para este desenvolvedor' }, { status: 403 });
+          }
+          
+          const hasAccess = userGroupIds.some(gid => String(gid) === groupIdStr);
+          
+          if (!hasAccess) {
+            console.warn('[SEGURANÇA /api/alertas] Dev tentando acessar grupo de outro dev:', {
+              developerId,
+              requestedGroupId: groupIdStr,
+              allowedGroupIds: userGroupIds,
+              groupIdInList: hasAccess
+            });
+            return NextResponse.json({ error: 'Sem permissao para este grupo' }, { status: 403 });
+          }
+          console.log('[DEBUG /api/alertas] Validação OK - grupo pertence ao dev');
+        }
       } else {
         // Usuário comum: buscar via membership
-        const { data: memberships } = await supabase
+        const { data: memberships, error: membershipError } = await supabase
           .from('user_group_membership')
           .select('company_group_id, role')
           .eq('user_id', user.id)
           .eq('is_active', true);
 
-        userGroupIds = memberships?.map(m => m.company_group_id) || [];
+        if (membershipError) {
+          console.error('[ERROR /api/alertas] Erro ao buscar memberships:', {
+            message: membershipError.message,
+            details: membershipError.details,
+            hint: membershipError.hint,
+            code: membershipError.code
+          });
+          return NextResponse.json({ error: 'Erro ao buscar memberships', details: membershipError.message }, { status: 500 });
+        }
+
+        userGroupIds = memberships?.map(m => String(m.company_group_id)) || [];
         
         if (memberships?.some(m => m.role === 'admin')) {
           userRole = 'admin';
+        }
+        
+        // SEGURANÇA: Se passou group_id, validar acesso
+        if (groupId) {
+          const groupIdStr = String(groupId);
+          const hasAccess = userGroupIds.some(gid => String(gid) === groupIdStr);
+          
+          if (!hasAccess) {
+            console.warn('[SEGURANÇA /api/alertas] Acesso negado (membership):', {
+              userId: user.id,
+              groupId: groupIdStr,
+              userGroupIds
+            });
+            return NextResponse.json({ error: 'Sem permissao para este grupo' }, { status: 403 });
+          }
         }
       }
     }
@@ -62,10 +131,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ alerts: [] });
     }
 
-    // SEGURANCA: Se passou groupId, validar acesso
-    if (groupId && userRole !== 'master' && userRole !== 'developer' && !userGroupIds.includes(groupId)) {
-      return NextResponse.json({ error: 'Sem permissao para este grupo' }, { status: 403 });
-    }
+    // SEGURANCA: Validação já feita acima para developers e users com membership
+    // Esta seção pode ser removida pois a validação já foi feita
 
     let query = supabase
       .from('ai_alerts')
@@ -98,17 +165,31 @@ export async function GET(request: Request) {
 
     // Filtrar por grupo
     if (groupId) {
-      query = query.eq('company_group_id', groupId);
+      const groupIdStr = String(groupId);
+      query = query.eq('company_group_id', groupIdStr);
+      console.log('[DEBUG /api/alertas] Filtrando por group_id:', groupIdStr);
     } else if (userRole !== 'master') {
       query = query.in('company_group_id', userGroupIds);
+      console.log('[DEBUG /api/alertas] Filtrando por userGroupIds:', userGroupIds);
     }
 
     const { data: alerts, error } = await query;
 
     if (error) {
-      console.error('Erro ao buscar alertas:', error);
+      console.error('[ERROR /api/alertas] Erro ao buscar alertas:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    console.log('[DEBUG /api/alertas] Alertas retornados:', {
+      total: alerts?.length || 0,
+      groupId: groupId || 'todos',
+      userGroupIds: userGroupIds.length > 0 ? userGroupIds : 'N/A (master)'
+    });
 
     return NextResponse.json({ alerts: alerts || [] });
   } catch (error: any) {
@@ -145,16 +226,24 @@ export async function POST(request: Request) {
         // Developer: usar company_group_id do body ou buscar primeiro grupo
         if (body.company_group_id) {
           // Verificar se grupo pertence ao developer
-          const { data: group } = await supabase
+          const { data: group, error: groupError } = await supabase
             .from('company_groups')
             .select('id')
             .eq('id', body.company_group_id)
             .eq('developer_id', developerId)
+            .eq('status', 'active')
             .single();
           
-          if (group) {
-            companyGroupId = group.id;
+          if (groupError || !group) {
+            console.error('[ERROR /api/alertas] Erro ao verificar grupo do dev:', {
+              groupError: groupError?.message,
+              company_group_id: body.company_group_id,
+              developerId
+            });
+            return NextResponse.json({ error: 'Grupo não pertence a você ou não encontrado' }, { status: 403 });
           }
+          
+          companyGroupId = group.id;
         } else {
           // Buscar primeiro grupo do developer
           const { data: devGroups } = await supabase
@@ -332,14 +421,20 @@ export async function PUT(request: Request) {
 
       if (developerId) {
         // Verificar se grupo pertence ao developer
-        const { data: group } = await supabase
+        const { data: group, error: groupError } = await supabase
           .from('company_groups')
           .select('id')
           .eq('id', existingAlert.company_group_id)
           .eq('developer_id', developerId)
+          .eq('status', 'active')
           .single();
         
-        if (!group) {
+        if (groupError || !group) {
+          console.error('[ERROR /api/alertas] Erro ao verificar grupo do dev para editar:', {
+            groupError: groupError?.message,
+            company_group_id: existingAlert.company_group_id,
+            developerId
+          });
           return NextResponse.json({ error: 'Sem permissão para editar este alerta' }, { status: 403 });
         }
       } else {
@@ -431,14 +526,20 @@ export async function DELETE(request: Request) {
 
       if (developerId) {
         // Verificar se grupo pertence ao developer
-        const { data: group } = await supabase
+        const { data: group, error: groupError } = await supabase
           .from('company_groups')
           .select('id')
           .eq('id', existingAlert.company_group_id)
           .eq('developer_id', developerId)
+          .eq('status', 'active')
           .single();
         
-        if (!group) {
+        if (groupError || !group) {
+          console.error('[ERROR /api/alertas] Erro ao verificar grupo do dev para excluir:', {
+            groupError: groupError?.message,
+            company_group_id: existingAlert.company_group_id,
+            developerId
+          });
           return NextResponse.json({ error: 'Sem permissão para excluir este alerta' }, { status: 403 });
         }
       } else {

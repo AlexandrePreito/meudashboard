@@ -74,9 +74,14 @@ function MensagensContent() {
       if (res.ok) {
         const data = await res.json();
         setMessages(data.messages || []);
+      } else {
+        const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
+        console.error('Erro ao carregar mensagens:', res.status, errorData);
+        setMessages([]);
       }
     } catch (err) {
       console.error('Erro ao carregar mensagens:', err);
+      setMessages([]);
     }
   }
 

@@ -22,13 +22,39 @@ export async function GET(request: Request) {
 
       if (developerId) {
         // Desenvolvedor: buscar grupos pelo developer_id
-        const { data: devGroups } = await supabase
+        const { data: devGroups, error: devGroupsError } = await supabase
           .from('company_groups')
           .select('id')
           .eq('developer_id', developerId)
           .eq('status', 'active');
 
-        userGroupIds = devGroups?.map(g => g.id) || [];
+        if (devGroupsError) {
+          console.error('[ERROR /api/whatsapp/instances] Erro ao buscar grupos do dev:', {
+            message: devGroupsError.message,
+            details: devGroupsError.details,
+            hint: devGroupsError.hint,
+            code: devGroupsError.code
+          });
+          return NextResponse.json({ error: 'Erro ao buscar grupos do desenvolvedor', details: devGroupsError.message }, { status: 500 });
+        }
+
+        userGroupIds = devGroups?.map(g => String(g.id)) || [];
+        
+        console.log('[DEBUG /api/whatsapp/instances] Grupos do desenvolvedor:', {
+          developerId,
+          userGroupIds,
+          totalGrupos: userGroupIds.length,
+          requestedGroupId: groupId || 'nenhum'
+        });
+        
+        // DEBUG: Log para rastrear grupos do dev
+        if (groupId && !userGroupIds.includes(String(groupId))) {
+          console.warn('[SEGURANÇA /api/whatsapp/instances] Dev tentando acessar grupo de outro dev:', {
+            developerId,
+            requestedGroupId: groupId,
+            allowedGroupIds: userGroupIds
+          });
+        }
       } else {
         // Usuario comum: buscar via membership
         const { data: memberships } = await supabase
@@ -45,8 +71,20 @@ export async function GET(request: Request) {
       }
 
       // SEGURANCA: Se passou group_id, validar acesso
-      if (groupId && !userGroupIds.includes(groupId)) {
-        return NextResponse.json({ error: 'Sem permissão para este grupo' }, { status: 403 });
+      if (groupId) {
+        const groupIdStr = String(groupId);
+        const hasAccess = userGroupIds.some(gid => String(gid) === groupIdStr);
+        
+        if (!hasAccess) {
+          console.warn('[SEGURANÇA /api/whatsapp/instances] Acesso negado:', {
+            userId: user.id,
+            groupId: groupIdStr,
+            userGroupIds,
+            developerId: developerId || 'N/A',
+            comparison: userGroupIds.map(gid => ({ gid, gidStr: String(gid), matches: String(gid) === groupIdStr }))
+          });
+          return NextResponse.json({ error: 'Sem permissão para este grupo' }, { status: 403 });
+        }
       }
     }
 
@@ -103,12 +141,33 @@ export async function GET(request: Request) {
       instances = data || [];
     } else {
       // Desenvolvedor/Usuario: vê apenas instâncias vinculadas aos seus grupos
-      const { data: instanceGroups } = await supabase
+      if (userGroupIds.length === 0) {
+        console.log('[DEBUG /api/whatsapp/instances] Nenhum grupo encontrado para o usuário');
+        return NextResponse.json({ instances: [] });
+      }
+      
+      const { data: instanceGroups, error: instanceGroupsError } = await supabase
         .from('whatsapp_instance_groups')
         .select('instance_id')
         .in('company_group_id', userGroupIds);
       
+      if (instanceGroupsError) {
+        console.error('[ERROR /api/whatsapp/instances] Erro ao buscar vínculos de instâncias:', {
+          message: instanceGroupsError.message,
+          details: instanceGroupsError.details,
+          hint: instanceGroupsError.hint,
+          code: instanceGroupsError.code
+        });
+        return NextResponse.json({ error: 'Erro ao buscar vínculos de instâncias', details: instanceGroupsError.message }, { status: 500 });
+      }
+      
       const instanceIds = instanceGroups?.map(ig => ig.instance_id) || [];
+      
+      console.log('[DEBUG /api/whatsapp/instances] Instâncias encontradas:', {
+        userGroupIds,
+        instanceIdsCount: instanceIds.length,
+        instanceIds
+      });
       
       if (instanceIds.length === 0) {
         return NextResponse.json({ instances: [] });
@@ -126,11 +185,21 @@ export async function GET(request: Request) {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Erro ao buscar instâncias:', error);
+        console.error('[ERROR /api/whatsapp/instances] Erro ao buscar instâncias:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
 
       instances = data || [];
+      
+      console.log('[DEBUG /api/whatsapp/instances] Instâncias retornadas:', {
+        total: instances.length,
+        instanceNames: instances.map(i => i.name)
+      });
     }
 
     return NextResponse.json({ instances });

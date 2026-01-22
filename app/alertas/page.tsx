@@ -22,7 +22,8 @@ import {
   MessageSquare,
   Calendar,
   Send,
-  X
+  X,
+  Copy
 } from 'lucide-react';
 
 interface Alert {
@@ -79,6 +80,7 @@ function AlertasContent() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [triggeringId, setTriggeringId] = useState<string | null>(null);
+  const [cloningId, setCloningId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string>('user');
   const [accessDenied, setAccessDenied] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{
@@ -145,9 +147,17 @@ function AlertasContent() {
       if (res.ok) {
         const data = await res.json();
         setAlerts(data.alerts || []);
+      } else {
+        const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
+        console.error('Erro ao carregar alertas:', res.status, errorData);
+        setAlerts([]);
+        if (res.status === 403) {
+          showToast('Sem permissão para acessar alertas deste grupo', 'error');
+        }
       }
     } catch (err) {
       console.error('Erro ao carregar alertas:', err);
+      setAlerts([]);
     } finally {
       setLoading(false);
     }
@@ -183,7 +193,7 @@ function AlertasContent() {
           const res = await fetch(`/api/alertas?id=${id}`, { method: 'DELETE' });
           if (res.ok) {
             showToast('Alerta excluído com sucesso!', 'success');
-            loadAlerts();
+            loadAlerts(activeGroup);
           } else {
             showToast('Erro ao excluir alerta', 'error');
           }
@@ -214,7 +224,7 @@ function AlertasContent() {
           if (res.ok) {
             const data = await res.json();
             showToast(data.message || 'Alerta disparado com sucesso!', 'success');
-            loadAlerts();
+            loadAlerts(activeGroup);
           } else {
             const data = await res.json();
             showToast(data.error || 'Erro ao disparar alerta', 'error');
@@ -226,6 +236,30 @@ function AlertasContent() {
         }
       }
     });
+  }
+
+  async function cloneAlert(alertItem: Alert) {
+    setCloningId(alertItem.id);
+    try {
+      const res = await fetch(`/api/alertas/${alertItem.id}/clone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        showToast(data.message || 'Alerta clonado com sucesso!', 'success');
+        loadAlerts(activeGroup);
+      } else {
+        const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
+        showToast(errorData.error || 'Erro ao clonar alerta', 'error');
+      }
+    } catch (err) {
+      console.error('Erro ao clonar alerta:', err);
+      showToast('Erro ao clonar alerta', 'error');
+    } finally {
+      setCloningId(null);
+    }
   }
 
   function formatDate(dateString: string | null) {
@@ -441,6 +475,18 @@ function AlertasContent() {
                             <Loader2 size={16} className="animate-spin" />
                           ) : (
                             <Send size={16} />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => cloneAlert(alertItem)}
+                          disabled={cloningId === alertItem.id}
+                          className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50"
+                          title="Clonar alerta"
+                        >
+                          {cloningId === alertItem.id ? (
+                            <Loader2 size={16} className="animate-spin" />
+                          ) : (
+                            <Copy size={16} />
                           )}
                         </button>
                         <Link

@@ -212,6 +212,27 @@ export async function POST(
 
     // Variáveis para a mensagem
     const now = new Date();
+    
+    // Detectar se a query é sobre "ontem" para substituir {{periodo}}
+    const daxQueryLower = (alert.dax_query || '').toLowerCase();
+    const isYesterdayQuery = 
+      daxQueryLower.includes('today() - 1') ||
+      daxQueryLower.includes('today()-1') ||
+      daxQueryLower.includes('dateadd(today(), -1') ||
+      daxQueryLower.includes('dateadd(today(),-1') ||
+      daxQueryLower.includes('ontem') ||
+      daxQueryLower.includes('yesterday') ||
+      daxQueryLower.includes('dia anterior');
+    
+    // Data de ontem formatada
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayFormatted = yesterday.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric'
+    });
+    
     const variables: Record<string, string> = {
       '{{nome_alerta}}': alert.name,
       '{{valor}}': valorReal,
@@ -220,6 +241,11 @@ export async function POST(
       '{{condicao}}': alert.condition || '-',
       '{{threshold}}': alert.threshold?.toLocaleString('pt-BR') || '-',
     };
+    
+    // Adicionar {{periodo}} se for query sobre ontem
+    if (isYesterdayQuery) {
+      variables['{{periodo}}'] = yesterdayFormatted;
+    }
 
     // Substituir variáveis no template
     let message = alert.message_template || '🔔 *{{nome_alerta}}*\n\nDisparo manual realizado em {{data}} às {{hora}}';

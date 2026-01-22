@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -94,6 +94,7 @@ function getNavItems(user: HeaderProps['user']) {
     items.push({ href: '/administrador', label: 'Administrador' });
     items.push({ href: '/powerbi', label: 'Power BI' });
     items.push({ href: '/whatsapp', label: 'WhatsApp' });
+    items.push({ href: '/assistente-ia/evolucao', label: 'Assistente IA' });
     items.push({ href: '/dashboard', label: 'Dashboards' });
     // ADMIN NÃO TEM Configurações
     return items;
@@ -103,12 +104,14 @@ function getNavItems(user: HeaderProps['user']) {
   if (user.is_developer && !user.is_master) {
     items.push({ href: '/powerbi', label: 'Power BI' });
     items.push({ href: '/whatsapp', label: 'WhatsApp' });
+    items.push({ href: '/assistente-ia/evolucao', label: 'Assistente IA' });
     items.push({ href: '/dashboard', label: 'Dashboards' });
   } else if (user.is_master) {
     // Para master: ordem original
     items.push({ href: '/dashboard', label: 'Dashboards' });
     items.push({ href: '/powerbi', label: 'Power BI' });
     items.push({ href: '/whatsapp', label: 'WhatsApp' });
+    items.push({ href: '/assistente-ia/evolucao', label: 'Assistente IA' });
   }
 
   // Configurações: APENAS master
@@ -160,10 +163,6 @@ export default function Header({ user }: HeaderProps) {
   }, []);
 
   useEffect(() => {
-    loadGroups();
-  }, []);
-
-  useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       const target = event.target as Node;
       const isOutsideDesktop = groupDropdownRefDesktop.current && !groupDropdownRefDesktop.current.contains(target);
@@ -179,37 +178,57 @@ export default function Header({ user }: HeaderProps) {
   }, []);
 
   // Determinar logo e cor do tema
-  const getLogo = () => {
-    // Se nao tem grupo selecionado ou estamos na area dev, usa do developer
-    if (!activeGroup || pathname?.startsWith('/dev')) {
+  const brandLogo = useMemo(() => {
+    // 1. Master: sempre logo do MeuDashboard (null = usa AnimatedLogo)
+    if (user.is_master) {
+      return null; // null faz mostrar AnimatedLogo
+    }
+    
+    // 2. Desenvolvedor: sempre logo do desenvolvedor
+    if (user.is_developer) {
       return developer?.logo_url || null;
     }
     
-    // Se o grupo usa logo do developer, retorna logo do developer
-    if (activeGroup.use_developer_logo !== false) {
-      return developer?.logo_url || activeGroup.logo_url || null;
+    // 3. Admin/Visualizador: respeitar configurações do grupo
+    if (activeGroup) {
+      // Se grupo usa logo do developer (padrão é true)
+      if (activeGroup.use_developer_logo !== false) {
+        return developer?.logo_url || activeGroup.logo_url || null;
+      }
+      // Caso contrário, usa logo do próprio grupo
+      return activeGroup.logo_url || null;
     }
     
-    // Caso contrario, usa logo do proprio grupo
-    return activeGroup.logo_url || null;
-  };
+    // Fallback: se não tem grupo, tenta logo do developer
+    return developer?.logo_url || null;
+  }, [user.is_master, user.is_developer, developer?.logo_url, activeGroup?.logo_url, activeGroup?.use_developer_logo]);
 
-  const getBrandName = () => {
-    // Se nao tem grupo selecionado ou estamos na area dev, usa nome do developer
-    if (!activeGroup || pathname?.startsWith('/dev')) {
+  const brandName = useMemo(() => {
+    // 1. Master: sempre "MeuDashboard"
+    if (user.is_master) {
+      return 'MeuDashboard';
+    }
+    
+    // 2. Desenvolvedor: sempre nome do desenvolvedor
+    if (user.is_developer) {
       return developer?.name || 'MeuDashboard';
     }
     
-    // Se o grupo usa logo do developer, mostra nome do developer
-    if (activeGroup.use_developer_logo !== false) {
-      return developer?.name || activeGroup.name || 'MeuDashboard';
+    // 3. Admin/Visualizador: respeitar configurações do grupo
+    if (activeGroup) {
+      // Se grupo usa logo do developer (padrão é true)
+      if (activeGroup.use_developer_logo !== false) {
+        return developer?.name || activeGroup.name || 'MeuDashboard';
+      }
+      // Caso contrário, usa nome do grupo
+      return activeGroup.name || 'MeuDashboard';
     }
     
-    // Caso contrario, usa nome do grupo
-    return activeGroup.name || 'MeuDashboard';
-  };
+    // Fallback: se não tem grupo, tenta nome do developer
+    return developer?.name || 'MeuDashboard';
+  }, [user.is_master, user.is_developer, developer?.name, activeGroup?.name, activeGroup?.use_developer_logo]);
 
-  const getPrimaryColor = () => {
+  const primaryColorValue = useMemo(() => {
     // Master sempre usa azul
     if (user.is_master) {
       return '#3B82F6';
@@ -232,23 +251,29 @@ export default function Header({ user }: HeaderProps) {
     
     // Fallback: cor do developer ou padrão
     return developer?.primary_color || '#0ea5e9';
-  };
+  }, [user.is_master, user.is_developer, developer?.primary_color, activeGroup?.primary_color, activeGroup?.use_developer_colors]);
 
-  const brandLogo = getLogo();
-  const brandName = getBrandName();
 
   useEffect(() => {
-    const color = getPrimaryColor();
-    setPrimaryColor(color);
-  }, [activeGroup?.primary_color, activeGroup?.use_developer_colors, developer?.primary_color, pathname, user.is_master, user.is_developer, setPrimaryColor]);
+    setPrimaryColor(primaryColorValue);
+  }, [primaryColorValue, setPrimaryColor]);
 
-  async function loadGroups() {
+  const loadGroups = useCallback(async () => {
+    // SEGURANÇA: Verificar se usuário está definido antes de carregar grupos
+    if (!user?.id) {
+      setIsLoadingGroups(false);
+      return;
+    }
+    
     setIsLoadingGroups(true);
     try {
       const res = await fetch('/api/user/groups', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         const freshGroups = data.groups || [];
+        
+        // SEGURANÇA: Sempre substituir groups com os dados frescos da API
+        // A API já filtra corretamente por developer_id, então apenas ela pode ser confiável
         setGroups(freshGroups);
         
         // Setar developer se existir
@@ -257,40 +282,143 @@ export default function Header({ user }: HeaderProps) {
         }
         
         if (freshGroups.length > 0) {
-          if (activeGroup) {
-            // Atualiza o activeGroup com dados frescos do servidor (inclui cor atualizada)
-            const updatedGroup = freshGroups.find((g: CompanyGroup) => g.id === activeGroup.id);
-            if (updatedGroup) {
-              // Só atualiza se houver diferença (evita loop)
-              if (JSON.stringify(updatedGroup) !== JSON.stringify(activeGroup)) {
-                console.log('Atualizando grupo com dados frescos:', updatedGroup.name, 'cor:', updatedGroup.primary_color);
-                setActiveGroup(updatedGroup);
+          setActiveGroup((currentActiveGroup) => {
+            if (currentActiveGroup) {
+              // SEGURANÇA: Verificar se o activeGroup pertence ao desenvolvedor atual
+              const updatedGroup = freshGroups.find((g: CompanyGroup) => g.id === currentActiveGroup.id);
+              if (updatedGroup) {
+                // Grupo existe e pertence ao dev atual - atualiza com dados frescos
+                if (JSON.stringify(updatedGroup) !== JSON.stringify(currentActiveGroup)) {
+                  return updatedGroup;
+                }
+                return currentActiveGroup;
+              } else {
+                // Grupo antigo NÃO pertence mais ao desenvolvedor atual (SEGURANÇA)
+                console.warn('[SEGURANÇA Header] Grupo ativo salvo não pertence ao desenvolvedor atual:', currentActiveGroup.id, 'Limpando...');
+                // Limpar do localStorage
+                if (typeof window !== 'undefined') {
+                  localStorage.removeItem('active-group');
+                  localStorage.removeItem('selected-group-ids');
+                }
+                // Se é Master, mantém null (Todos). Senão, seleciona o primeiro
+                if (!user.is_master) {
+                  return freshGroups[0];
+                }
+                return null;
               }
             } else {
-              // Grupo antigo não existe mais
+              // Não tinha grupo selecionado
               // Se é Master, mantém null (Todos). Senão, seleciona o primeiro
               if (!user.is_master) {
-                setActiveGroup(freshGroups[0]);
+                return freshGroups[0];
               }
+              return null;
             }
-          } else {
-            // Não tinha grupo selecionado
-            // Se é Master, mantém null (Todos). Senão, seleciona o primeiro
-            if (!user.is_master) {
-              setActiveGroup(freshGroups[0]);
+          });
+        } else {
+          // SEGURANÇA: Se não há grupos, limpar activeGroup também
+          setActiveGroup((currentActiveGroup) => {
+            if (currentActiveGroup && !user.is_master) {
+              console.warn('[SEGURANÇA Header] Nenhum grupo disponível, limpando activeGroup');
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('active-group');
+                localStorage.removeItem('selected-group-ids');
+              }
+              return null;
             }
-          }
+            return currentActiveGroup;
+          });
+        }
+      } else {
+        // SEGURANÇA: Se a API retornou erro, tentar ler o erro da resposta
+        let errorMessage = 'Erro desconhecido';
+        try {
+          const errorData = await res.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          // Se não conseguir parsear, usar o status
+          errorMessage = `Erro HTTP ${res.status}`;
+        }
+        
+        // Log detalhado do erro
+        const errorDetails = {
+          status: res.status,
+          statusText: res.statusText,
+          error: errorMessage,
+          userId: user?.id,
+          userEmail: user?.email,
+          url: res.url
+        };
+        console.error('[SEGURANÇA Header] Erro ao carregar grupos da API:', JSON.stringify(errorDetails, null, 2));
+        
+        // Não limpar grupos se for erro 401 (não autenticado) - pode ser temporário
+        // Só limpar se for erro 500 ou outro erro crítico
+        if (res.status !== 401 && res.status !== 403) {
+          setGroups([]);
+          setActiveGroup((currentActiveGroup) => {
+            if (!user.is_master && currentActiveGroup) {
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('active-group');
+                localStorage.removeItem('selected-group-ids');
+              }
+              return null;
+            }
+            return currentActiveGroup;
+          });
         }
       }
-    } catch (error) {
-      console.error('Erro ao carregar grupos:', error);
+    } catch (error: any) {
+      // Log detalhado do erro capturado
+      const errorDetails = {
+        message: error?.message || 'Erro desconhecido',
+        name: error?.name || 'Error',
+        stack: error?.stack ? error.stack.substring(0, 500) : 'N/A',
+        userId: user?.id || 'N/A',
+        userEmail: user?.email || 'N/A',
+        errorString: String(error),
+        errorType: typeof error
+      };
+      console.error('[SEGURANÇA Header] Erro ao carregar grupos:', JSON.stringify(errorDetails, null, 2));
+      
+      // Se for um erro de rede, não limpar grupos (pode ser temporário)
+      if (error?.message?.includes('fetch') || error?.message?.includes('network') || error?.name === 'TypeError') {
+        console.warn('[SEGURANÇA Header] Erro de rede detectado, mantendo grupos existentes');
+        setIsLoadingGroups(false);
+        return;
+      }
+      // SEGURANÇA: Em caso de erro de rede ou outro erro, limpar grupos para evitar mostrar dados incorretos
+      setGroups([]);
+      setActiveGroup((currentActiveGroup) => {
+        if (!user.is_master && currentActiveGroup) {
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('active-group');
+            localStorage.removeItem('selected-group-ids');
+          }
+          return null;
+        }
+        return currentActiveGroup;
+      });
     } finally {
       setIsLoadingGroups(false);
     }
-  }
+  }, [user?.id, user?.is_master, setDeveloper, setActiveGroup]);
+
+  useEffect(() => {
+    // SEGURANÇA: Carregar grupos quando o componente monta ou quando o usuário muda
+    // Limpar grupos anteriores para evitar mostrar grupos do dev anterior
+    if (user?.id) {
+      setGroups([]); // Limpar grupos anteriores antes de carregar novos
+      loadGroups();
+    }
+  }, [user?.id, loadGroups]); // Recarregar grupos sempre que o usuário mudar
 
   async function handleLogout() {
     try {
+      // Limpar localStorage ao fazer logout para evitar vazamento de dados entre devs
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('active-group');
+        localStorage.removeItem('selected-group-ids');
+      }
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
       router.push('/');
     } catch (error) {
@@ -330,9 +458,17 @@ export default function Header({ user }: HeaderProps) {
     }
   }
 
-  function getSelectedGroupsText() {
+  const selectedGroupsText = useMemo(() => {
     if (!user.is_master) {
-      return activeGroup?.name || 'Grupo';
+      // Para desenvolvedor ou admin, mostrar nome do grupo ativo ou "Selecionar grupo" se não houver
+      if (activeGroup) {
+        return activeGroup.name;
+      }
+      // Se não tem grupo ativo mas tem grupos disponíveis, mostrar "Selecionar grupo"
+      if (groups.length > 0) {
+        return 'Selecionar grupo';
+      }
+      return 'Grupo';
     }
     
     if (selectedGroupIds.length === 0) {
@@ -345,7 +481,7 @@ export default function Header({ user }: HeaderProps) {
     }
     
     return `${selectedGroupIds.length} grupos`;
-  }
+  }, [user.is_master, activeGroup?.name, groups.length, selectedGroupIds, groups]);
 
   function isActiveNav(href: string) {
     if (href === '/dashboard') {
@@ -356,6 +492,9 @@ export default function Header({ user }: HeaderProps) {
     }
     if (href === '/whatsapp') {
       return pathname.startsWith('/whatsapp') || pathname.startsWith('/alertas');
+    }
+    if (href === '/assistente-ia/evolucao') {
+      return pathname.startsWith('/assistente-ia');
     }
     return pathname.startsWith(href);
   }
@@ -425,10 +564,10 @@ export default function Header({ user }: HeaderProps) {
                     />
                   ) : (
                     <>
-                      <div className="p-1.5 rounded-lg" style={{ backgroundColor: getPrimaryColor() }}>
+                      <div className="p-1.5 rounded-lg" style={{ backgroundColor: primaryColorValue }}>
                         <Zap size={20} className="text-white" />
                       </div>
-                      <span className="text-xl font-bold truncate max-w-[150px]" style={{ color: getPrimaryColor() }}>
+                      <span className="text-xl font-bold truncate max-w-[150px]" style={{ color: primaryColorValue }}>
                         {brandName}
                       </span>
                     </>
@@ -445,7 +584,7 @@ export default function Header({ user }: HeaderProps) {
                   className="flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   <span className="text-sm font-medium text-gray-700 max-w-[150px] truncate">
-                    {getSelectedGroupsText()}
+                    {selectedGroupsText}
                   </span>
                   <ChevronDown size={16} className={`text-gray-400 transition-transform ${showGroupDropdown ? 'rotate-180' : ''}`} />
                 </button>
@@ -533,7 +672,7 @@ export default function Header({ user }: HeaderProps) {
                     className="flex items-center gap-1 px-2 py-1.5 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
                   >
                     <span className="text-sm font-medium text-gray-700 max-w-[100px] truncate">
-                      {getSelectedGroupsText()}
+                      {selectedGroupsText}
                     </span>
                     <ChevronDown size={14} className={`text-gray-400 transition-transform ${showGroupDropdown ? 'rotate-180' : ''}`} />
                   </button>

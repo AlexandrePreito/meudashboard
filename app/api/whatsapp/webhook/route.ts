@@ -14,7 +14,7 @@ const openai = new OpenAI({
 // ============================================
 // FUNÇÃO PARA EXECUTAR DAX
 // ============================================
-async function executeDaxQuery(connectionId: string, datasetId: string, query: string, supabase: any): Promise<{ success: boolean; results?: any[]; error?: string }> {
+export async function executeDaxQuery(connectionId: string, datasetId: string, query: string, supabase: any): Promise<{ success: boolean; results?: any[]; error?: string }> {
   try {
     const { data: connection } = await supabase
       .from('powerbi_connections')
@@ -132,6 +132,66 @@ function formatTextForSpeech(text: string): string {
 }
 
 // ============================================
+// FUNÇÃO PARA CLASSIFICAR ERROS
+// ============================================
+function classifyError(error: any): {
+  isTemporary: boolean;
+  shouldRetry: boolean;
+  retryAfter?: number; // segundos
+  userMessage: string;
+} {
+  const errorStatus = error.status || error.statusCode;
+  const errorMessage = error.message || String(error);
+  
+  // Erros temporários (rate limit, timeout, server overload)
+  if (errorStatus === 529 || errorStatus === 503 || errorStatus === 429) {
+    return {
+      isTemporary: true,
+      shouldRetry: true,
+      retryAfter: errorStatus === 429 ? 60 : 10, // 60s para rate limit, 10s para outros
+      userMessage: 'Estou processando sua pergunta, mas preciso de um momento. ⏳\n\nVou tentar novamente em alguns segundos. Se não conseguir, te aviso para tentar mais tarde.'
+    };
+  }
+  
+  // Timeout
+  if (errorMessage.includes('timeout') || errorMessage === 'Claude timeout') {
+    return {
+      isTemporary: true,
+      shouldRetry: true,
+      retryAfter: 5,
+      userMessage: 'Estou processando sua pergunta, mas preciso de um momento. ⏳\n\nVou tentar novamente em alguns segundos. Se não conseguir, te aviso para tentar mais tarde.'
+    };
+  }
+  
+  // Erros de rede temporários
+  if (errorMessage.includes('ECONNRESET') || errorMessage.includes('ETIMEDOUT') || errorMessage.includes('network')) {
+    return {
+      isTemporary: true,
+      shouldRetry: true,
+      retryAfter: 3,
+      userMessage: 'Estou processando sua pergunta, mas preciso de um momento. ⏳\n\nVou tentar novamente em alguns segundos. Se não conseguir, te aviso para tentar mais tarde.'
+    };
+  }
+  
+  // Erros permanentes (auth, invalid request, etc)
+  if (errorStatus === 401 || errorStatus === 403 || errorStatus === 400) {
+    return {
+      isTemporary: false,
+      shouldRetry: false,
+      userMessage: 'Não consegui processar sua solicitação no momento. ❌\n\nPor favor, tente novamente mais tarde ou reformule sua pergunta.'
+    };
+  }
+  
+  // Erro desconhecido - tratar como temporário por segurança
+  return {
+    isTemporary: true,
+    shouldRetry: true,
+    retryAfter: 5,
+    userMessage: 'Estou processando sua pergunta, mas preciso de um momento. ⏳\n\nVou tentar novamente em alguns segundos. Se não conseguir, te aviso para tentar mais tarde.'
+  };
+}
+
+// ============================================
 // FUNÇÃO DE RETRY PARA CHAMADAS CLAUDE (COM TIMEOUT)
 // ============================================
 async function callClaudeWithRetry(
@@ -142,8 +202,8 @@ async function callClaudeWithRetry(
     messages: any[];
     tools?: any[];
   },
-  maxRetries = 2,  // ← REDUZIDO de 3 para 2
-  timeoutMs = 25000  // ← TIMEOUT de 25 segundos
+  maxRetries = 4,  // ← AUMENTADO de 2 para 4
+  timeoutMs = 30000  // ← TIMEOUT de 30 segundos
 ): Promise<Anthropic.Message> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -165,14 +225,17 @@ async function callClaudeWithRetry(
     } catch (error: any) {
       console.error(`[Claude] Tentativa ${attempt} falhou:`, error.message);
       
-      if ((error.status === 529 || error.message === 'Claude timeout') && attempt < maxRetries) {
-        const waitTime = attempt * 1500;
-        console.log(`[Claude] Aguardando ${waitTime}ms...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        continue;
+      const errorInfo = classifyError(error);
+      
+      // Se não deve fazer retry ou é última tentativa, lançar erro
+      if (!errorInfo.shouldRetry || attempt >= maxRetries) {
+        throw error;
       }
       
-      throw error;
+      // Backoff exponencial: 2s, 5s, 10s, 20s
+      const waitTime = Math.min(2000 * Math.pow(2, attempt - 1), 20000);
+      console.log(`[Claude] Aguardando ${waitTime}ms antes da tentativa ${attempt + 1}...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
     }
   }
   
@@ -182,7 +245,7 @@ async function callClaudeWithRetry(
 // ============================================
 // FUNÇÃO PARA GERAR ÁUDIO COM OPENAI TTS
 // ============================================
-async function generateAudio(text: string): Promise<string | null> {
+export async function generateAudio(text: string): Promise<string | null> {
   try {
     const speechText = formatTextForSpeech(text);
     const limitedText = speechText.slice(0, 4000);
@@ -212,7 +275,7 @@ async function generateAudio(text: string): Promise<string | null> {
 // ============================================
 // FUNÇÃO PARA ENVIAR ÁUDIO VIA WHATSAPP
 // ============================================
-async function sendWhatsAppAudio(instance: any, phone: string, audioBase64: string): Promise<boolean> {
+export async function sendWhatsAppAudio(instance: any, phone: string, audioBase64: string): Promise<boolean> {
   try {
     const apiUrl = instance.api_url?.replace(/\/$/, '');
     const cleanPhone = phone.replace(/\D/g, '');
@@ -272,7 +335,7 @@ async function sendWhatsAppAudio(instance: any, phone: string, audioBase64: stri
 // ============================================
 // FUNÇÃO PARA ENVIAR MENSAGEM WHATSAPP
 // ============================================
-async function sendWhatsAppMessage(instance: any, phone: string, message: string): Promise<boolean> {
+export async function sendWhatsAppMessage(instance: any, phone: string, message: string): Promise<boolean> {
   try {
     const apiUrl = instance.api_url?.replace(/\/$/, '');
     const url = `${apiUrl}/message/sendText/${instance.instance_name}`;
@@ -305,7 +368,7 @@ async function sendWhatsAppMessage(instance: any, phone: string, message: string
 // ============================================
 // FUNÇÃO AUXILIAR: Buscar instância
 // ============================================
-async function getInstanceForAuthorizedNumber(authorizedNumber: any, supabase: any): Promise<any> {
+export async function getInstanceForAuthorizedNumber(authorizedNumber: any, supabase: any): Promise<any> {
   if (authorizedNumber?.instance_id) {
     const { data: instance } = await supabase
       .from('whatsapp_instances')
@@ -330,7 +393,7 @@ async function getInstanceForAuthorizedNumber(authorizedNumber: any, supabase: a
 // ============================================
 // FUNÇÃO PARA IDENTIFICAR INTENÇÃO DA PERGUNTA
 // ============================================
-function identifyQuestionIntent(question: string): string {
+export function identifyQuestionIntent(question: string): string {
   const q = question.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   
   // Faturamento
@@ -365,7 +428,7 @@ function identifyQuestionIntent(question: string): string {
 // ============================================
 // FUNÇÃO PARA BUSCAR QUERIES QUE FUNCIONARAM
 // ============================================
-async function getWorkingQueries(
+export async function getWorkingQueries(
   supabase: any, 
   datasetId: string, 
   intent: string
@@ -388,9 +451,70 @@ async function getWorkingQueries(
 }
 
 // ============================================
+// FUNÇÃO PARA SALVAR MENSAGEM NA FILA
+// ============================================
+async function saveMessageToQueue(
+  supabase: any,
+  phone: string,
+  companyGroupId: string,
+  messageContent: string,
+  conversationHistory: any[],
+  systemPrompt: string,
+  connectionId: string | null,
+  datasetId: string | null,
+  errorInfo: { isTemporary: boolean; retryAfter?: number; errorMessage: string },
+  respondWithAudio: boolean = false
+): Promise<string | null> {
+  try {
+    const nextRetryAt = errorInfo.retryAfter 
+      ? new Date(Date.now() + errorInfo.retryAfter * 1000).toISOString()
+      : new Date(Date.now() + 5000).toISOString(); // Default 5 segundos
+    
+    // Adicionar flag de áudio no conversation_history como metadata
+    const historyWithMetadata = {
+      messages: conversationHistory,
+      metadata: {
+        respond_with_audio: respondWithAudio
+      }
+    };
+    
+    const { data, error } = await supabase
+      .from('whatsapp_message_queue')
+      .insert({
+        phone_number: phone,
+        company_group_id: companyGroupId,
+        message_content: messageContent,
+        conversation_history: historyWithMetadata,
+        system_prompt: systemPrompt,
+        connection_id: connectionId,
+        dataset_id: datasetId,
+        attempt_count: 0,
+        max_attempts: 5,
+        next_retry_at: nextRetryAt,
+        status: 'pending',
+        error_message: errorInfo.errorMessage,
+        error_type: errorInfo.isTemporary ? 'temporary' : 'permanent'
+      })
+      .select('id')
+      .single();
+    
+    if (error) {
+      console.error('[Queue] Erro ao salvar na fila:', error);
+      return null;
+    }
+    
+    console.log('[Queue] Mensagem salva na fila, ID:', data.id, 'Próximo retry:', nextRetryAt);
+    return data.id;
+  } catch (e) {
+    console.error('[Queue] Erro ao salvar na fila:', e);
+    return null;
+  }
+}
+
+// ============================================
 // FUNÇÃO PARA SALVAR RESULTADO DA QUERY
 // ============================================
-async function saveQueryResult(
+export async function saveQueryResult(
   supabase: any,
   datasetId: string,
   companyGroupId: string,
@@ -462,6 +586,16 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     console.log('[Webhook] Recebido:', JSON.stringify(body).substring(0, 300));
+    
+    // Log detalhado para debug de áudio
+    if (body.data?.message?.audioMessage || body.message?.audioMessage || body.audioMessage) {
+      console.log('[Webhook] 🔊 ÁUDIO DETECTADO NO BODY:', JSON.stringify({
+        has_audioMessage: !!body.data?.message?.audioMessage || !!body.message?.audioMessage || !!body.audioMessage,
+        body_keys: Object.keys(body),
+        data_keys: body.data ? Object.keys(body.data) : [],
+        message_keys: body.data?.message ? Object.keys(body.data.message) : []
+      }));
+    }
 
     // ========== EXTRAIR DADOS ==========
     const event = body.event || body.type;
@@ -581,8 +715,16 @@ export async function POST(request: Request) {
     console.log('[Webhook] Contexto carregado:', modelContext ? modelContext.length + ' chars' : 'NENHUM');
 
     // ========== VERIFICAR ÁUDIO ==========
-    const isAudioMessage = !!messageContent.audioMessage;
+    const isAudioMessage = !!messageContent.audioMessage || !!messageData.audioMessage || body.data?.audioMessage;
     let respondWithAudio = false;
+    
+    console.log('[Webhook] Verificando áudio:', {
+      messageContent_audioMessage: !!messageContent.audioMessage,
+      messageData_audioMessage: !!messageData.audioMessage,
+      body_audioMessage: !!body.data?.audioMessage,
+      isAudioMessage,
+      hasMessageText: !!messageText.trim()
+    });
     
     if (isAudioMessage && !messageText.trim()) {
       const audioMsg = `Desculpe ${authorizedNumber?.name || ''}, não consigo processar áudios ainda. 🎤\n\nEnvie sua pergunta como *texto*!`;
@@ -600,6 +742,7 @@ export async function POST(request: Request) {
     
     if (isAudioMessage && messageText.trim()) {
       respondWithAudio = true;
+      console.log('[Webhook] ✅ Áudio detectado - responderá com áudio');
     }
 
     // ========== SAUDAÇÃO ==========
@@ -931,17 +1074,59 @@ Ano: ${currentYear}`;
         stack: claudeError.stack?.substring(0, 500)
       }));
       
-      const fallbackMsg = `Desculpe ${authorizedNumber.name?.split(' ')[0] || ''}, estou sobrecarregado. ⏳\n\nTente novamente em alguns segundos.`;
-      await sendWhatsAppMessage(instance, phone, fallbackMsg);
+      const errorInfo = classifyError(claudeError);
+      
+      // Se é erro temporário, salvar na fila
+      if (errorInfo.isTemporary && errorInfo.shouldRetry) {
+        const queueId = await saveMessageToQueue(
+          supabase,
+          phone,
+          authorizedNumber.company_group_id,
+          processedMessage,
+          conversationHistory,
+          systemPrompt,
+          connectionId || null,
+          datasetId || null,
+          {
+            isTemporary: true,
+            retryAfter: errorInfo.retryAfter,
+            errorMessage: claudeError.message || 'Erro desconhecido'
+          },
+          respondWithAudio
+        );
+        
+        if (queueId) {
+          // Enviar mensagem informando que vai tentar novamente
+          const userName = authorizedNumber.name?.split(' ')[0] || '';
+          await sendWhatsAppMessage(instance, phone, errorInfo.userMessage.replace('[Nome]', userName));
+          await supabase.from('whatsapp_messages').insert({
+            company_group_id: authorizedNumber.company_group_id,
+            phone_number: phone,
+            message_content: errorInfo.userMessage.replace('[Nome]', userName),
+            direction: 'outgoing',
+            sender_name: 'Assistente IA',
+            instance_id: instance.id
+          });
+          return NextResponse.json({ status: 'queued', queue_id: queueId, reason: 'temporary_error' });
+        }
+      }
+      
+      // Se não conseguiu salvar na fila ou é erro permanente, enviar mensagem de erro
+      const userName = authorizedNumber.name?.split(' ')[0] || '';
+      const errorMsg = errorInfo.isTemporary 
+        ? `Desculpe ${userName}, ainda estou com dificuldades técnicas. 🔧\n\nPor favor, tente novamente em alguns minutos. Se persistir, entre em contato com o suporte.`
+        : errorInfo.userMessage.replace('[Nome]', userName);
+      
+      await sendWhatsAppMessage(instance, phone, errorMsg);
       await supabase.from('whatsapp_messages').insert({
         company_group_id: authorizedNumber.company_group_id,
         phone_number: phone,
-        message_content: fallbackMsg,
+        message_content: errorMsg,
         direction: 'outgoing',
         sender_name: 'Assistente IA',
         instance_id: instance.id
       });
-      return NextResponse.json({ status: 'error', reason: 'claude_error' });
+      return NextResponse.json({ status: 'error', reason: errorInfo.isTemporary ? 'temporary_error' : 'permanent_error' });
     }
 
     // ========== PROCESSAR TOOL CALLS (MÁXIMO 1 ITERAÇÃO) ==========
@@ -1005,7 +1190,95 @@ Ano: ${currentYear}`;
       });
           console.log('[Webhook] Claude 2ª resposta | Tempo:', Date.now() - startTime, 'ms');
         } catch (retryError: any) {
-          console.error('[Webhook] Claude retry erro:', retryError.message);
+          console.error('[Webhook] Claude retry erro (2ª chamada):', retryError.message);
+          
+          // Se a segunda chamada falhar, tentar salvar na fila ou retornar resposta básica
+          const errorInfo = classifyError(retryError);
+          
+          if (errorInfo.isTemporary && errorInfo.shouldRetry) {
+            // Salvar na fila para retry posterior
+            const queueId = await saveMessageToQueue(
+              supabase,
+              phone,
+              authorizedNumber.company_group_id,
+              processedMessage,
+              messages, // Usar mensagens completas incluindo tool results
+              systemPrompt,
+              connectionId || null,
+              datasetId || null,
+              {
+                isTemporary: true,
+                retryAfter: errorInfo.retryAfter,
+                errorMessage: retryError.message || 'Erro na segunda chamada'
+              },
+              respondWithAudio
+            );
+            
+            if (queueId) {
+              const userName = authorizedNumber.name?.split(' ')[0] || '';
+              const msg = `Olá ${userName}! Processei os dados, mas estou com dificuldade para formatar a resposta. ⏳\n\nVou tentar novamente em alguns segundos.`;
+              await sendWhatsAppMessage(instance, phone, msg);
+              await supabase.from('whatsapp_messages').insert({
+                company_group_id: authorizedNumber.company_group_id,
+                phone_number: phone,
+                message_content: msg,
+                direction: 'outgoing',
+                sender_name: 'Assistente IA',
+                instance_id: instance.id
+              });
+              return NextResponse.json({ status: 'queued', queue_id: queueId, reason: 'second_call_error' });
+            }
+          }
+          
+          // Se não conseguiu salvar na fila, verificar se há toolResults com dados
+          // Extrair dados dos toolResults se disponíveis
+          let hasData = false;
+          let dataToShow: any[] = [];
+          
+          if (toolResults.length > 0) {
+            for (const toolResult of toolResults) {
+              if (toolResult.content && !toolResult.content.includes('Erro:')) {
+                try {
+                  const parsed = JSON.parse(toolResult.content);
+                  if (Array.isArray(parsed) && parsed.length > 0) {
+                    hasData = true;
+                    dataToShow = parsed;
+                    break;
+                  }
+                } catch (e) {
+                  // Ignorar erro de parsing
+                }
+              }
+            }
+          }
+          
+          if (hasData && dataToShow.length > 0) {
+            const basicResponse = `📊 *Dados encontrados:*\n\n${JSON.stringify(dataToShow.slice(0, 5), null, 2)}\n\nDesculpe, tive dificuldade para formatar a resposta. Por favor, tente novamente.`;
+            await sendWhatsAppMessage(instance, phone, basicResponse);
+            await supabase.from('whatsapp_messages').insert({
+              company_group_id: authorizedNumber.company_group_id,
+              phone_number: phone,
+              message_content: basicResponse,
+              direction: 'outgoing',
+              sender_name: 'Assistente IA',
+              instance_id: instance.id
+            });
+            return NextResponse.json({ status: 'partial_success', reason: 'formatting_error' });
+          }
+          
+          // Se não há dados, retornar erro
+          const userName = authorizedNumber.name?.split(' ')[0] || '';
+          const errorMsg = `Desculpe ${userName}, não consegui processar sua solicitação. Por favor, tente novamente.`;
+          await sendWhatsAppMessage(instance, phone, errorMsg);
+          await supabase.from('whatsapp_messages').insert({
+            company_group_id: authorizedNumber.company_group_id,
+            phone_number: phone,
+            message_content: errorMsg,
+            direction: 'outgoing',
+            sender_name: 'Assistente IA',
+            instance_id: instance.id
+          });
+          return NextResponse.json({ status: 'error', reason: 'second_call_failed' });
         }
       }
     }
@@ -1041,15 +1314,30 @@ Ano: ${currentYear}`;
     // ========== ENVIAR RESPOSTA ==========
     let sent = false;
     
+    console.log('[Webhook] Enviando resposta - respondWithAudio:', respondWithAudio, '| Mensagem length:', assistantMessage.length);
+    
     if (respondWithAudio) {
-      const audioBase64 = await generateAudio(assistantMessage);
-      if (audioBase64) {
-        sent = await sendWhatsAppAudio(instance, phone, audioBase64);
-      }
-      if (!sent) {
+      console.log('[Webhook] 🎤 Gerando áudio com OpenAI TTS...');
+      try {
+        const audioBase64 = await generateAudio(assistantMessage);
+        if (audioBase64) {
+          console.log('[Webhook] ✅ Áudio gerado (', audioBase64.length, 'bytes), enviando via WhatsApp...');
+          sent = await sendWhatsAppAudio(instance, phone, audioBase64);
+          console.log('[Webhook] Áudio enviado?', sent);
+          if (!sent) {
+            console.log('[Webhook] ⚠️ Falha ao enviar áudio, enviando como texto...');
+            sent = await sendWhatsAppMessage(instance, phone, assistantMessage);
+          }
+        } else {
+          console.log('[Webhook] ❌ Falha ao gerar áudio (retornou null), enviando texto');
+          sent = await sendWhatsAppMessage(instance, phone, assistantMessage);
+        }
+      } catch (audioError: any) {
+        console.error('[Webhook] ❌ Erro ao gerar/enviar áudio:', audioError.message);
         sent = await sendWhatsAppMessage(instance, phone, assistantMessage);
       }
     } else {
+      console.log('[Webhook] 📝 Enviando como texto');
       sent = await sendWhatsAppMessage(instance, phone, assistantMessage);
     }
 

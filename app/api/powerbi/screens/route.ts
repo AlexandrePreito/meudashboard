@@ -31,13 +31,39 @@ export async function GET(request: Request) {
 
       if (developerId) {
         // Desenvolvedor: buscar grupos pelo developer_id
-        const { data: devGroups } = await supabase
+        const { data: devGroups, error: devGroupsError } = await supabase
           .from('company_groups')
           .select('id')
           .eq('developer_id', developerId)
           .eq('status', 'active');
 
-        userGroupIds = devGroups?.map(g => g.id) || [];
+        if (devGroupsError) {
+          console.error('[ERROR /api/powerbi/screens] Erro ao buscar grupos do dev:', {
+            message: devGroupsError.message,
+            details: devGroupsError.details,
+            hint: devGroupsError.hint,
+            code: devGroupsError.code
+          });
+          return NextResponse.json({ error: 'Erro ao buscar grupos do desenvolvedor', details: devGroupsError.message }, { status: 500 });
+        }
+
+        userGroupIds = devGroups?.map(g => String(g.id)) || [];
+        
+        console.log('[DEBUG /api/powerbi/screens] Grupos do desenvolvedor:', {
+          developerId,
+          userGroupIds,
+          totalGrupos: userGroupIds.length,
+          requestedGroupId: groupId || 'nenhum'
+        });
+        
+        // DEBUG: Log para rastrear grupos do dev
+        if (groupId && !userGroupIds.includes(String(groupId))) {
+          console.warn('[SEGURANÇA /api/powerbi/screens] Dev tentando acessar grupo de outro dev:', {
+            developerId,
+            requestedGroupId: groupId,
+            allowedGroupIds: userGroupIds
+          });
+        }
       } else {
         // Verificar se é admin de algum grupo
         const adminGroupIds = await getUserAdminGroups(user.id);
@@ -62,13 +88,23 @@ export async function GET(request: Request) {
       }
 
       // SEGURANCA: Se passou groupId, validar que usuario pertence a ele
-      if (groupId && !userGroupIds.includes(groupId)) {
-        return NextResponse.json({ error: 'Sem permissao para este grupo' }, { status: 403 });
-      }
-
-      // Se passou groupId valido, filtra so por ele
       if (groupId) {
-        userGroupIds = [groupId];
+        const groupIdStr = String(groupId);
+        const hasAccess = userGroupIds.some(gid => String(gid) === groupIdStr);
+        
+        if (!hasAccess) {
+          console.warn('[SEGURANÇA /api/powerbi/screens] Acesso negado:', {
+            userId: user.id,
+            groupId: groupIdStr,
+            userGroupIds,
+            developerId: developerId || 'N/A',
+            comparison: userGroupIds.map(gid => ({ gid, gidStr: String(gid), matches: String(gid) === groupIdStr }))
+          });
+          return NextResponse.json({ error: 'Sem permissao para este grupo' }, { status: 403 });
+        }
+        
+        // Se passou groupId valido, filtra so por ele
+        userGroupIds = [groupIdStr];
       }
     }
 

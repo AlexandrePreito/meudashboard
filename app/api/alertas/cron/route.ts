@@ -175,6 +175,26 @@ export async function GET(request: Request) {
 
       console.log(`[CRON] Disparando alerta: ${alert.name}`);
 
+      // Detectar se a query é sobre "ontem" para substituir {{periodo}}
+      const daxQueryLower = (alert.dax_query || '').toLowerCase();
+      const isYesterdayQuery = 
+        daxQueryLower.includes('today() - 1') ||
+        daxQueryLower.includes('today()-1') ||
+        daxQueryLower.includes('dateadd(today(), -1') ||
+        daxQueryLower.includes('dateadd(today(),-1') ||
+        daxQueryLower.includes('ontem') ||
+        daxQueryLower.includes('yesterday') ||
+        daxQueryLower.includes('dia anterior');
+      
+      // Data de ontem formatada
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayFormatted = yesterday.toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+      });
+      
       // Executar DAX e extrair todas as variáveis
       let variables: Record<string, string> = {
         '{{nome_alerta}}': alert.name,
@@ -183,6 +203,11 @@ export async function GET(request: Request) {
         '{{condicao}}': CONDITIONS_MAP[alert.condition] || alert.condition,
         '{{threshold}}': alert.threshold?.toLocaleString('pt-BR') || '0',
       };
+      
+      // Adicionar {{periodo}} se for query sobre ontem
+      if (isYesterdayQuery) {
+        variables['{{periodo}}'] = yesterdayFormatted;
+      }
 
       let daxResult: any = null;
       if (alert.connection_id && alert.dataset_id && alert.dax_query) {

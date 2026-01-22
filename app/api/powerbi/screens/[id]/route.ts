@@ -21,14 +21,58 @@ export async function GET(
       .from('powerbi_dashboard_screens')
       .select(`
         *,
-        company_group:company_groups(id, name),
+        company_group:company_groups(id, name, developer_id),
         report:powerbi_reports(*, connection:powerbi_connections(*))
       `)
       .eq('id', id)
       .single();
 
-    if (error) {
+    if (error || !screen) {
       return NextResponse.json({ error: 'Tela não encontrada' }, { status: 404 });
+    }
+    
+    // SEGURANÇA: Validar acesso ao grupo da tela
+    if (!user.is_master) {
+      const developerId = await getUserDeveloperId(user.id);
+      
+      if (developerId) {
+        // Verificar se o grupo da tela pertence ao desenvolvedor
+        const screenGroupId = screen.company_group_id;
+        const { data: group } = await supabase
+          .from('company_groups')
+          .select('developer_id')
+          .eq('id', screenGroupId)
+          .single();
+        
+        if (!group || group.developer_id !== developerId) {
+          console.warn('[SEGURANÇA /api/powerbi/screens/[id]] Acesso negado:', {
+            userId: user.id,
+            screenId: id,
+            screenGroupId,
+            userDeveloperId: developerId,
+            groupDeveloperId: group?.developer_id
+          });
+          return NextResponse.json({ error: 'Sem permissão para acessar esta tela' }, { status: 403 });
+        }
+      } else {
+        // Usuário normal: verificar membership
+        const { data: membership } = await supabase
+          .from('user_group_membership')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('company_group_id', screen.company_group_id)
+          .eq('is_active', true)
+          .maybeSingle();
+        
+        if (!membership) {
+          console.warn('[SEGURANÇA /api/powerbi/screens/[id]] Acesso negado - sem membership:', {
+            userId: user.id,
+            screenId: id,
+            screenGroupId: screen.company_group_id
+          });
+          return NextResponse.json({ error: 'Sem permissão para acessar esta tela' }, { status: 403 });
+        }
+      }
     }
 
     const { data: screenUsers } = await supabase

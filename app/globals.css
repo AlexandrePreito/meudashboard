@@ -155,3 +155,22 @@ body {
 .form-transition {
   animation: slideUp 0.4s ease-out forwards;
 }
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes spinnerFadeIn {
+  0% { opacity: 0; transform: scale(0.8); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.transition-overlay {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.transition-spinner {
+  animation: spinnerFadeIn 0.4s ease-out 0.2s forwards;
+  opacity: 0;
+}

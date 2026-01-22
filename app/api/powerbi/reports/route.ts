@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
+import { getAuthUser } from '@/lib/auth';
 
 // GET - Listar relatórios
 export async function GET(request: Request) {
@@ -16,77 +16,67 @@ export async function GET(request: Request) {
 
     const supabase = createAdminClient();
 
-    // Buscar grupos do usuario
-    let userGroupIds: string[] = [];
-    if (!user.is_master) {
-      const developerId = await getUserDeveloperId(user.id);
-
-      if (developerId) {
-        // Desenvolvedor: buscar grupos pelo developer_id
-        const { data: devGroups } = await supabase
-          .from('company_groups')
-          .select('id')
-          .eq('developer_id', developerId)
-          .eq('status', 'active');
-
-        userGroupIds = devGroups?.map(g => g.id) || [];
-      } else {
-        // Usuario comum: buscar via membership
-        const { data: memberships } = await supabase
-          .from('user_group_membership')
-          .select('company_group_id')
-          .eq('user_id', user.id)
-          .eq('is_active', true);
-
-        userGroupIds = memberships?.map(m => m.company_group_id) || [];
-      }
-
-      if (userGroupIds.length === 0) {
+    // Se tem filtro de grupo, primeiro buscar as conexões desse grupo
+    let validConnectionIds: string[] = [];
+    
+    if (groupId) {
+      const { data: groupConnections } = await supabase
+        .from('powerbi_connections')
+        .select('id')
+        .eq('company_group_id', groupId);
+      
+      validConnectionIds = groupConnections?.map(c => c.id) || [];
+      
+      // Se não tem conexões nesse grupo, retorna vazio
+      if (validConnectionIds.length === 0) {
         return NextResponse.json({ reports: [] });
       }
     }
 
-    let query = supabase
+    // Buscar relatórios
+    let reportsQuery = supabase
       .from('powerbi_reports')
-      .select(`
-        *,
-        connection:powerbi_connections(
-          id, 
-          name, 
-          company_group_id,
-          company_group:company_groups(id, name)
-        )
-      `)
+      .select('*')
       .order('name');
 
     if (connectionId) {
-      query = query.eq('connection_id', connectionId);
+      reportsQuery = reportsQuery.eq('connection_id', connectionId);
+    } else if (groupId && validConnectionIds.length > 0) {
+      // Filtrar por conexões do grupo
+      reportsQuery = reportsQuery.in('connection_id', validConnectionIds);
     }
 
-    const { data, error } = await query;
+    const { data: reports, error } = await reportsQuery;
 
     if (error) {
       console.error('Erro ao buscar relatórios:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Filtrar por grupos do usuário (se não for master)
-    let filteredReports = data || [];
-    if (!user.is_master) {
-      filteredReports = filteredReports.filter(report => 
-        report.connection?.company_group_id && 
-        userGroupIds.includes(report.connection.company_group_id)
-      );
+    if (!reports || reports.length === 0) {
+      return NextResponse.json({ reports: [] });
     }
 
-    // Se passou group_id, filtrar por grupo
-    if (groupId) {
-      filteredReports = filteredReports.filter(report =>
-        report.connection?.company_group_id === groupId
-      );
-    }
+    // Buscar detalhes das conexões e grupos
+    const connectionIds = [...new Set(reports.map((r: any) => r.connection_id).filter(Boolean))];
+    
+    const { data: connections } = await supabase
+      .from('powerbi_connections')
+      .select(`
+        id, 
+        name, 
+        company_group_id,
+        company_group:company_groups(id, name)
+      `)
+      .in('id', connectionIds);
 
-    return NextResponse.json({ reports: filteredReports });
+    // Combinar os dados
+    const reportsWithConnection = reports.map((report: any) => ({
+      ...report,
+      connection: connections?.find((c: any) => c.id === report.connection_id) || null
+    }));
+
+    return NextResponse.json({ reports: reportsWithConnection });
   } catch (error) {
     console.error('Erro:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
@@ -101,6 +91,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
+    if (!user.is_master) {
+      return NextResponse.json({ error: 'Apenas master pode criar relatórios' }, { status: 403 });
+    }
+
     const body = await request.json();
     const { connection_id, name, report_id, dataset_id, default_page } = body;
 
@@ -109,38 +103,6 @@ export async function POST(request: Request) {
     }
 
     const supabase = createAdminClient();
-
-    // Verificar permissão: master pode tudo, dev só seus grupos
-    if (!user.is_master) {
-      const developerId = await getUserDeveloperId(user.id);
-      
-      if (!developerId) {
-        return NextResponse.json({ error: 'Sem permissão para criar relatórios' }, { status: 403 });
-      }
-
-      // Buscar conexão para pegar o grupo
-      const { data: connection } = await supabase
-        .from('powerbi_connections')
-        .select('company_group_id')
-        .eq('id', connection_id)
-        .single();
-
-      if (!connection) {
-        return NextResponse.json({ error: 'Conexão não encontrada' }, { status: 404 });
-      }
-
-      // Verificar se o grupo pertence ao desenvolvedor
-      const { data: group } = await supabase
-        .from('company_groups')
-        .select('id')
-        .eq('id', connection.company_group_id)
-        .eq('developer_id', developerId)
-        .single();
-
-      if (!group) {
-        return NextResponse.json({ error: 'Grupo não pertence a você' }, { status: 403 });
-      }
-    }
 
     const { data, error } = await supabase
       .from('powerbi_reports')
@@ -165,7 +127,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }
-
-
-
-

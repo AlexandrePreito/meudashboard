@@ -80,3 +80,62 @@ export async function getUserAdminGroupsWithData(userId: string) {
       group.status !== 'inactive'
     ) || [];
 }
+
+/**
+ * Valida se um grupo pertence ao desenvolvedor especificado
+ * Função crítica de segurança para prevenir vazamento de dados entre devs
+ */
+export async function validateGroupBelongsToDeveloper(
+  groupId: string, 
+  developerId: string
+): Promise<boolean> {
+  const supabase = createAdminClient();
+  
+  const { data, error } = await supabase
+    .from('company_groups')
+    .select('id, developer_id, name')
+    .eq('id', groupId)
+    .eq('developer_id', developerId)
+    .eq('status', 'active')
+    .maybeSingle();
+  
+  if (error) {
+    console.error('[SEGURANÇA] Erro ao validar grupo:', error);
+    return false;
+  }
+  
+  const isValid = !!data;
+  
+  if (!isValid) {
+    console.warn('[SEGURANÇA] Tentativa de acesso negado:', {
+      groupId,
+      developerId,
+      groupName: 'NÃO ENCONTRADO'
+    });
+  }
+  
+  return isValid;
+}
+
+/**
+ * Busca todos os IDs de grupos de um desenvolvedor
+ * Retorna array vazio se não for desenvolvedor ou não tiver grupos
+ */
+export async function getDeveloperGroupIds(developerId: string): Promise<string[]> {
+  const supabase = createAdminClient();
+  
+  const { data, error } = await supabase
+    .from('company_groups')
+    .select('id')
+    .eq('developer_id', developerId)
+    .eq('status', 'active')
+    .neq('status', 'deleted')
+    .neq('status', 'inactive');
+  
+  if (error) {
+    console.error('[SEGURANÇA] Erro ao buscar grupos do dev:', error);
+    return [];
+  }
+  
+  return data?.map(g => g.id) || [];
+}

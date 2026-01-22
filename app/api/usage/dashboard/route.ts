@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
 
 export async function GET() {
   try {
@@ -14,19 +14,58 @@ export async function GET() {
     const now = new Date();
     const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
 
-    // Buscar grupo do usuário
-    const { data: membership } = await supabase
-      .from('user_group_membership')
-      .select('company_group_id')
-      .eq('user_id', user.id)
-      .limit(1)
-      .maybeSingle();
+    // SEGURANÇA: Buscar grupo do usuário validando developer_id
+    let companyGroupId: string | null = null;
+    
+    if (user.is_master) {
+      // Master: pegar primeiro grupo ativo (para uso em testes)
+      const { data: firstGroup } = await supabase
+        .from('company_groups')
+        .select('id')
+        .eq('status', 'active')
+        .limit(1)
+        .maybeSingle();
+      companyGroupId = firstGroup?.id || null;
+    } else {
+      const developerId = await getUserDeveloperId(user.id);
+      
+      if (developerId) {
+        // Developer: buscar primeiro grupo do desenvolvedor
+        const { data: devGroup } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('developer_id', developerId)
+          .eq('status', 'active')
+          .neq('status', 'deleted')
+          .neq('status', 'inactive')
+          .limit(1)
+          .maybeSingle();
+        
+        companyGroupId = devGroup?.id || null;
+        
+        if (!companyGroupId) {
+          console.warn('[SEGURANÇA /api/usage/dashboard] Dev sem grupos:', {
+            userId: user.id,
+            developerId
+          });
+        }
+      } else {
+        // Usuário comum: buscar via membership
+        const { data: membership } = await supabase
+          .from('user_group_membership')
+          .select('company_group_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle();
 
-    if (!membership?.company_group_id) {
-      return NextResponse.json({ error: 'Grupo não encontrado' }, { status: 400 });
+        companyGroupId = membership?.company_group_id || null;
+      }
     }
 
-    const companyGroupId = membership.company_group_id;
+    if (!companyGroupId) {
+      return NextResponse.json({ error: 'Grupo não encontrado' }, { status: 400 });
+    }
 
     // Buscar dados do grupo e plano
     const { data: group } = await supabase

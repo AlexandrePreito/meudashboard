@@ -142,50 +142,7 @@ export default function LoginPage() {
 
   return (
     <>
-      <style jsx global>{`
-        @keyframes barPulse {
-          0%, 100% { transform: scaleY(1); }
-          50% { transform: scaleY(0.7); }
-        }
-        @keyframes dashDraw {
-          to { stroke-dashoffset: 0; }
-        }
-        @keyframes float {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-10px); }
-        }
-        @keyframes fadeOutScale {
-          0% { opacity: 1; transform: scale(1); }
-          100% { opacity: 0; transform: scale(1.01); }
-        }
-        @keyframes slideUp {
-          0% { opacity: 1; transform: translateY(0); }
-          100% { opacity: 0; transform: translateY(-10px); }
-        }
-        @keyframes fadeIn {
-          0% { opacity: 0; }
-          100% { opacity: 1; }
-        }
-        @keyframes spinnerFadeIn {
-          0% { opacity: 0; transform: scale(0.8); }
-          100% { opacity: 1; transform: scale(1); }
-        }
-        .page-transition {
-          animation: fadeOutScale 0.8s ease-in-out forwards;
-        }
-        .form-transition {
-          animation: slideUp 0.5s ease-in-out forwards;
-        }
-        .transition-overlay {
-          animation: fadeIn 0.3s ease-out forwards;
-        }
-        .transition-spinner {
-          animation: spinnerFadeIn 0.4s ease-out 0.2s forwards;
-          opacity: 0;
-        }
-      `}</style>
-
-      <div className={`min-h-screen flex ${transitioning ? 'page-transition' : ''}`}>
+      <div className={`min-h-screen flex ${transitioning ? 'page-transition' : ''}`} suppressHydrationWarning>
         {/* Lado esquerdo - Dashboard Animado */}
         <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
           {/* Gradiente de fundo */}

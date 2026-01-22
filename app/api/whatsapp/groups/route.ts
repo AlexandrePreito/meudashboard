@@ -55,6 +55,13 @@ export async function GET(request: Request) {
 
     // SEGURANCA: Se passou group_id, validar acesso
     if (groupId && userRole !== 'master' && !userGroupIds.includes(groupId)) {
+      console.warn('[SEGURANÇA /api/whatsapp/groups] Acesso negado:', {
+        userId: user.id,
+        userEmail: user.email,
+        groupId,
+        userGroupIds,
+        developerId: await getUserDeveloperId(user.id) || 'N/A'
+      });
       return NextResponse.json({ error: 'Sem permissão para este grupo' }, { status: 403 });
     }
 

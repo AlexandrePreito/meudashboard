@@ -75,10 +75,13 @@ function RelatoriosContent() {
   }, []);
 
   useEffect(() => {
-    if (userRole !== 'user') {
+    // Só carregar dados se já verificou o acesso e tem permissão
+    // Usar activeGroup?.id para evitar re-renders desnecessários quando objeto muda
+    if (userRole !== 'user' && !accessDenied) {
+      setLoading(true); // Ativar loading ao trocar de grupo
       loadData(activeGroup);
     }
-  }, [activeGroup, userRole]);
+  }, [activeGroup?.id, userRole]);
 
   async function checkAccessAndLoad() {
     try {
@@ -98,7 +101,7 @@ function RelatoriosContent() {
           setLoading(false);
           return;
         }
-        loadData(activeGroup);
+        // Removido: loadData(activeGroup); - será chamado pelo useEffect acima
       } else {
         setAccessDenied(true);
         setLoading(false);
@@ -111,15 +114,21 @@ function RelatoriosContent() {
   }
 
   async function loadData(currentGroup?: { id: string; name: string } | null) {
+    // Montar URL com filtro de grupo se houver grupo ativo
+    const reportsUrl = currentGroup
+      ? `/api/powerbi/reports?group_id=${currentGroup.id}`
+      : '/api/powerbi/reports';
+    
+    const connectionsUrl = currentGroup
+      ? `/api/powerbi/connections?group_id=${currentGroup.id}`
+      : '/api/powerbi/connections';
+    
     try {
-      // Montar URL com filtro de grupo se houver grupo ativo
-      const reportsUrl = currentGroup
-        ? `/api/powerbi/reports?group_id=${currentGroup.id}`
-        : '/api/powerbi/reports';
-      
-      const connectionsUrl = currentGroup
-        ? `/api/powerbi/connections?group_id=${currentGroup.id}`
-        : '/api/powerbi/connections';
+      console.log('[DEBUG /powerbi/relatorios] Carregando dados:', {
+        currentGroup: currentGroup?.id || 'nenhum',
+        reportsUrl,
+        connectionsUrl
+      });
         
       const [reportsRes, connectionsRes] = await Promise.all([
         fetch(reportsUrl),
@@ -127,16 +136,56 @@ function RelatoriosContent() {
       ]);
 
       if (reportsRes.ok) {
+        // Clone para poder fazer log sem consumir a response
         const data = await reportsRes.json();
+        console.log('Response completa:', data);
+        console.log('Data recebida:', data);
+        console.log('Reports:', data.reports);
+        console.log('[DEBUG /powerbi/relatorios] Relatórios recebidos:', {
+          total: data.reports?.length || 0,
+          reports: data.reports
+        });
         setReports(data.reports || []);
+      } else {
+        let errorData: any = {};
+        try {
+          errorData = await reportsRes.json();
+        } catch (parseError) {
+          errorData = {
+            message: `Erro HTTP ${reportsRes.status}: ${reportsRes.statusText}`,
+            parseError: String(parseError)
+          };
+        }
+        console.error('[ERROR /powerbi/relatorios] Erro ao carregar relatórios:', JSON.stringify({
+          status: reportsRes.status,
+          statusText: reportsRes.statusText,
+          url: reportsUrl,
+          error: errorData
+        }, null, 2));
       }
 
       if (connectionsRes.ok) {
         const data = await connectionsRes.json();
+        console.log('[DEBUG /powerbi/relatorios] Conexões recebidas:', {
+          total: data.connections?.length || 0
+        });
         setConnections(data.connections || []);
+      } else {
+        const errorData = await connectionsRes.json();
+        console.error('[ERROR /powerbi/relatorios] Erro ao carregar conexões:', {
+          status: connectionsRes.status,
+          error: errorData
+        });
       }
-    } catch (error) {
-      console.error('Erro ao carregar dados:', error);
+    } catch (error: any) {
+      console.error('[ERROR /powerbi/relatorios] Erro ao carregar dados:', JSON.stringify({
+        message: error?.message || 'Erro desconhecido',
+        name: error?.name || 'Error',
+        stack: error?.stack?.substring(0, 500) || 'N/A',
+        errorString: String(error),
+        reportsUrl,
+        connectionsUrl
+      }, null, 2));
     } finally {
       setLoading(false);
     }
@@ -173,13 +222,15 @@ function RelatoriosContent() {
     if (report) {
       setEditingReport(report);
       setForm({
-        connection_id: report.connection.id,
+        connection_id: report.connection?.id || '',
         name: report.name,
         report_id: report.report_id,
         dataset_id: report.dataset_id
       });
       // Carregar dados do Power BI
-      loadPbiData(report.connection.id);
+      if (report.connection?.id) {
+        loadPbiData(report.connection.id);
+      }
     } else {
       setEditingReport(null);
       setForm({
@@ -199,12 +250,14 @@ function RelatoriosContent() {
   function handleCopy(report: Report) {
     setEditingReport(null); // Não está editando, está criando novo
     setForm({
-      connection_id: report.connection.id,
+      connection_id: report.connection?.id || '',
       name: `${report.name} (Cópia)`,
       report_id: report.report_id,
       dataset_id: report.dataset_id
     });
-    loadPbiData(report.connection.id);
+    if (report.connection?.id) {
+      loadPbiData(report.connection.id);
+    }
     setShowModal(true);
   }
 

@@ -38,8 +38,15 @@ function HistoricoContent() {
   const limit = 20;
 
   useEffect(() => {
+    // Resetar página quando o grupo ou filtro mudar
+    setPage(0);
+  }, [filter, activeGroup?.id]);
+
+  useEffect(() => {
+    // Carregar histórico quando página, filtro ou grupo mudar
     fetchHistory(activeGroup);
-  }, [page, filter, activeGroup]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, filter, activeGroup?.id]);
 
   async function fetchHistory(currentGroup?: { id: string; name: string } | null) {
     setLoading(true);
@@ -54,11 +61,18 @@ function HistoricoContent() {
       const res = await fetch(`/api/alertas/historico?${params}`);
       if (res.ok) {
         const data = await res.json();
-        setHistory(data.history);
-        setTotal(data.total);
+        setHistory(data.history || []);
+        setTotal(data.total || 0);
+      } else {
+        const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
+        console.error('Erro ao buscar histórico:', res.status, errorData);
+        setHistory([]);
+        setTotal(0);
       }
     } catch (error) {
       console.error('Erro ao buscar histórico:', error);
+      setHistory([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
