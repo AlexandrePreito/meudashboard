@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import Anthropic from '@anthropic-ai/sdk';
 import { buildSystemPrompt, formatTrainingExamples, formatConversationHistory } from '@/lib/ai/system-prompt';
@@ -8,8 +7,8 @@ import { getModelContext, getTrainingExamples, getConversationHistory } from '@/
 export async function POST(request: NextRequest) {
   try {
     console.log('=== WEBHOOK MESSAGES-UPSERT CHAMADO ===');
-    const supabase = await createClient();
-    const supabaseAdmin = createAdminClient();
+    // CORREÇÃO: Usar apenas createAdminClient em webhooks (não tem sessão de usuário)
+    const supabase = createAdminClient();
     const body = await request.json();
     console.log('Body recebido:', JSON.stringify(body, null, 2));
 
@@ -22,12 +21,14 @@ export async function POST(request: NextRequest) {
 
     // Ignorar mensagens próprias ou sem texto
     if (fromMe || !messageText || !remoteJid) {
+      console.log('[Webhook] Ignorando - fromMe:', fromMe, '| messageText:', !!messageText, '| remoteJid:', !!remoteJid);
       return NextResponse.json({ status: 'ignored' });
     }
 
     // Extrair número de telefone
     const phone = remoteJid.replace('@s.whatsapp.net', '').replace('@g.us', '');
     const isGroup = remoteJid.includes('@g.us');
+    console.log('[Webhook] Phone:', phone, '| isGroup:', isGroup, '| Msg:', messageText.substring(0, 50));
 
     // Verificar autorização
     const authQuery = isGroup
@@ -42,21 +43,28 @@ export async function POST(request: NextRequest) {
           .eq('phone_number', phone)
           .eq('is_active', true);
 
-    const { data: authorized } = await authQuery.maybeSingle();
+    const { data: authorized, error: authError } = await authQuery.maybeSingle();
+
+    if (authError) {
+      console.error('[Webhook] Erro ao verificar autorização:', authError.message);
+    }
 
     if (!authorized) {
+      console.log('[Webhook] Número não autorizado:', phone);
       return NextResponse.json({ status: 'ignored', reason: 'unauthorized' });
     }
 
     // Verificar permissão de chat
     if (!isGroup && !authorized.can_use_chat) {
+      console.log('[Webhook] Chat desabilitado para:', phone);
       return NextResponse.json({ status: 'ignored', reason: 'chat_disabled' });
     }
 
     const companyGroupId = authorized.company_group_id;
+    console.log('[Webhook] Autorizado! CompanyGroupId:', companyGroupId);
 
     // Salvar mensagem recebida
-    await supabase.from('whatsapp_messages').insert({
+    const { error: insertError } = await supabase.from('whatsapp_messages').insert({
       company_group_id: companyGroupId,
       phone_number: phone,
       message_content: messageText,
@@ -64,8 +72,12 @@ export async function POST(request: NextRequest) {
       sender_name: data?.pushName || phone
     });
 
+    if (insertError) {
+      console.error('[Webhook] Erro ao salvar mensagem:', insertError.message);
+    }
+
     // Buscar conexão Power BI ativa
-    const { data: connection } = await supabase
+    const { data: connection, error: connError } = await supabase
       .from('powerbi_connections')
       .select('id, dataset_id')
       .eq('company_group_id', companyGroupId)
@@ -74,9 +86,14 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .maybeSingle();
 
+    if (connError) {
+      console.error('[Webhook] Erro ao buscar conexão:', connError.message);
+    }
+
     if (!connection) {
+      console.log('[Webhook] Sem conexão Power BI');
       const errorMsg = '⚠️ Nenhuma conexão Power BI configurada. Entre em contato com o administrador.';
-      await sendWhatsAppMessage(remoteJid, errorMsg);
+      await sendWhatsAppMessage(supabase, remoteJid, errorMsg);
       await supabase.from('whatsapp_messages').insert({
         company_group_id: companyGroupId,
         phone_number: phone,
@@ -85,6 +102,8 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json({ status: 'error', message: 'no_connection' });
     }
+
+    console.log('[Webhook] Conexão encontrada:', connection.id, '| Dataset:', connection.dataset_id);
 
     // Buscar contexto do modelo
     const modelContext = await getModelContext(
@@ -119,6 +138,8 @@ export async function POST(request: NextRequest) {
       conversationHistory
     });
 
+    console.log('[Webhook] System prompt montado:', systemPrompt.length, 'chars');
+
     // Chamar Claude
     const anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY
@@ -130,6 +151,7 @@ export async function POST(request: NextRequest) {
     let errorMessage = '';
 
     try {
+      console.log('[Webhook] Chamando Claude...');
       const response = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 1000,
@@ -158,6 +180,8 @@ export async function POST(request: NextRequest) {
         ]
       });
 
+      console.log('[Webhook] Claude respondeu!');
+
       // Extrair resposta
       for (const block of response.content) {
         if (block.type === 'text') {
@@ -175,6 +199,7 @@ export async function POST(request: NextRequest) {
       }
 
     } catch (error: any) {
+      console.error('[Webhook] Erro ao chamar Claude:', error.message);
       hadError = true;
       errorMessage = error.message || 'Erro ao processar com Claude';
       assistantMessage = '⚠️ Ocorreu um erro ao processar sua pergunta. Tente novamente em instantes.';
@@ -190,6 +215,8 @@ export async function POST(request: NextRequest) {
       .replace(/DAX\([^)]+\)/gi, '')
       .replace(/Error:.*?(?=\n|$)/gi, '')
       .trim();
+
+    console.log('[Webhook] Resposta limpa:', cleanResponse.substring(0, 100));
 
     // Padrões evasivos que indicam que a IA não conseguiu responder
     const evasivePatterns = [
@@ -219,41 +246,55 @@ export async function POST(request: NextRequest) {
 
     // Se houve erro OU a resposta é muito curta OU é evasiva, registrar como pergunta não respondida
     if (hadError || cleanResponse.length < 20 || isEvasiveResponse) {
-      // Verificar se já existe pergunta similar pendente
-      const { data: existingQuestion } = await supabaseAdmin
-        .from('ai_unanswered_questions')
-        .select('id, user_count, attempt_count')
-        .eq('company_group_id', companyGroupId)
-        .eq('user_question', messageText)
-        .eq('status', 'pending')
-        .maybeSingle();
+      console.log('[Webhook] 🔴 Salvando pergunta não respondida...');
+      try {
+        // Verificar se já existe pergunta similar pendente
+        const { data: existingQuestion } = await supabase
+          .from('ai_unanswered_questions')
+          .select('id, user_count, attempt_count')
+          .eq('company_group_id', companyGroupId)
+          .eq('user_question', messageText)
+          .eq('status', 'pending')
+          .maybeSingle();
 
-      if (existingQuestion) {
-        // Atualizar pergunta existente
-        await supabaseAdmin
-          .from('ai_unanswered_questions')
-          .update({
-            attempt_count: existingQuestion.attempt_count + 1,
-            user_count: existingQuestion.user_count + 1,
-            last_asked_at: new Date().toISOString(),
-            attempted_dax: daxQuery || null,
-            error_message: errorMessage || 'Resposta evasiva da IA'
-          })
-          .eq('id', existingQuestion.id);
-      } else {
-        // Criar nova pergunta pendente
-        await supabaseAdmin
-          .from('ai_unanswered_questions')
-          .insert({
-            company_group_id: companyGroupId,
-            connection_id: connection.id,
-            dataset_id: connection.dataset_id,
-            user_question: messageText,
-            phone_number: phone,
-            attempted_dax: daxQuery || null,
-            error_message: errorMessage || (isEvasiveResponse ? 'Resposta evasiva da IA' : null),
-            status: 'pending'
-          });
+        if (existingQuestion) {
+          // Atualizar pergunta existente
+          await supabase
+            .from('ai_unanswered_questions')
+            .update({
+              attempt_count: existingQuestion.attempt_count + 1,
+              user_count: existingQuestion.user_count + 1,
+              last_asked_at: new Date().toISOString(),
+              attempted_dax: daxQuery || null,
+              error_message: errorMessage || 'Resposta evasiva da IA'
+            })
+            .eq('id', existingQuestion.id);
+          console.log('[Webhook] ✅ Pergunta pendente atualizada:', existingQuestion.id);
+        } else {
+          // Criar nova pergunta pendente
+          const { data: newQ, error: insertErr } = await supabase
+            .from('ai_unanswered_questions')
+            .insert({
+              company_group_id: companyGroupId,
+              connection_id: connection.id,
+              dataset_id: connection.dataset_id,
+              user_question: messageText,
+              phone_number: phone,
+              attempted_dax: daxQuery || null,
+              error_message: errorMessage || (isEvasiveResponse ? 'Resposta evasiva da IA' : null),
+              status: 'pending'
+            })
+            .select('id')
+            .single();
+          
+          if (insertErr) {
+            console.error('[Webhook] Erro ao criar pergunta pendente:', insertErr.message);
+          } else {
+            console.log('[Webhook] ✅ Nova pergunta pendente criada:', newQ?.id);
+          }
+        }
+      } catch (saveErr: any) {
+        console.error('[Webhook] Erro ao salvar pergunta pendente:', saveErr.message);
       }
     } else {
       // Se respondeu com sucesso, atualizar last_used_at dos exemplos similares
@@ -267,7 +308,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Enviar resposta ao usuário
-    await sendWhatsAppMessage(remoteJid, cleanResponse);
+    console.log('[Webhook] Enviando resposta ao WhatsApp...');
+    await sendWhatsAppMessage(supabase, remoteJid, cleanResponse);
 
     // Salvar resposta no banco
     await supabase.from('whatsapp_messages').insert({
@@ -280,13 +322,16 @@ export async function POST(request: NextRequest) {
     // Atualizar estatísticas do dia
     await updateDailyStats(supabase, companyGroupId, !hadError);
 
+    console.log('[Webhook] ✅ Processamento concluído!');
+
     return NextResponse.json({ 
       status: 'success',
       message: 'Mensagem processada'
     });
 
   } catch (error: any) {
-    console.error('Erro no webhook:', error);
+    console.error('[Webhook] ❌ ERRO GERAL:', error.message);
+    console.error('[Webhook] Stack:', error.stack);
     return NextResponse.json(
       { status: 'error', error: error.message },
       { status: 500 }
@@ -295,28 +340,31 @@ export async function POST(request: NextRequest) {
 }
 
 // Helper: Enviar mensagem WhatsApp
-async function sendWhatsAppMessage(remoteJid: string, message: string) {
-  const supabase = await createClient();
-
+// CORREÇÃO: Recebe supabase como parâmetro em vez de criar novo cliente
+async function sendWhatsAppMessage(supabase: any, remoteJid: string, message: string) {
   // Buscar instância ativa
-  const { data: instance } = await supabase
+  const { data: instance, error } = await supabase
     .from('whatsapp_instances')
-    .select('instance_name, api_url, api_key_encrypted')
+    .select('instance_name, api_url, api_key')
     .eq('is_connected', true)
     .limit(1)
     .maybeSingle();
+
+  if (error) {
+    console.error('[Webhook] Erro ao buscar instância:', error.message);
+  }
 
   if (!instance) {
     throw new Error('Nenhuma instância WhatsApp conectada');
   }
 
-  const number = remoteJid.replace('@s.whatsapp.net', '').replace('@g.us', '');
+  console.log('[Webhook] Instância:', instance.instance_name, '| API:', instance.api_url);
 
   const response = await fetch(`${instance.api_url}/message/sendText/${instance.instance_name}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'apikey': instance.api_key_encrypted
+      'apikey': instance.api_key
     },
     body: JSON.stringify({
       number: remoteJid,
@@ -325,9 +373,12 @@ async function sendWhatsAppMessage(remoteJid: string, message: string) {
   });
 
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error('[Webhook] Erro ao enviar WhatsApp:', response.status, errorText);
     throw new Error('Erro ao enviar mensagem WhatsApp');
   }
 
+  console.log('[Webhook] ✅ Mensagem enviada com sucesso!');
   return response.json();
 }
 
