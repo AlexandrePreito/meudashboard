@@ -120,34 +120,108 @@ export async function GET(request: Request) {
       }
     }
 
-    // Buscar histórico com join em ai_alerts para pegar o company_group_id
+    // Primeiro, buscar os alert_ids que pertencem aos grupos permitidos
+    let alertIdsQuery = supabase
+      .from('ai_alerts')
+      .select('id, company_group_id, name');
+
+    if (groupId) {
+      const groupIdStr = String(groupId);
+      alertIdsQuery = alertIdsQuery.eq('company_group_id', groupIdStr);
+      console.log('[DEBUG /api/alertas/historico] Filtrando alertas por group_id:', groupIdStr);
+    } else if (!user.is_master) {
+      // Filtrar por grupos do usuário (se não for master)
+      alertIdsQuery = alertIdsQuery.in('company_group_id', userGroupIds);
+      console.log('[DEBUG /api/alertas/historico] Filtrando alertas por userGroupIds:', userGroupIds);
+    }
+
+    if (alertId) {
+      alertIdsQuery = alertIdsQuery.eq('id', alertId);
+    }
+
+    const { data: allowedAlerts, error: alertsError } = await alertIdsQuery;
+    
+    console.log('[DEBUG /api/alertas/historico] Alertas encontrados na query:', {
+      total: allowedAlerts?.length || 0,
+      alerts: allowedAlerts?.map(a => ({ id: a.id, name: a.name, company_group_id: a.company_group_id })) || [],
+      requestedGroupId: groupId || 'todos',
+      userGroupIds: userGroupIds.length > 0 ? userGroupIds : 'N/A (master)'
+    });
+
+    if (alertsError) {
+      console.error('[ERROR /api/alertas/historico] Erro ao buscar alertas:', {
+        message: alertsError.message,
+        details: alertsError.details,
+        hint: alertsError.hint,
+        code: alertsError.code
+      });
+      return NextResponse.json({ error: 'Erro ao buscar alertas', details: alertsError.message }, { status: 500 });
+    }
+
+    const allowedAlertIds = allowedAlerts?.map(a => a.id) || [];
+
+    console.log('[DEBUG /api/alertas/historico] Alertas permitidos:', {
+      total: allowedAlertIds.length,
+      alertIds: allowedAlertIds.slice(0, 10),
+      groupId: groupId || 'todos',
+      userGroupIds: userGroupIds.length > 0 ? userGroupIds : 'N/A (master)',
+      allAllowedAlerts: allowedAlerts?.map(a => ({ id: a.id })) || []
+    });
+    
+    // Verificar se há histórico sem filtro de alert_id para debug
+    const { count: totalHistoryCount, data: allHistory } = await supabase
+      .from('ai_alert_history')
+      .select('alert_id')
+      .order('triggered_at', { ascending: false })
+      .limit(10);
+    
+    const uniqueAlertIds = [...new Set(allHistory?.map(h => h.alert_id) || [])];
+    
+    console.log('[DEBUG /api/alertas/historico] Total de registros na tabela (sem filtro):', totalHistoryCount);
+    console.log('[DEBUG /api/alertas/historico] Alert IDs que têm histórico:', uniqueAlertIds);
+    console.log('[DEBUG /api/alertas/historico] Alert IDs permitidos vs com histórico:', {
+      allowed: allowedAlertIds,
+      withHistory: uniqueAlertIds,
+      intersection: allowedAlertIds.filter(id => uniqueAlertIds.includes(id))
+    });
+
+    if (allowedAlertIds.length === 0) {
+      console.log('[DEBUG /api/alertas/historico] Nenhum alerta encontrado para os grupos permitidos');
+      return NextResponse.json({
+        history: [],
+        total: 0,
+        limit,
+        offset
+      });
+    }
+
+    // DEBUG: Buscar histórico sem filtro primeiro para verificar se há dados
+    const { data: debugHistory, error: debugError } = await supabase
+      .from('ai_alert_history')
+      .select('alert_id, triggered_at, alert_value, webhook_sent')
+      .order('triggered_at', { ascending: false })
+      .limit(5);
+    
+    console.log('[DEBUG /api/alertas/historico] Últimos 5 registros de histórico (sem filtro):', {
+      count: debugHistory?.length || 0,
+      records: debugHistory || [],
+      error: debugError?.message
+    });
+
+    // Agora buscar o histórico apenas dos alertas permitidos
     let query = supabase
       .from('ai_alert_history')
       .select(`
         *,
-        ai_alerts!inner (
+        ai_alerts (
           name,
           description,
           company_group_id
         )
       `)
+      .in('alert_id', allowedAlertIds)
       .order('triggered_at', { ascending: false })
       .range(offset, offset + limit - 1);
-
-    if (alertId) {
-      query = query.eq('alert_id', alertId);
-    }
-
-    // Filtrar por grupo
-    if (groupId) {
-      const groupIdStr = String(groupId);
-      query = query.eq('ai_alerts.company_group_id', groupIdStr);
-      console.log('[DEBUG /api/alertas/historico] Filtrando por group_id:', groupIdStr);
-    } else if (!user.is_master) {
-      // Filtrar por grupos do usuário (se não for master)
-      query = query.in('ai_alerts.company_group_id', userGroupIds);
-      console.log('[DEBUG /api/alertas/historico] Filtrando por userGroupIds:', userGroupIds);
-    }
 
     const { data: history, error } = await query;
 
@@ -164,29 +238,43 @@ export async function GET(request: Request) {
     console.log('[DEBUG /api/alertas/historico] Histórico retornado:', {
       total: history?.length || 0,
       groupId: groupId || 'todos',
-      userGroupIds: userGroupIds.length > 0 ? userGroupIds : 'N/A (master)'
+      userGroupIds: userGroupIds.length > 0 ? userGroupIds : 'N/A (master)',
+      allowedAlertIds: allowedAlertIds.length,
+      historySample: history?.slice(0, 2) || [],
+      firstItemStructure: history?.[0] ? Object.keys(history[0]) : []
     });
+    
+    // Verificar estrutura dos dados
+    if (history && history.length > 0) {
+      console.log('[DEBUG /api/alertas/historico] Estrutura do primeiro item:', {
+        keys: Object.keys(history[0]),
+        ai_alerts: history[0].ai_alerts,
+        hasAiAlerts: !!history[0].ai_alerts,
+        aiAlertsType: Array.isArray(history[0].ai_alerts) ? 'array' : typeof history[0].ai_alerts
+      });
+    }
 
     // Contar total com os mesmos filtros
-    let countQuery = supabase
+    const { count } = await supabase
       .from('ai_alert_history')
-      .select('*, ai_alerts!inner(company_group_id)', { count: 'exact', head: true });
+      .select('*', { count: 'exact', head: true })
+      .in('alert_id', allowedAlertIds);
 
-    if (alertId) {
-      countQuery = countQuery.eq('alert_id', alertId);
-    }
-
-    if (groupId) {
-      const groupIdStr = String(groupId);
-      countQuery = countQuery.eq('ai_alerts.company_group_id', groupIdStr);
-    } else if (!user.is_master) {
-      countQuery = countQuery.in('ai_alerts.company_group_id', userGroupIds);
-    }
-
-    const { count } = await countQuery;
+    // Normalizar estrutura dos dados (Supabase pode retornar ai_alerts como array)
+    const normalizedHistory = (history || []).map((item: any) => {
+      // Se ai_alerts é um array, pegar o primeiro item
+      const alert = Array.isArray(item.ai_alerts) 
+        ? item.ai_alerts[0] 
+        : item.ai_alerts;
+      
+      return {
+        ...item,
+        ai_alerts: alert || null
+      };
+    });
 
     return NextResponse.json({
-      history: history || [],
+      history: normalizedHistory,
       total: count || 0,
       limit,
       offset

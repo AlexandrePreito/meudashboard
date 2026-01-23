@@ -183,6 +183,13 @@ export async function POST(
       return NextResponse.json({ error: 'Alerta não encontrado' }, { status: 404 });
     }
 
+    console.log('[DEBUG /api/alertas/[id]/trigger] Alerta encontrado:', {
+      id: alert.id,
+      name: alert.name,
+      company_group_id: alert.company_group_id,
+      is_enabled: alert.is_enabled
+    });
+
     if (!alert.is_enabled) {
       return NextResponse.json({ error: 'Alerta está desativado' }, { status: 400 });
     }
@@ -377,23 +384,53 @@ export async function POST(
       .eq('id', id);
 
     // Registrar no histórico
-    await supabase
+    const successCount = 
+      results.numbers.filter(r => r.success).length + 
+      results.groups.filter(r => r.success).length;
+    const totalCount = results.numbers.length + results.groups.length;
+    
+    console.log('[DEBUG /api/alertas/[id]/trigger] Mensagem que será salva:', {
+      messageLength: message.length,
+      messagePreview: message.substring(0, 100),
+      fullMessage: message
+    });
+    
+    const { data: historyInsert, error: historyError } = await supabase
       .from('ai_alert_history')
       .insert({
         alert_id: id,
         triggered_at: new Date().toISOString(),
-        trigger_type: 'manual',
-        value_at_trigger: null,
-        notification_sent: alert.notify_whatsapp,
-        notification_details: JSON.stringify(results)
-      });
+        alert_value: valorReal,
+        alert_message: message, // Salvar a mensagem real enviada (texto completo)
+        email_sent: false,
+        webhook_sent: alert.notify_whatsapp,
+        webhook_response: {
+          type: 'manual',
+          success_count: successCount,
+          total_count: totalCount,
+          results: results,
+          message: message // Também salvar no webhook_response para backup (texto completo)
+        }
+      })
+      .select();
 
-    // Contar sucessos
-    const successCount = 
-      results.numbers.filter(r => r.success).length + 
-      results.groups.filter(r => r.success).length;
-    
-    const totalCount = results.numbers.length + results.groups.length;
+    if (historyError) {
+      console.error('[ERROR /api/alertas/[id]/trigger] Erro ao salvar histórico:', {
+        message: historyError.message,
+        details: historyError.details,
+        hint: historyError.hint,
+        code: historyError.code,
+        alert_id: id,
+        company_group_id: alert.company_group_id
+      });
+    } else {
+      console.log('[DEBUG /api/alertas/[id]/trigger] Histórico salvo com sucesso:', {
+        historyId: historyInsert?.[0]?.id,
+        alert_id: id,
+        company_group_id: alert.company_group_id,
+        triggered_at: historyInsert?.[0]?.triggered_at
+      });
+    }
 
     console.log('Resultado final do trigger:', {
       successCount,

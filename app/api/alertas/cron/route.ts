@@ -336,14 +336,37 @@ export async function GET(request: Request) {
         .eq('id', alert.id);
 
       // Registrar histórico
-      await supabase.from('ai_alert_history').insert({
-        alert_id: alert.id,
-        triggered_at: now.toISOString(),
-        trigger_type: 'scheduled',
-        value_at_trigger: variables['{{valor}}'] || 'N/A',
-        notification_sent: true,
-        notification_details: JSON.stringify({ sent })
-      });
+      const { data: historyInsert, error: historyError } = await supabase
+        .from('ai_alert_history')
+        .insert({
+          alert_id: alert.id,
+          triggered_at: now.toISOString(),
+          alert_value: variables['{{valor}}'] || 'N/A',
+          alert_message: message, // Salvar a mensagem real enviada
+          email_sent: false,
+          webhook_sent: true,
+          webhook_response: {
+            type: 'scheduled',
+            sent: sent,
+            message: message // Também salvar no webhook_response para backup
+          }
+        })
+        .select();
+
+      if (historyError) {
+        console.error('[ERROR /api/alertas/cron] Erro ao salvar histórico:', {
+          message: historyError.message,
+          details: historyError.details,
+          hint: historyError.hint,
+          code: historyError.code,
+          alert_id: alert.id
+        });
+      } else {
+        console.log('[DEBUG /api/alertas/cron] Histórico salvo:', {
+          historyId: historyInsert?.[0]?.id,
+          alert_id: alert.id
+        });
+      }
 
       results.push({ alert: alert.name, sent, valor: variables['{{valor}}'] || 'N/A' });
     }
