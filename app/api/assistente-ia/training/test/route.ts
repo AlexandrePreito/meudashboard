@@ -31,11 +31,6 @@ export async function POST(request: NextRequest) {
 
     const groupId = company_group_id || membership.company_group_id;
 
-    // Debug: Verificar groupId
-    console.log('🔍 Buscando conexões para grupo:', groupId);
-    console.log('🔍 Membership company_group_id:', membership.company_group_id);
-    console.log('🔍 company_group_id do body:', company_group_id);
-
     // Buscar conexão do grupo
     const { data: connections, error: connError } = await supabase
       .from('powerbi_connections')
@@ -52,14 +47,6 @@ export async function POST(request: NextRequest) {
         error: `Erro ao buscar conexões: ${connError.message}`
       }, { status: 500 });
     }
-
-    console.log('✅ Conexões encontradas:', connections?.length || 0);
-    console.log('✅ Dados das conexões:', connections?.map(c => ({
-      id: c.id,
-      name: c.name,
-      company_group_id: c.company_group_id,
-      is_active: c.is_active
-    })));
 
     if (!connections || connections.length === 0) {
       // Verificar se existe conexão inativa para dar mensagem mais útil
@@ -84,15 +71,16 @@ export async function POST(request: NextRequest) {
     }
 
     const connection = connections[0];
-    console.log('✅ Usando conexão:', connection.name, connection.id);
 
     // Buscar relatório com o dataset_id
-    const { data: report } = await supabase
+    const { data: reports } = await supabase
       .from('powerbi_reports')
       .select('*')
       .eq('dataset_id', dataset_id)
       .eq('connection_id', connection.id)
-      .single();
+      .limit(1);
+
+    const report = reports?.[0];
 
     if (!report) {
       return NextResponse.json({
@@ -143,9 +131,6 @@ Retorne APENAS o código DAX, sem explicações ou markdown.`;
     if (!daxQuery.toUpperCase().startsWith('EVALUATE')) {
       daxQuery = `EVALUATE\n${daxQuery}`;
     }
-
-    console.log('✅ DAX final:', daxQuery);
-    console.log('📝 Query DAX gerada:', daxQuery);
     
     if (!daxQuery || daxQuery.length === 0) {
       return NextResponse.json({
@@ -156,14 +141,9 @@ Retorne APENAS o código DAX, sem explicações ou markdown.`;
 
     // Obter token Power BI
     const token = await getPowerBIToken(connection);
-    console.log('🔑 Token Power BI obtido:', token ? 'SIM' : 'NÃO');
-    console.log('📊 Executando DAX no workspace:', connection.workspace_id);
-    console.log('📊 Dataset ID:', dataset_id);
-    console.log('📝 Query DAX completa:', daxQuery);
 
     // Executar DAX no Power BI
     const powerbiUrl = `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/datasets/${dataset_id}/executeQueries`;
-    console.log('🌐 URL Power BI:', powerbiUrl);
     
     const powerbiRes = await fetch(powerbiUrl, {
       method: 'POST',
@@ -177,8 +157,6 @@ Retorne APENAS o código DAX, sem explicações ou markdown.`;
       }),
     });
 
-    console.log('📡 Status Power BI:', powerbiRes.status, powerbiRes.statusText);
-
     if (!powerbiRes.ok) {
       const errorText = await powerbiRes.text();
       console.error('❌ Erro Power BI completo:', errorText);
@@ -191,7 +169,6 @@ Retorne APENAS o código DAX, sem explicações ou markdown.`;
     }
 
     const daxResult = await powerbiRes.json();
-    console.log('✅ Resultado DAX recebido:', JSON.stringify(daxResult).substring(0, 500));
 
     // FASE 2: Formatar resposta
     const phase2Prompt = `Você acabou de executar esta query DAX:
@@ -241,9 +218,6 @@ Formate uma resposta clara e objetiva em português para enviar ao usuário via 
 
 // Função auxiliar para obter token Power BI
 async function getPowerBIToken(connection: any): Promise<string> {
-  console.log('🔐 Gerando token para client_id:', connection.client_id);
-  console.log('🔐 Tem client_secret?', connection.client_secret ? 'SIM' : 'NÃO');
-  
   try {
     const tokenRes = await fetch(`https://login.microsoftonline.com/${connection.tenant_id}/oauth2/v2.0/token`, {
       method: 'POST',
@@ -256,9 +230,7 @@ async function getPowerBIToken(connection: any): Promise<string> {
       }),
     });
 
-    console.log('📡 Status token:', tokenRes.status);
     const tokenData = await tokenRes.json();
-    console.log('📦 Token response:', tokenData);
     
     if (!tokenData.access_token) {
       console.error('❌ Token não gerado:', tokenData);

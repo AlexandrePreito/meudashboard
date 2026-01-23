@@ -895,6 +895,50 @@ Prefira usar/adaptar estas queries em vez de criar do zero.
       console.log('[Learning] Encontradas', workingQueries.length, 'queries para intent:', questionIntent);
     }
 
+    // ========== BUSCAR EXEMPLOS DE TREINAMENTO ==========
+    let trainingExamplesContext = '';
+    try {
+      const { data: trainingExamples } = await supabase
+        .from('ai_training_examples')
+        .select('id, user_question, dax_query, formatted_response, validation_count')
+        .eq('company_group_id', authorizedNumber.company_group_id)
+        .eq('is_validated', true)
+        .order('validation_count', { ascending: false })
+        .order('last_used_at', { ascending: false, nullsFirst: false })
+        .limit(10);
+
+      if (trainingExamples && trainingExamples.length > 0) {
+        // Atualizar last_used_at dos exemplos usados
+        const exampleIds = trainingExamples.map(e => e.id);
+        await supabase
+          .from('ai_training_examples')
+          .update({ last_used_at: new Date().toISOString() })
+          .in('id', exampleIds);
+
+        trainingExamplesContext = `
+# EXEMPLOS VALIDADOS DE TREINAMENTO
+Use estes exemplos como REFERÊNCIA OBRIGATÓRIA. Adapte conforme a pergunta.
+
+${trainingExamples.map((ex, i) => `
+## Exemplo ${i + 1} (validado ${ex.validation_count}x)
+Pergunta: "${ex.user_question}"
+Query DAX:
+${ex.dax_query}
+Resposta esperada:
+${ex.formatted_response}
+`).join('\n---\n')}
+
+**INSTRUÇÕES:**
+- Encontre o exemplo mais similar à pergunta atual
+- Adapte a query DAX do exemplo
+- Mantenha a estrutura e padrões
+`;
+        console.log('[Training] Encontrados', trainingExamples.length, 'exemplos de treinamento');
+      }
+    } catch (e) {
+      console.error('[Training] Erro ao buscar exemplos:', e);
+    }
+
     // ========== SYSTEM PROMPT (REGRAS WhatsApp + CONTEXTO DO BANCO) ==========
     const currentMonth = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
     const currentDate = new Date().toLocaleDateString('pt-BR');
@@ -988,6 +1032,7 @@ R$ X.XXX.XXX,XX
 # CONTEXTO DO MODELO DE DADOS
 ${modelContext.slice(0, 10000)}
 ${learningContext}
+${trainingExamplesContext}
 
 # INSTRUÇÕES DAX
 - Use a ferramenta execute_dax para buscar dados

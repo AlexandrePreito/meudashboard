@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { getUserGroupMembership } from '@/lib/auth';
 
 // GET: Listar exemplos de treinamento
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const membership = await getUserGroupMembership();
 
     if (!membership) {
@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
 // POST: Criar novo exemplo de treinamento
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const membership = await getUserGroupMembership();
 
     if (!membership) {
@@ -157,18 +157,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('🔍 Dados recebidos para salvar:', {
-      user_question,
-      dax_query: dax_query?.substring(0, 100),
-      formatted_response: formatted_response?.substring(0, 100),
-      category,
-      tags,
-      connection_id,
-      dataset_id,
-      unanswered_question_id,  // ← NOVO
-      company_group_id: membership.company_group_id
-    });
-
     const { data: trainingExample, error } = await supabase
       .from('ai_training_examples')
       .insert({
@@ -181,8 +169,7 @@ export async function POST(request: NextRequest) {
         category,
         tags,
         is_validated: true,
-        validation_count: 1,
-        created_by: membership.user_id  // Usar user_id do membership
+        validation_count: 1
       })
       .select()
       .single();
@@ -210,10 +197,8 @@ export async function POST(request: NextRequest) {
         .eq('company_group_id', membership.company_group_id);
 
       if (updateError) {
-        console.error('⚠️ Erro ao marcar pergunta como resolvida:', updateError);
+        console.error('Erro ao marcar pergunta como resolvida:', updateError);
         // Não falhar a requisição, apenas logar o erro
-      } else {
-        console.log('✅ Pergunta pendente marcada como resolvida:', unanswered_question_id);
       }
     }
 
@@ -234,7 +219,7 @@ export async function POST(request: NextRequest) {
 // PUT: Atualizar exemplo existente
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const membership = await getUserGroupMembership();
 
     if (!membership) {
@@ -294,7 +279,7 @@ export async function PUT(request: NextRequest) {
 // DELETE: Excluir exemplo
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const membership = await getUserGroupMembership();
 
     if (!membership) {

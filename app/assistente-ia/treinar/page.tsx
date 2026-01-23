@@ -5,8 +5,7 @@ import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import PermissionGuard from '@/components/assistente-ia/PermissionGuard';
 import { TrainingExample } from '@/types/assistente-ia';
-import { Sparkles, Plus, Search, Tag, Trash2, Edit, Calendar, CheckCircle2 } from 'lucide-react';
-import Button from '@/components/ui/Button';
+import { Plus, Pencil, Trash2, Sparkles, Search } from 'lucide-react';
 
 const TAGS_DISPONIVEIS = [
   { value: 'vendas', label: 'Vendas', color: 'bg-blue-100 text-blue-800' },
@@ -40,8 +39,8 @@ function TreinarIAContent() {
   const router = useRouter();
   const [examples, setExamples] = useState<TrainingExample[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedTag, setSelectedTag] = useState<string>('all');
+  const [search, setSearch] = useState('');
+  const [selectedTag, setSelectedTag] = useState<string>('');
 
   useEffect(() => {
     loadExamples();
@@ -62,7 +61,7 @@ function TreinarIAContent() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const deleteExample = async (id: string) => {
     if (!confirm('Tem certeza que deseja excluir este exemplo?')) return;
     
     try {
@@ -82,9 +81,9 @@ function TreinarIAContent() {
   };
 
   const filteredExamples = examples.filter(ex => {
-    const matchesSearch = ex.user_question.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         ex.formatted_response.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesTag = selectedTag === 'all' || 
+    const matchesSearch = ex.user_question.toLowerCase().includes(search.toLowerCase()) ||
+                         ex.formatted_response?.toLowerCase().includes(search.toLowerCase());
+    const matchesTag = !selectedTag || selectedTag === '' || 
                      (ex.tags && ex.tags.includes(selectedTag)) || 
                      ex.category === selectedTag;
     return matchesSearch && matchesTag;
@@ -94,44 +93,45 @@ function TreinarIAContent() {
     <PermissionGuard>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Exemplos de Treinamento</h1>
-            <p className="text-gray-500">Gerencie os exemplos que treinam o assistente IA</p>
+            <h1 className="text-2xl font-bold text-gray-900">Treinar IA</h1>
+            <p className="text-gray-500 text-sm">Gerencie os exemplos que ensinam o assistente</p>
           </div>
-          <Button
+          <button
             onClick={() => router.push('/assistente-ia/treinar/novo')}
-            icon={<Plus size={20} />}
+            className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg flex items-center gap-2 transition-colors"
           >
-            Adicionar DAX
-          </Button>
+            <Plus className="w-4 h-4" />
+            Novo Treinamento
+          </button>
         </div>
 
         {/* Filtros */}
-        <div className="flex gap-4">
-          <div className="flex-1 relative">
-            <Search size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por pergunta ou resposta..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-6">
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar por pergunta..."
+                className="w-full px-4 py-2 border border-gray-200 rounded-lg"
+              />
+            </div>
+            <select
+              value={selectedTag}
+              onChange={(e) => setSelectedTag(e.target.value)}
+              className="px-4 py-2 border border-gray-200 rounded-lg min-w-[180px]"
+            >
+              <option value="">Todas as tags</option>
+              {TAGS_DISPONIVEIS.map((tag) => (
+                <option key={tag.value} value={tag.value}>
+                  #{tag.label}
+                </option>
+              ))}
+            </select>
           </div>
-          
-          <select
-            value={selectedTag}
-            onChange={(e) => setSelectedTag(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-          >
-            <option value="all">Todas as tags</option>
-            {TAGS_DISPONIVEIS.map((tag) => (
-              <option key={tag.value} value={tag.value}>
-                #{tag.label}
-              </option>
-            ))}
-          </select>
         </div>
 
         {/* Loading */}
@@ -143,109 +143,58 @@ function TreinarIAContent() {
 
         {/* Empty State */}
         {!loading && filteredExamples.length === 0 && (
-          <div className="bg-white rounded-2xl p-12 text-center border border-gray-100">
-            <Sparkles size={48} className="mx-auto text-gray-300 mb-4" />
-            <h2 className="text-lg font-medium text-gray-900 mb-2">Nenhum exemplo encontrado</h2>
-            <p className="text-gray-500 mb-4">
-              {searchTerm || selectedTag !== 'all' 
-                ? 'Tente ajustar os filtros de busca'
-                : 'Comece adicionando o primeiro exemplo de treinamento'}
-            </p>
-            {!searchTerm && selectedTag === 'all' && (
-              <Button
-                onClick={() => router.push('/assistente-ia/treinar/novo')}
-                icon={<Plus size={20} />}
-              >
-                Adicionar DAX
-              </Button>
-            )}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-12 text-center">
+            <Sparkles className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+            <h3 className="font-medium text-gray-900 mb-2">Nenhum exemplo encontrado</h3>
+            <p className="text-gray-500 text-sm mb-4">Comece adicionando o primeiro exemplo de treinamento</p>
+            <button
+              onClick={() => router.push('/assistente-ia/treinar/novo')}
+              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg inline-flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Novo Treinamento
+            </button>
           </div>
         )}
 
-        {/* Tabela */}
+        {/* Lista de exemplos */}
         {!loading && filteredExamples.length > 0 && (
-          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-100">
-                <tr>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Pergunta</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Tags</th>
-                  <th className="text-center px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Validações</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Grupo</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Data</th>
-                  <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredExamples.map((example) => (
-                  <tr key={example.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <div className="font-medium text-gray-900 max-w-md">
-                        {example.user_question}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-wrap gap-1.5">
-                        {(example.tags && example.tags.length > 0 ? example.tags : example.category ? [example.category] : []).map((tagValue) => {
-                          const tag = TAGS_DISPONIVEIS.find(t => t.value === tagValue);
-                          return tag ? (
-                            <span
-                              key={tagValue}
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${tag.color}`}
-                            >
-                              #{tag.label}
-                            </span>
-                          ) : (
-                            <span
-                              key={tagValue}
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"
-                            >
-                              #{tagValue}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        <CheckCircle2 className="w-3 h-3" />
-                        {example.validation_count}x
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {(() => {
-                        const companyGroup = Array.isArray(example.company_group) 
-                          ? example.company_group[0] 
-                          : example.company_group;
-                        return companyGroup?.name || '-';
-                      })()}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4" />
-                        {new Date(example.created_at).toLocaleDateString('pt-BR')}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => router.push(`/assistente-ia/treinar/${example.id}`)}
-                        className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors mr-1"
-                        title="Editar"
-                      >
-                        <Edit size={16} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(example.id)}
-                        className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
-                        title="Excluir"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-3">
+            {filteredExamples.map(example => (
+              <div key={example.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:border-blue-300 transition-colors">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h3 className="font-medium text-gray-900 mb-1">{example.user_question}</h3>
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {(example.tags && example.tags.length > 0 ? example.tags : example.category ? [example.category] : []).map(tag => (
+                        <span key={tag} className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs">
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Criado em {new Date(example.created_at).toLocaleDateString('pt-BR')}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => router.push(`/assistente-ia/treinar/${example.id}`)}
+                      className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="Editar"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => deleteExample(example.id)}
+                      className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Excluir"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

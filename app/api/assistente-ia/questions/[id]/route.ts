@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { getUserGroupMembership } from '@/lib/auth';
 
 // POST: Resolver/Ignorar pergunta
@@ -9,7 +9,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const membership = await getUserGroupMembership();
 
     if (!membership) {
@@ -56,15 +56,38 @@ export async function POST(
       updates.resolved_by = null;
     }
 
+    // Verificar se a pergunta existe primeiro
+    const { data: existingQuestion, error: fetchError } = await supabase
+      .from('ai_unanswered_questions')
+      .select('id, company_group_id')
+      .eq('id', id)
+      .single();
+
+    if (!existingQuestion) {
+      return NextResponse.json(
+        { success: false, error: 'Pergunta não encontrada' },
+        { status: 404 }
+      );
+    }
+
+    // Se for developer, pode atualizar qualquer registro
+    // Se não for, verificar se o company_group_id bate
+    if (membership.role !== 'developer' && existingQuestion.company_group_id !== membership.company_group_id) {
+      return NextResponse.json(
+        { success: false, error: 'Sem permissão para atualizar esta pergunta' },
+        { status: 403 }
+      );
+    }
+
     const { data, error } = await supabase
       .from('ai_unanswered_questions')
       .update(updates)
       .eq('id', id)
-      .eq('company_group_id', membership.company_group_id)
       .select()
       .single();
 
     if (error) {
+      console.error('Erro no update:', error);
       return NextResponse.json(
         { success: false, error: error.message },
         { status: 500 }

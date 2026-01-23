@@ -1,614 +1,1040 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
-import PermissionGuard from '@/components/assistente-ia/PermissionGuard';
-import { useMenu } from '@/contexts/MenuContext';
-import { Sparkles, Send, Save, X } from 'lucide-react';
+import Button from '@/components/ui/Button';
+import { 
+  Plus,
+  X,
+  Play,
+  Save,
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+  Check,
+  AlertCircle,
+  Copy,
+  Calculator,
+  Layers,
+  Filter,
+  Settings,
+  MessageSquare
+} from 'lucide-react';
 
-const TAGS_DISPONIVEIS = [
-  { value: 'vendas', label: 'Vendas', color: 'bg-blue-100 text-blue-800' },
-  { value: 'faturamento', label: 'Faturamento', color: 'bg-green-100 text-green-800' },
-  { value: 'compras', label: 'Compras', color: 'bg-purple-100 text-purple-800' },
-  { value: 'estoque', label: 'Estoque', color: 'bg-orange-100 text-orange-800' },
-  { value: 'financeiro', label: 'Financeiro', color: 'bg-emerald-100 text-emerald-800' },
-  { value: 'contas_pagar', label: 'Contas a Pagar', color: 'bg-red-100 text-red-800' },
-  { value: 'contas_receber', label: 'Contas a Receber', color: 'bg-teal-100 text-teal-800' },
-  { value: 'inadimplencia', label: 'Inadimplência', color: 'bg-rose-100 text-rose-800' },
-  { value: 'clientes', label: 'Clientes', color: 'bg-indigo-100 text-indigo-800' },
-  { value: 'produtos', label: 'Produtos', color: 'bg-cyan-100 text-cyan-800' },
-  { value: 'fornecedores', label: 'Fornecedores', color: 'bg-violet-100 text-violet-800' },
-  { value: 'custos', label: 'Custos', color: 'bg-amber-100 text-amber-800' },
-  { value: 'despesas', label: 'Despesas', color: 'bg-red-100 text-red-800' },
-  { value: 'receitas', label: 'Receitas', color: 'bg-green-100 text-green-800' },
-  { value: 'lucro', label: 'Lucro/Margem', color: 'bg-emerald-100 text-emerald-800' },
-  { value: 'nfe', label: 'Notas Fiscais', color: 'bg-slate-100 text-slate-800' },
-  { value: 'pedidos', label: 'Pedidos', color: 'bg-blue-100 text-blue-800' },
-  { value: 'producao', label: 'Produção', color: 'bg-orange-100 text-orange-800' },
-  { value: 'logistica', label: 'Logística', color: 'bg-yellow-100 text-yellow-800' },
-  { value: 'rh', label: 'RH', color: 'bg-pink-100 text-pink-800' },
-  { value: 'metas', label: 'Metas/KPIs', color: 'bg-purple-100 text-purple-800' },
-  { value: 'ranking', label: 'Ranking/Top', color: 'bg-yellow-100 text-yellow-800' },
-  { value: 'comparativo', label: 'Comparativo', color: 'bg-cyan-100 text-cyan-800' },
-  { value: 'periodo', label: 'Período', color: 'bg-indigo-100 text-indigo-800' },
+interface Measure {
+  name: string;
+  label: string;
+  description: string;
+  category: string;
+  categoryIcon: string;
+}
+
+interface Grouper {
+  table: string;
+  column: string;
+  label: string;
+  icon: string;
+  type: string;
+}
+
+interface FilterOption {
+  table: string;
+  column: string;
+  label: string;
+  icon: string;
+  type: 'select' | 'text' | 'number' | 'date';
+  commonValues?: string[];
+}
+
+interface SelectedFilter {
+  id: string;
+  table: string;
+  column: string;
+  label: string;
+  operator: string;
+  value: string;
+}
+
+interface SelectedGrouper {
+  id: string;
+  table: string;
+  column: string;
+  label: string;
+  icon: string;
+}
+
+interface Dataset {
+  id: string;
+  name: string;
+}
+
+interface DaxResult {
+  success: boolean;
+  result?: any[];
+  columns?: string[];
+  rowCount?: number;
+  executionTime?: number;
+  error?: string;
+  warning?: string;
+}
+
+const OPERATORS = [
+  { value: '=', label: '=' },
+  { value: '<>', label: '≠' },
+  { value: '>', label: '>' },
+  { value: '<', label: '<' },
+  { value: '>=', label: '≥' },
+  { value: '<=', label: '≤' },
+  { value: 'contains', label: 'contém' },
 ];
 
-// Componente interno que usa o contexto
-function NovoExemploContent() {
+const ORDER_OPTIONS = [
+  { value: 'DESC', label: 'Maior → Menor' },
+  { value: 'ASC', label: 'Menor → Maior' },
+];
+
+const LIMIT_OPTIONS = [
+  { value: 0, label: 'Todos' },
+  { value: 5, label: 'Top 5' },
+  { value: 10, label: 'Top 10' },
+  { value: 20, label: 'Top 20' },
+];
+
+const TAG_SUGGESTIONS = [
+  'anual', 'cancelamento', 'categoria', 'cidade', 'clientes',
+  'CMV', 'comissão', 'compras', 'contas a pagar', 'contas a receber',
+  'custo', 'desconto', 'despesas', 'devolução', 'diário',
+  'estado', 'estoque', 'faturamento', 'filial', 'financeiro',
+  'fluxo de caixa', 'fornecedores', 'grupo', 'impostos', 'inadimplência',
+  'lucro', 'marca', 'margem', 'mensal', 'meta',
+  'notas fiscais', 'pagamento', 'pedidos', 'período', 'prazo',
+  'produtos', 'receitas', 'recebimento', 'região', 'representante',
+  'semanal', 'subgrupo', 'vencimento', 'vendas', 'vendedor'
+].sort();
+
+export default function NovoTreinamentoPage() {
   const router = useRouter();
-  const { activeGroup } = useMenu();
-  const respostaRef = useRef<HTMLTextAreaElement>(null);
+  const searchParams = useSearchParams();
   
-  const [datasets, setDatasets] = useState<any[]>([]);
-  const [selectedDataset, setSelectedDataset] = useState('');
+  // Parâmetros da URL (para quando vem de "Ensinar Resposta")
+  const questionFromUrl = searchParams.get('question');
+  const unansweredId = searchParams.get('unanswered_id');
+  
+  // Data states
+  const [groupId, setGroupId] = useState<string | null>(null);
+  const [connectionId, setConnectionId] = useState<string | null>(null);
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [measures, setMeasures] = useState<Measure[]>([]);
+  const [groupers, setGroupers] = useState<Grouper[]>([]);
+  const [filterOptions, setFilterOptions] = useState<FilterOption[]>([]);
+  
+  // Loading states
   const [loadingDatasets, setLoadingDatasets] = useState(true);
-  const [testQuestion, setTestQuestion] = useState('');
-  const [testLoading, setTestLoading] = useState(false);
-  const [testResponse, setTestResponse] = useState('');
-  const [testDax, setTestDax] = useState('');
-  const [testResult, setTestResult] = useState<any>(null);
+  const [loadingMetadata, setLoadingMetadata] = useState(false);
+  const [executing, setExecuting] = useState(false);
   
-  const [formData, setFormData] = useState({
-    user_question: '',
-    dax_query: '',
-    formatted_response: '',
-    category: '', // manter para compatibilidade com API (será primeira tag)
-    tags: [] as string[], // array de tags
-  });
+  // Selection states
+  const [selectedDataset, setSelectedDataset] = useState('');
+  const [selectedMeasure, setSelectedMeasure] = useState<Measure | null>(null);
+  const [selectedGroupers, setSelectedGroupers] = useState<SelectedGrouper[]>([]);
+  const [selectedFilters, setSelectedFilters] = useState<SelectedFilter[]>([]);
+  const [orderBy, setOrderBy] = useState<'DESC' | 'ASC'>('DESC');
+  const [limit, setLimit] = useState(0);
   
-  const [saving, setSaving] = useState(false);
-  const [unansweredQuestionId, setUnansweredQuestionId] = useState<string | null>(null);
+  // UI states
+  const [showMeasureDropdown, setShowMeasureDropdown] = useState(false);
+  const [showGrouperDropdown, setShowGrouperDropdown] = useState(false);
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+  const [expandedCategories, setExpandedCategories] = useState<string[]>(['Vendas', 'Produtos']);
+  
+  // Result states
+  const [daxResult, setDaxResult] = useState<DaxResult | null>(null);
+  const [generatedDax, setGeneratedDax] = useState('');
+  
+  // Question and tags states
+  const [question, setQuestion] = useState(questionFromUrl || '');
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
 
+  // Buscar group_id do usuário
   useEffect(() => {
-    if (activeGroup?.id) {
+    async function loadUserGroup() {
+      try {
+        console.log('=== Buscando grupo do usuário ===');
+        const res = await fetch('/api/user/groups');
+        if (res.ok) {
+          const data = await res.json();
+          console.log('Grupos encontrados:', data);
+          if (data.groups && data.groups.length > 0) {
+            console.log('Usando grupo:', data.groups[0].id);
+            setGroupId(data.groups[0].id);
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao carregar grupo:', err);
+      }
+    }
+    loadUserGroup();
+  }, []);
+
+  // Load datasets quando groupId mudar
+  useEffect(() => {
+    if (groupId) {
       loadDatasets();
-      // checkConnection(); // Comentado: verificação muito agressiva, já temos datasets carregados
     }
-    
-    // ← NOVO: Ler unanswered_id e question da URL
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const unansweredId = params.get('unanswered_id');
-      const question = params.get('question');
-      
-      if (unansweredId) {
-        setUnansweredQuestionId(unansweredId);
-      }
-      
-      if (question) {
-        setTestQuestion(question);
-        setFormData(prev => ({
-          ...prev,
-          user_question: question
-        }));
-      }
-    }
-    
-    // Focar no campo de resposta ao carregar
-    setTimeout(() => {
-      respostaRef.current?.focus();
-    }, 100);
-  }, [activeGroup?.id]);
+  }, [groupId]);
 
-  const checkConnection = async () => {
-    if (!activeGroup?.id) {
-      return;
+  // Load metadata quando selectedDataset mudar
+  useEffect(() => {
+    if (selectedDataset) {
+      console.log('=== useEffect: selectedDataset mudou ===', selectedDataset);
+      loadMetadata();
     }
+  }, [selectedDataset]);
 
+  // Generate DAX quando seleções mudarem
+  useEffect(() => {
+    if (selectedMeasure) {
+      const dax = generateDax();
+      setGeneratedDax(dax);
+    } else {
+      setGeneratedDax('');
+    }
+  }, [selectedMeasure, selectedGroupers, selectedFilters, orderBy, limit]);
+
+  async function loadDatasets() {
+    console.log('=== loadDatasets chamado ===');
+    setLoadingDatasets(true);
     try {
-      const res = await fetch(`/api/powerbi/connections?company_group_id=${activeGroup.id}`);
+      // Buscar connection_id do grupo
+      if (groupId) {
+        const connectionRes = await fetch(`/api/powerbi/connections?group_id=${groupId}`);
+        if (connectionRes.ok) {
+          const connectionData = await connectionRes.json();
+          if (connectionData.connections && connectionData.connections.length > 0) {
+            // Pegar a primeira conexão ativa
+            const activeConnection = connectionData.connections.find((c: any) => c.is_active) || connectionData.connections[0];
+            if (activeConnection) {
+              setConnectionId(activeConnection.id);
+              console.log('Connection ID encontrado:', activeConnection.id);
+            }
+          }
+        }
+      }
+
+      const url = `/api/assistente-ia/datasets?group_id=${groupId}`;
+      console.log('Buscando datasets:', url);
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
-        const active = data.connections?.filter((c: any) => c.is_active) || [];
-        
-        if (active.length === 0) {
-          const inactive = data.connections?.filter((c: any) => !c.is_active) || [];
-          
-          if (inactive.length > 0) {
-            // Tem conexão mas está inativa
-            const go = window.confirm(
-              'Você tem conexão Power BI mas ela está inativa.\n\n' +
-              'Deseja ativá-la agora?'
-            );
-            if (go) window.location.href = '/powerbi/conexoes';
-          } else {
-            // Não tem nenhuma conexão
-            const go = window.confirm(
-              'Você não tem conexão Power BI cadastrada para este grupo.\n\n' +
-              'É necessário configurar uma para usar o assistente IA.\n\n' +
-              'Deseja criar uma agora?'
-            );
-            if (go) window.location.href = '/powerbi/conexoes';
-          }
+        console.log('Datasets encontrados:', data);
+        const datasetList = data.data || data.datasets || [];
+        setDatasets(datasetList);
+        if (datasetList.length > 0) {
+          console.log('Auto-selecionando dataset:', datasetList[0].id);
+          setSelectedDataset(datasetList[0].id);
         }
       }
     } catch (err) {
-      console.error('Erro ao verificar conexões:', err);
-    }
-  };
-
-  const loadDatasets = async () => {
-    if (!activeGroup?.id) {
-      setDatasets([]);
+      console.error('Erro ao carregar datasets:', err);
+    } finally {
       setLoadingDatasets(false);
-      return;
     }
+  }
 
+  async function loadMetadata() {
+    console.log('=== loadMetadata chamado ===');
+    console.log('selectedDataset:', selectedDataset);
+    setLoadingMetadata(true);
     try {
-      setLoadingDatasets(true);
-      console.log('📊 Carregando datasets para grupo:', activeGroup.id);
+      const url = `/api/assistente-ia/model-metadata?dataset_id=${selectedDataset}`;
+      console.log('Buscando metadata:', url);
+      const res = await fetch(url);
+      console.log('Metadata response status:', res.status);
+      if (res.ok) {
+        const data = await res.json();
+        console.log('Metadata encontrado:', data);
+        console.log('Measures:', data.measures?.length);
+        console.log('Groupers:', data.groupers?.length);
+        console.log('Filters:', data.filters?.length);
+        setMeasures(data.measures || []);
+        setGroupers(data.groupers || []);
+        setFilterOptions(data.filters || []);
+      } else {
+        console.error('Erro na resposta:', res.status);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar metadados:', err);
+    } finally {
+      setLoadingMetadata(false);
+    }
+  }
+
+  function generateDax(): string {
+    if (!selectedMeasure) return '';
+
+    const measureRef = `[${selectedMeasure.name}]`;
+    const grouperRefs = selectedGroupers.map(g => `${g.table}[${g.column}]`);
+    
+    // Construir filtros
+    const filterExpressions = selectedFilters.map(f => {
+      const value = isNaN(Number(f.value)) ? `"${f.value}"` : f.value;
+      if (f.operator === 'contains') {
+        return `SEARCH("${f.value}", ${f.table}[${f.column}], 1, 0) > 0`;
+      }
+      return `${f.table}[${f.column}] ${f.operator} ${value}`;
+    });
+
+    let dax = 'EVALUATE\n';
+    
+    if (grouperRefs.length > 0) {
+      // Com agrupadores - usar SUMMARIZECOLUMNS
+      if (limit > 0) {
+        dax += `TOPN(\n    ${limit},\n    `;
+      }
       
-      // Buscar datasets da API específica
-      const response = await fetch(`/api/powerbi/datasets?group_id=${activeGroup.id}`);
+      dax += `SUMMARIZECOLUMNS(\n`;
+      dax += grouperRefs.map(g => `        ${g}`).join(',\n');
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Erro ao buscar datasets:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorText,
+      // Adicionar filtros no SUMMARIZECOLUMNS
+      if (filterExpressions.length > 0) {
+        selectedFilters.forEach((filter, index) => {
+          dax += `,\n        FILTER(ALL(${filter.table}), ${filterExpressions[index]})`;
         });
-        setDatasets([]);
-        return;
       }
-
-      const data = await response.json();
-      console.log('✅ Datasets recebidos:', data);
       
-      const datasetsList = data.datasets || [];
-      console.log(`📋 Total de datasets: ${datasetsList.length}`);
-
-      if (datasetsList.length === 0) {
-        console.warn('⚠️ Nenhum dataset encontrado para o grupo');
-        setDatasets([]);
-        return;
-      }
-
-      setDatasets(datasetsList);
+      dax += `,\n        "Valor", ${measureRef}\n    )`;
       
-      // Selecionar o primeiro dataset automaticamente
-      if (datasetsList.length > 0 && !selectedDataset) {
-        setSelectedDataset(datasetsList[0].id || datasetsList[0].dataset_id);
+      if (limit > 0) {
+        dax += `,\n    [Valor], ${orderBy}\n)`;
       }
-    } catch (error: any) {
-      console.error('❌ Erro ao carregar datasets:', error);
-      alert('Erro ao carregar datasets.');
-      setDatasets([]);
-    } finally {
-      setLoadingDatasets(false);
-    }
-  };
-
-  const handleTest = async () => {
-    if (!testQuestion.trim()) {
-      alert('Digite uma pergunta para testar');
-      return;
+    } else {
+      // Sem agrupadores - usar ROW com CALCULATE se houver filtros
+      if (filterExpressions.length > 0) {
+        dax += `ROW("Valor", CALCULATE(${measureRef}, ${filterExpressions.join(', ')}))`;
+      } else {
+        dax += `ROW("Valor", ${measureRef})`;
+      }
     }
 
-    if (!selectedDataset) {
-      alert('Selecione um dataset primeiro');
-      return;
-    }
+    return dax;
+  }
 
+  async function executeDax() {
+    if (!generatedDax || !selectedDataset) return;
+    
+    setExecuting(true);
+    setDaxResult(null);
+    
     try {
-      setTestLoading(true);
-      setTestResponse('');
-      setTestDax('');
-      setTestResult(null);
-
-      console.log('🧪 Testando pergunta:', {
-        question: testQuestion,
-        dataset_id: selectedDataset,
-        company_group_id: activeGroup?.id,
-      });
-
-      const response = await fetch('/api/assistente-ia/training/test', {
+      const res = await fetch('/api/assistente-ia/execute-dax', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          question: testQuestion,
-          dataset_id: selectedDataset, // ID correto do dataset
-          company_group_id: activeGroup?.id, // Enviar grupo selecionado
-        }),
-      });
-
-      console.log('📡 Status da resposta:', response.status, response.statusText);
-
-      const data = await response.json();
-      console.log('📦 Response completa:', data);
-      console.log('📊 Resposta da API:', data);
-
-      if (data.success) {
-        setTestResponse(data.data.response);
-        setTestDax(data.data.dax_query);
-        setTestResult(data.data);
-
-        // Auto-preencher formulário (mantém tags já selecionadas)
-        setFormData(prev => ({
-          ...prev,
-          user_question: testQuestion,
-          dax_query: data.data.dax_query,
-          formatted_response: data.data.response,
-        }));
-      } else {
-        const errorMessage = data.error || 'Erro ao testar pergunta';
-        
-        if (errorMessage.includes('Nenhuma conexão Power BI') || 
-            errorMessage.includes('conexão Power BI') ||
-            errorMessage.includes('Conexão') ||
-            errorMessage.includes('relatório ativo')) {
-          const shouldRedirect = window.confirm(
-            `${errorMessage}\n\nDeseja ir para Conexões agora?`
-          );
-          if (shouldRedirect) {
-            window.location.href = '/powerbi/conexoes';
-          }
-        } else {
-          alert(errorMessage);
-        }
-      }
-    } catch (error: any) {
-      console.error('❌ Erro ao testar:', error);
-      
-      if (error.message?.includes('404') || error.message?.includes('Not Found')) {
-        alert('API de teste não encontrada. Verifique se o servidor está rodando e recarregue a página.');
-      } else {
-        alert('Erro ao testar pergunta: ' + (error.message || 'Erro desconhecido'));
-      }
-    } finally {
-      setTestLoading(false);
-    }
-  };
-
-  const handleSave = async () => {
-    // Validações
-    if (!formData.user_question.trim()) {
-      alert('A pergunta é obrigatória');
-      return;
-    }
-    if (!formData.dax_query.trim()) {
-      alert('A consulta DAX é obrigatória');
-      return;
-    }
-    if (!formData.formatted_response.trim()) {
-      alert('A resposta para o usuário é obrigatória');
-      return;
-    }
-    if (formData.tags.length === 0) {
-      alert('Selecione pelo menos uma tag');
-      return;
-    }
-
-    try {
-      setSaving(true);
-
-      const response = await fetch('/api/assistente-ia/training', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_question: formData.user_question,
-          dax_query: formData.dax_query,
-          formatted_response: formData.formatted_response,
-          category: formData.category, // primeira tag
-          tags: formData.tags, // array completo
           dataset_id: selectedDataset,
-          unanswered_question_id: unansweredQuestionId,  // ← NOVO
-        }),
+          dax_query: generatedDax,
+          company_group_id: groupId
+        })
       });
+      
+      const data = await res.json();
+      setDaxResult(data);
+    } catch (err: any) {
+      setDaxResult({ success: false, error: err.message });
+    } finally {
+      setExecuting(false);
+    }
+  }
 
-      const data = await response.json();
+  function addGrouper(grouper: Grouper) {
+    const exists = selectedGroupers.find(g => g.table === grouper.table && g.column === grouper.column);
+    if (!exists) {
+      setSelectedGroupers([...selectedGroupers, {
+        id: `${grouper.table}-${grouper.column}-${Date.now()}`,
+        table: grouper.table,
+        column: grouper.column,
+        label: grouper.label,
+        icon: grouper.icon
+      }]);
+    }
+    setShowGrouperDropdown(false);
+  }
 
-      if (data.success) {
-        // Se tinha pergunta pendente, mostrar mensagem especial
-        if (unansweredQuestionId) {
-          alert('✅ Exemplo salvo com sucesso!\n\nA pergunta pendente foi automaticamente marcada como resolvida.');
-        } else {
-          alert('Exemplo salvo com sucesso!');
-        }
+  function removeGrouper(id: string) {
+    setSelectedGroupers(selectedGroupers.filter(g => g.id !== id));
+  }
+
+  function addFilter(filter: FilterOption) {
+    setSelectedFilters([...selectedFilters, {
+      id: `${filter.table}-${filter.column}-${Date.now()}`,
+      table: filter.table,
+      column: filter.column,
+      label: filter.label,
+      operator: '=',
+      value: filter.commonValues?.[0] || ''
+    }]);
+    setShowFilterDropdown(false);
+  }
+
+  function updateFilter(id: string, field: 'operator' | 'value', value: string) {
+    setSelectedFilters(selectedFilters.map(f => 
+      f.id === id ? { ...f, [field]: value } : f
+    ));
+  }
+
+  function removeFilter(id: string) {
+    setSelectedFilters(selectedFilters.filter(f => f.id !== id));
+  }
+
+  function toggleCategory(category: string) {
+    setExpandedCategories(prev => 
+      prev.includes(category) 
+        ? prev.filter(c => c !== category)
+        : [...prev, category]
+    );
+  }
+
+  const measuresByCategory = useMemo(() => {
+    const grouped: Record<string, Measure[]> = {};
+    for (const measure of measures) {
+      if (!grouped[measure.category]) {
+        grouped[measure.category] = [];
+      }
+      grouped[measure.category].push(measure);
+    }
+    console.log('=== measuresByCategory ===');
+    console.log('Total measures:', measures.length);
+    console.log('Categories:', Object.keys(grouped));
+    console.log('Grouped:', grouped);
+    return grouped;
+  }, [measures]);
+
+  function copyDax() {
+    navigator.clipboard.writeText(generatedDax);
+  }
+
+  async function saveTraining() {
+    if (!question.trim() || !generatedDax || !selectedDataset) {
+      alert('Preencha a pergunta e gere o DAX antes de salvar');
+      return;
+    }
+    
+    // Gera resposta formatada automaticamente baseada na seleção
+    const formattedResponse = `📊 *${selectedMeasure?.label || 'Resultado'}*\n\n{resultado}\n\n_Dados atualizados do Power BI_`;
+    
+    try {
+      const res = await fetch('/api/assistente-ia/training', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_question: question,
+          dax_query: generatedDax,
+          formatted_response: formattedResponse,
+          tags: tags,
+          category: tags[0] || 'geral',
+          dataset_id: selectedDataset,
+          unanswered_question_id: unansweredId || null
+        })
+      });
+      
+      if (res.ok) {
+        alert('Treinamento salvo com sucesso!');
         router.push('/assistente-ia/treinar');
       } else {
-        alert(data.error || 'Erro ao salvar exemplo');
+        const data = await res.json();
+        console.error('Erro API:', data);
+        alert(data.error || 'Erro ao salvar');
       }
-    } catch (error) {
-      console.error('Erro ao salvar:', error);
-      alert('Erro ao salvar exemplo');
-    } finally {
-      setSaving(false);
+    } catch (err) {
+      console.error('Erro ao salvar:', err);
+      alert('Erro ao salvar treinamento');
     }
-  };
+  }
 
-  return (
-    <PermissionGuard>
-      <div className="max-w-7xl mx-auto p-6">
-          
-          {/* Header */}
-          <div className="mb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-50 rounded-lg">
-                <Sparkles className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  Novo Exemplo de Treinamento
-                </h1>
-                <p className="text-sm text-gray-600 mt-1">
-                  Teste uma pergunta e salve como exemplo para treinar a IA
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Layout de 2 colunas */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* COLUNA ESQUERDA: Teste */}
-            <div className="space-y-6">
-              
-              {/* Seletor de Dataset */}
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  1. Selecione o Dataset Power BI
-                </label>
-                <select
-                  value={selectedDataset}
-                  onChange={(e) => setSelectedDataset(e.target.value)}
-                  disabled={loadingDatasets}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
-                >
-                  <option value="">
-                    {loadingDatasets ? 'Carregando datasets...' : 'Selecione um dataset...'}
-                  </option>
-                  {datasets.map(ds => (
-                    <option key={ds.id || ds.dataset_id} value={ds.id || ds.dataset_id}>
-                      {ds.name || ds.dataset_id}
-                    </option>
-                  ))}
-                </select>
-                {datasets.length === 0 && !loadingDatasets && activeGroup?.id && (
-                  <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <p className="text-sm text-yellow-800 mb-2">
-                      Nenhum dataset encontrado para este grupo.
-                    </p>
-                    <a 
-                      href="/powerbi/relatorios" 
-                      className="text-sm text-yellow-900 font-medium underline hover:text-yellow-950"
-                    >
-                      Clique aqui para criar relatórios Power BI →
-                    </a>
-                  </div>
-                )}
-              </div>
-
-              {/* Área de Teste */}
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  2. Teste uma Pergunta
-                </label>
-                
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    placeholder="Ex: Quanto faturamos em dezembro?"
-                    value={testQuestion}
-                    onChange={(e) => setTestQuestion(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleTest()}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  
-                  <button
-                    onClick={handleTest}
-                    disabled={testLoading || !selectedDataset}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {testLoading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                        Testando...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-5 h-5" />
-                        Testar com IA
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {/* Resposta do Teste */}
-                {testResponse && (
-                  <div className="mt-4 space-y-4">
-                    <div>
-                      <p className="text-xs font-medium text-gray-600 mb-2">Resposta Gerada:</p>
-                      <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-800 whitespace-pre-wrap border border-gray-200">
-                        {testResponse}
-                      </div>
-                    </div>
-
-                    {testDax && (
-                      <div>
-                        <p className="text-xs font-medium text-gray-600 mb-2">DAX Gerado:</p>
-                        <div className="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-                          <code className="text-sm text-green-400 font-mono">
-                            {testDax}
-                          </code>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-            </div>
-
-            {/* COLUNA DIREITA: Formulário */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-6">
-                Dados do Exemplo
-              </h2>
-
-              <div className="space-y-4">
-                
-                {/* Pergunta */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Pergunta do Usuário *
-                  </label>
-                  <textarea
-                    value={formData.user_question}
-                    onChange={(e) => setFormData({ ...formData, user_question: e.target.value })}
-                    rows={3}
-                    placeholder="Ex: Quanto faturamos em dezembro?"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                  />
-                </div>
-
-                {/* DAX */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Consulta DAX *
-                  </label>
-                  <textarea
-                    value={formData.dax_query}
-                    onChange={(e) => setFormData({ ...formData, dax_query: e.target.value })}
-                    rows={6}
-                    placeholder="EVALUATE ROW(..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none font-mono text-sm"
-                  />
-                </div>
-
-                {/* Resposta para o Usuário - CAMPO PRINCIPAL */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Resposta para o Usuário *
-                    <span className="text-xs text-gray-500 ml-2">(texto que será enviado no WhatsApp)</span>
-                  </label>
-                  <textarea
-                    ref={respostaRef}
-                    value={formData.formatted_response}
-                    onChange={(e) => setFormData({ ...formData, formatted_response: e.target.value })}
-                    rows={6}
-                    placeholder="Digite aqui a resposta formatada que o usuário receberá no WhatsApp...&#10;&#10;Ex:&#10;📊 Faturamento em Dezembro&#10;&#10;💰 R$ 2.432.919,67&#10;&#10;━━━━━━━━━━━━━━━━━&#10;💡 Quer saber mais?"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    💡 Dica: Use emojis, quebras de linha e formatação clara para WhatsApp
-                  </p>
-                </div>
-
-                {/* Tags */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Tags (categorias) *
-                    <span className="text-xs text-gray-500 ml-2">
-                      Selecione uma ou mais tags para facilitar buscas
-                    </span>
-                  </label>
-                  
-                  {/* Tags Selecionadas */}
-                  {formData.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                      {formData.tags.map((tagValue) => {
-                        const tag = TAGS_DISPONIVEIS.find(t => t.value === tagValue);
-                        return tag ? (
-                          <span
-                            key={tagValue}
-                            className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${tag.color}`}
-                          >
-                            #{tag.label}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const newTags = formData.tags.filter(t => t !== tagValue);
-                                setFormData({ 
-                                  ...formData, 
-                                  tags: newTags,
-                                  category: newTags[0] || '' // primeira tag vira category
-                                });
-                              }}
-                              className="ml-1 hover:bg-black/10 rounded-full p-0.5"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        ) : null;
-                      })}
-                    </div>
-                  )}
-
-                  {/* Dropdown para adicionar tags */}
-                  <select
-                    value=""
-                    onChange={(e) => {
-                      const tagValue = e.target.value;
-                      if (tagValue && !formData.tags.includes(tagValue)) {
-                        const newTags = [...formData.tags, tagValue];
-                        setFormData({ 
-                          ...formData, 
-                          tags: newTags,
-                          category: newTags[0] || '' // primeira tag vira category
-                        });
-                      }
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                  >
-                    <option value="">+ Adicionar tag...</option>
-                    {TAGS_DISPONIVEIS.filter(tag => !formData.tags.includes(tag.value)).map((tag) => (
-                      <option key={tag.value} value={tag.value}>
-                        {tag.label}
-                      </option>
-                    ))}
-                  </select>
-                  
-                  <p className="text-xs text-gray-500 mt-2">
-                    💡 Dica: Adicione tags como #vendas #faturamento #dezembro para facilitar buscas
-                  </p>
-                </div>
-
-                {/* Botões */}
-                <div className="flex gap-3 pt-4 border-t border-gray-200">
-                  <button
-                    onClick={() => router.push('/assistente-ia/treinar')}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                    Cancelar
-                  </button>
-                  
-                  <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {saving ? (
-                      <>
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                        Salvando...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="w-5 h-5" />
-                        Salvar Exemplo
-                      </>
-                    )}
-                  </button>
-                </div>
-
-              </div>
-            </div>
-
-          </div>
-
+  if (loadingDatasets || !groupId) {
+    return (
+      <MainLayout>
+        <div className="flex items-center justify-center h-96">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
         </div>
-    </PermissionGuard>
-  );
-}
+      </MainLayout>
+    );
+  }
 
-// Componente principal exportado
-export default function NovoExemploPage() {
   return (
     <MainLayout>
-      <NovoExemploContent />
+      <div className="max-w-6xl mx-auto p-6">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">Novo Treinamento</h1>
+          <p className="text-gray-500 text-sm">Crie um exemplo de treinamento para o Assistente IA</p>
+        </div>
+
+        {/* Pergunta da URL (quando vem de "Ensinar Resposta") */}
+        {questionFromUrl && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <MessageSquare className="w-4 h-4 text-blue-600" />
+                  <span className="text-xs font-semibold text-blue-700">Pergunta a ser ensinada:</span>
+                </div>
+                <p className="text-sm text-gray-900 font-medium">"{questionFromUrl}"</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Dataset e Tags */}
+        <div className="flex gap-4 mb-6">
+          {/* Dataset */}
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Dataset Power BI</label>
+            <select
+              value={selectedDataset}
+              onChange={(e) => {
+                setSelectedDataset(e.target.value);
+                setSelectedMeasure(null);
+                setSelectedGroupers([]);
+                setSelectedFilters([]);
+              }}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+            >
+              <option value="">Selecione um dataset</option>
+              {datasets.map(ds => (
+                <option key={ds.id} value={ds.id}>{ds.name}</option>
+              ))}
+            </select>
+          </div>
+          
+          {/* Tags */}
+          <div className="flex-1 relative">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Tags</label>
+            <div 
+              className="flex items-center gap-2 flex-wrap min-h-[42px] px-3 py-2 border border-gray-200 rounded-lg bg-white cursor-text"
+              onClick={() => setShowTagSuggestions(true)}
+            >
+              {tags.map(tag => (
+                <span key={tag} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs border border-blue-200">
+                  <span className="text-blue-500">#</span>{tag}
+                  <button onClick={(e) => { e.stopPropagation(); setTags(tags.filter(t => t !== tag)); }} className="hover:text-blue-900">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+              <input
+                type="text"
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onFocus={() => setShowTagSuggestions(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && tagInput.trim()) {
+                    e.preventDefault();
+                    if (!tags.includes(tagInput.trim())) {
+                      setTags([...tags, tagInput.trim()]);
+                    }
+                    setTagInput('');
+                  }
+                }}
+                placeholder={tags.length === 0 ? "Digite ou selecione tags..." : ""}
+                className="flex-1 min-w-[120px] outline-none text-sm bg-transparent"
+              />
+            </div>
+            
+            {showTagSuggestions && (
+              <>
+                <div className="fixed inset-0 z-[100]" onClick={() => setShowTagSuggestions(false)} />
+                <div className="absolute z-[101] w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                  <div className="p-2 grid grid-cols-3 gap-1">
+                    {TAG_SUGGESTIONS
+                      .filter(s => !tags.includes(s) && s.toLowerCase().includes(tagInput.toLowerCase()))
+                      .map(suggestion => (
+                        <button
+                          key={suggestion}
+                          onClick={() => {
+                            setTags([...tags, suggestion]);
+                            setTagInput('');
+                            setShowTagSuggestions(false);
+                          }}
+                          className="px-2 py-1.5 text-xs text-left text-gray-700 hover:bg-blue-50 hover:text-blue-700 rounded transition-colors"
+                        >
+                          <span className="text-blue-500">#</span>{suggestion}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Botão Salvar - Fixo no lado direito */}
+        <div className="fixed right-6 top-24 z-50">
+          <button
+            onClick={saveTraining}
+            disabled={!question.trim() || !generatedDax}
+            className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg flex items-center gap-2 disabled:opacity-50"
+          >
+            <Save className="w-4 h-4" />
+            Salvar Treinamento
+          </button>
+        </div>
+
+        {/* Card da Pergunta */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
+          <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-blue-100 border-b border-blue-200">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-blue-600" />
+              <span className="font-semibold text-gray-900 text-sm">Pergunta do Usuário</span>
+            </div>
+          </div>
+          <div className="p-4">
+            <input
+              type="text"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder="Ex: Qual o faturamento da filial Tucumã?"
+              className="w-full px-4 py-3 border border-gray-200 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+        </div>
+
+        {/* Cards em grid 2x2 - Mesmo tamanho */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              
+          {/* Card 1: Medida */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col h-full overflow-visible min-h-[250px]">
+            <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-blue-100 border-b border-blue-200">
+              <div className="flex items-center gap-2">
+                <Calculator className="w-4 h-4 text-blue-600" />
+                <span className="font-semibold text-gray-900 text-sm">O que você quer ver?</span>
+              </div>
+            </div>
+            <div className="p-4 flex-1 flex flex-col relative">
+              {loadingMetadata ? (
+                <div className="flex items-center gap-2 text-gray-500 py-4">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">Carregando...</span>
+                </div>
+              ) : (
+                <>
+                  <button
+                    onClick={() => {
+                      console.log('=== Botão clicado ===');
+                      console.log('measures.length:', measures.length);
+                      console.log('measuresByCategory:', Object.keys(measuresByCategory).length);
+                      setShowMeasureDropdown(!showMeasureDropdown);
+                    }}
+                    disabled={!selectedDataset || measures.length === 0}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg text-left flex items-center justify-between hover:border-blue-300 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors bg-white"
+                  >
+                    {selectedMeasure ? (
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-sm text-gray-900 truncate">{selectedMeasure.label}</div>
+                        <div className="text-xs text-gray-500 truncate">{selectedMeasure.description}</div>
+                      </div>
+                    ) : (
+                      <span className="text-gray-400 text-sm">Selecione uma medida...</span>
+                    )}
+                    <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${showMeasureDropdown ? 'rotate-180' : ''}`} />
+                  </button>
+                  
+                  {showMeasureDropdown && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-[100]" 
+                        onClick={() => setShowMeasureDropdown(false)}
+                      />
+                      <div className="absolute z-[101] w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-80 overflow-hidden">
+                        {Object.keys(measuresByCategory).length === 0 ? (
+                          <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                            Nenhuma medida disponível
+                          </div>
+                        ) : (
+                          <div className="overflow-y-auto max-h-80">
+                            {Object.entries(measuresByCategory).map(([category, categoryMeasures]) => (
+                              <div key={category}>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleCategory(category);
+                                  }}
+                                  className="w-full px-4 py-2.5 flex items-center justify-between bg-gray-50 hover:bg-gray-100 border-b border-gray-100 transition-colors"
+                                >
+                                  <div className="flex items-center gap-2.5">
+                                    <span className="font-semibold text-sm text-gray-900">{category}</span>
+                                    <span className="text-xs text-gray-500">({categoryMeasures.length})</span>
+                                  </div>
+                                  {expandedCategories.includes(category) ? (
+                                    <ChevronDown className="w-4 h-4 text-gray-400" />
+                                  ) : (
+                                    <ChevronRight className="w-4 h-4 text-gray-400" />
+                                  )}
+                                </button>
+                                {expandedCategories.includes(category) && (
+                                  <div className="bg-white">
+                                    {categoryMeasures.map(measure => (
+                                      <button
+                                        key={measure.name}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedMeasure(measure);
+                                          setShowMeasureDropdown(false);
+                                        }}
+                                        className={`w-full px-4 py-2.5 pl-12 text-left hover:bg-blue-50 flex items-center justify-between transition-colors ${
+                                          selectedMeasure?.name === measure.name ? 'bg-blue-50' : ''
+                                        }`}
+                                      >
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-sm font-medium text-gray-900">{measure.label}</div>
+                                          <div className="text-xs text-gray-500 truncate">{measure.description}</div>
+                                        </div>
+                                        {selectedMeasure?.name === measure.name && (
+                                          <Check className="w-4 h-4 text-blue-600 flex-shrink-0 ml-2" />
+                                        )}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+              {!loadingMetadata && measures.length === 0 && selectedDataset && (
+                <p className="text-xs text-gray-500 mt-2">Nenhuma medida encontrada</p>
+              )}
+            </div>
+              </div>
+
+          {/* Card 2: Agrupadores */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col h-full overflow-visible min-h-[250px]">
+            <div className="px-4 py-3 bg-gradient-to-r from-emerald-50 to-emerald-100 border-b border-emerald-200">
+              <div className="flex items-center gap-2.5">
+                <Layers className="w-4 h-4 text-emerald-600" />
+                <span className="font-semibold text-gray-900 text-sm">Agrupar por</span>
+                <span className="text-xs text-gray-500">(opcional)</span>
+              </div>
+            </div>
+            <div className="p-4 flex-1 flex flex-col">
+              {selectedGroupers.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {selectedGroupers.map(grouper => (
+                        <span
+                          key={grouper.id}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-medium border border-emerald-200"
+                        >
+                          <span>{grouper.label}</span>
+                          <button onClick={() => removeGrouper(grouper.id)} className="ml-0.5 hover:text-emerald-900 hover:bg-emerald-100 rounded p-0.5 transition-colors">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowGrouperDropdown(!showGrouperDropdown)}
+                      disabled={!selectedDataset || groupers.length === 0}
+                      className="inline-flex items-center gap-2 px-3 py-2 text-xs text-gray-600 border border-dashed border-gray-300 rounded-lg hover:border-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Adicionar
+                    </button>
+                    
+                    {showGrouperDropdown && (
+                      <>
+                        <div 
+                          className="fixed inset-0 z-[100]" 
+                          onClick={() => setShowGrouperDropdown(false)}
+                        />
+                        <div className="absolute z-[101] w-64 mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-80 overflow-hidden">
+                          {groupers.length === 0 ? (
+                            <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                              Nenhum agrupador disponível
+                            </div>
+                          ) : (
+                            <div className="overflow-y-auto max-h-80">
+                              {groupers.map(grouper => {
+                                const isSelected = selectedGroupers.find(g => g.table === grouper.table && g.column === grouper.column);
+                                return (
+                                  <button
+                                    key={`${grouper.table}-${grouper.column}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      addGrouper(grouper);
+                                    }}
+                                    disabled={!!isSelected}
+                                    className="w-full px-4 py-2.5 text-left hover:bg-emerald-50 flex items-center justify-between disabled:opacity-40 text-sm transition-colors"
+                                  >
+                                    <span className="font-medium text-gray-900">{grouper.label}</span>
+                                    {isSelected && <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+          {/* Card 3: Filtros */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col h-full overflow-visible min-h-[250px]">
+            <div className="px-4 py-3 bg-gradient-to-r from-purple-50 to-purple-100 border-b border-purple-200">
+              <div className="flex items-center gap-2.5">
+                <Filter className="w-4 h-4 text-purple-600" />
+                <span className="font-semibold text-gray-900 text-sm">Filtrar por</span>
+                <span className="text-xs text-gray-500">(opcional)</span>
+              </div>
+            </div>
+            <div className="p-4 space-y-2 flex-1 flex flex-col">
+              {selectedFilters.map(filter => {
+                    const filterOpt = filterOptions.find(f => f.table === filter.table && f.column === filter.column);
+                    return (
+                      <div key={filter.id} className="flex items-center gap-1 p-2 bg-gray-50 rounded-lg">
+                        <span className="text-xs font-medium text-gray-700 min-w-[80px]">{filter.label}</span>
+                        <select
+                          value={filter.operator}
+                          onChange={(e) => updateFilter(filter.id, 'operator', e.target.value)}
+                          className="px-1 py-1 border border-gray-200 rounded text-xs w-12"
+                        >
+                          {OPERATORS.map(op => (
+                            <option key={op.value} value={op.value}>{op.label}</option>
+                          ))}
+                        </select>
+                        {filterOpt?.commonValues ? (
+                          <select
+                            value={filter.value}
+                            onChange={(e) => updateFilter(filter.id, 'value', e.target.value)}
+                            className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs"
+                          >
+                            <option value="">...</option>
+                            {filterOpt.commonValues.map(v => (
+                              <option key={v} value={v}>{v}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            value={filter.value}
+                            onChange={(e) => updateFilter(filter.id, 'value', e.target.value)}
+                            placeholder="Valor"
+                            className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs"
+                          />
+                        )}
+                        <button onClick={() => removeFilter(filter.id)} className="p-1 text-gray-400 hover:text-red-500">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+                      disabled={!selectedDataset || filterOptions.length === 0}
+                      className="inline-flex items-center gap-2 px-3 py-2 text-xs text-gray-600 border border-dashed border-gray-300 rounded-lg hover:border-purple-400 hover:text-purple-600 hover:bg-purple-50 disabled:opacity-50 transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Adicionar
+                    </button>
+                    
+                    {showFilterDropdown && (
+                      <>
+                        <div 
+                          className="fixed inset-0 z-[100]" 
+                          onClick={() => setShowFilterDropdown(false)}
+                        />
+                        <div className="absolute z-[101] w-64 mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-80 overflow-hidden">
+                          {filterOptions.length === 0 ? (
+                            <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                              Nenhum filtro disponível
+                            </div>
+                          ) : (
+                            <div className="overflow-y-auto max-h-80">
+                              {filterOptions.map(filter => (
+                                <button
+                                  key={`${filter.table}-${filter.column}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    addFilter(filter);
+                                  }}
+                                  className="w-full px-4 py-2.5 text-left hover:bg-purple-50 text-sm transition-colors"
+                                >
+                                  <span className="font-medium text-gray-900">{filter.label}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+          {/* Card 4: Opções */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col h-full overflow-visible min-h-[250px]">
+            <div className="px-4 py-3 bg-gradient-to-r from-orange-50 to-orange-100 border-b border-orange-200">
+              <div className="flex items-center gap-2">
+                <Settings className="w-4 h-4 text-orange-600" />
+                <span className="font-semibold text-gray-900 text-sm">Opções</span>
+              </div>
+            </div>
+            <div className="p-4 space-y-4 flex-1 flex flex-col justify-center">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-2">Ordenar</label>
+                    <div className="flex gap-1">
+                      {ORDER_OPTIONS.map(opt => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setOrderBy(opt.value as 'DESC' | 'ASC')}
+                          className={`flex-1 px-2 py-1.5 text-xs rounded-lg border transition-colors ${
+                            orderBy === opt.value 
+                              ? 'bg-orange-50 border-orange-200 text-orange-700 font-medium' 
+                              : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-2">Limite</label>
+                    <div className="flex flex-wrap gap-1">
+                      {LIMIT_OPTIONS.map(opt => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setLimit(opt.value)}
+                          className={`px-2 py-1.5 text-xs rounded-lg border transition-colors ${
+                            limit === opt.value 
+                              ? 'bg-orange-50 border-orange-200 text-orange-700 font-medium' 
+                              : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                </div>
+              </div>
+        </div>
+
+        {/* DAX Gerado e Botões - Abaixo dos cards */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm mb-6">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+            <span className="text-sm font-semibold text-gray-700">DAX Gerado</span>
+            <button
+              onClick={copyDax}
+              disabled={!generatedDax}
+              className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg disabled:opacity-50 transition-colors"
+              title="Copiar DAX"
+            >
+              <Copy className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="p-4 bg-gray-50 border border-gray-100 rounded-lg mx-4 my-3">
+            <pre className="text-sm text-gray-700 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
+              {generatedDax || '// Selecione uma medida para gerar o DAX'}
+            </pre>
+          </div>
+          <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex justify-end">
+            <button
+              onClick={executeDax}
+              disabled={!generatedDax || executing}
+              className="w-10 h-10 rounded-lg bg-green-500 hover:bg-green-600 text-white flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Executar DAX"
+            >
+              {executing ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Play className="w-5 h-5" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Resultado - Abaixo dos cards */}
+        {daxResult && (
+            <div className={`rounded-xl border overflow-hidden shadow-sm ${
+              daxResult.success ? 'bg-white border-gray-200' : 'bg-red-50 border-red-200'
+            }`}>
+              <div className={`px-4 py-3 border-b ${
+                daxResult.success ? 'bg-gray-50 border-gray-200' : 'bg-red-100 border-red-200'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <span className={`text-sm font-semibold ${daxResult.success ? 'text-gray-700' : 'text-red-700'}`}>
+                    {daxResult.success ? 'Resultado' : 'Erro'}
+                  </span>
+                  {daxResult.success && daxResult.rowCount !== undefined && (
+                    <span className="text-xs text-gray-500 font-medium">
+                      {daxResult.rowCount} registro(s) • {daxResult.executionTime}ms
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="p-4 max-h-64 overflow-auto">
+                {daxResult.success ? (
+                  daxResult.rowCount === 0 ? (
+                    <div className="text-center py-6">
+                      <AlertCircle className="w-8 h-8 text-yellow-500 mx-auto mb-2" />
+                      <p className="text-sm text-gray-600 font-medium">Nenhum resultado encontrado</p>
+                      {daxResult.warning && (
+                        <p className="text-xs text-gray-500 mt-1">{daxResult.warning}</p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-200">
+                            {daxResult.columns?.map(col => (
+                              <th key={col} className="text-left py-2 px-3 font-semibold text-gray-700">
+                                {col.replace(/[\[\]]/g, '')}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {daxResult.result?.slice(0, 20).map((row, i) => (
+                            <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+                              {daxResult.columns?.map(col => (
+                                <td key={col} className="py-2 px-3 text-gray-600">
+                                  {typeof row[col] === 'number' 
+                                    ? row[col].toLocaleString('pt-BR', { maximumFractionDigits: 2 })
+                                    : String(row[col] || '')
+                                  }
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                ) : (
+                  <div className="text-sm text-red-700">
+                    <p className="font-medium">{daxResult.error}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+      </div>
     </MainLayout>
   );
 }

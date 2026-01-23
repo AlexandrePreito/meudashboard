@@ -46,7 +46,8 @@ import {
   Book,
   AlertCircle,
   Clock,
-  Zap
+  Zap,
+  Database
 } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
 import { usePlanPermissions } from '@/hooks/usePlanPermissions';
@@ -188,7 +189,7 @@ export default function Sidebar() {
   const showPowerBIMenu = pathname.startsWith('/powerbi') && !isRegularUser;
   const showConfigMenu = pathname.startsWith('/configuracoes');
   const showWhatsAppMenu = pathname.startsWith('/whatsapp') || pathname.startsWith('/alertas');
-  const showAssistenteIAMenu = canAccessAssistenteIA(); // Sempre mostrar se tiver acesso, não apenas quando estiver na página
+  const showAssistenteIAMenu = pathname.startsWith('/assistente-ia') && canAccessAssistenteIA();
   const showAdminMenu = pathname.startsWith('/admin');
   const showDevMenu = pathname.startsWith('/dev');
   const showAdministradorMenu = pathname.startsWith('/administrador/');
@@ -238,9 +239,9 @@ export default function Sidebar() {
 
   const assistenteIAMenuItems = [
     { href: '/assistente-ia/evolucao', icon: TrendingUp, label: 'Evolução' },
-    { href: '/assistente-ia/treinar', icon: GraduationCap, label: 'Treinar IA' },
-    { href: '/assistente-ia/pendentes', icon: Clock, label: 'Perguntas Pendentes' },
-    { href: '/assistente-ia/contextos', icon: Brain, label: 'Contextos' },
+    { href: '/assistente-ia/pendentes', icon: AlertCircle, label: 'Pendentes' },
+    { href: '/assistente-ia/treinar', icon: Sparkles, label: 'Treinar IA' },
+    { href: '/assistente-ia/modelo', icon: Brain, label: 'Modelo' },
   ];
 
   useEffect(() => {
@@ -318,40 +319,8 @@ export default function Sidebar() {
         </button>
 
         <div className="flex flex-col h-full overflow-y-auto py-4">
-          {/* Logo no topo */}
-          {!isCollapsed && (
-            <div className="px-4 pb-4 border-b border-gray-100 mb-4">
-              <div className="flex items-center gap-2">
-                {user?.is_master ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 via-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
-                      <Zap size={18} className="text-white" />
-                    </div>
-                    <span className="font-bold text-lg" style={{ color: '#2563eb' }}>
-                      <span className="text-[1.2em]">M</span>eu<span className="text-[1.2em]">D</span>ashboard
-                    </span>
-                  </div>
-                ) : brandLogo ? (
-                  <img
-                    src={brandLogo}
-                    alt={brandName}
-                    className="h-8 w-auto max-w-[180px] object-contain"
-                  />
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg" style={{ backgroundColor: primaryColorValue }}>
-                      <Zap size={16} className="text-white" />
-                    </div>
-                    <span className="font-bold text-base truncate max-w-[150px]" style={{ color: primaryColorValue }}>
-                      {brandName}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
           {/* Menu Principal para DEVELOPER */}
-          {user?.is_developer && !user?.is_master && !showConfigMenu && !showPowerBIMenu && !showWhatsAppMenu && !showAdministradorMenu && !showAdminMenu && !showDevMenu && !pathname.startsWith('/tela') && !pathname.startsWith('/dashboard') && (
+          {user?.is_developer && !user?.is_master && !showConfigMenu && !showPowerBIMenu && !showWhatsAppMenu && !showAdministradorMenu && !showAdminMenu && !showDevMenu && !pathname.startsWith('/tela') && !pathname.startsWith('/dashboard') && !pathname.startsWith('/assistente-ia') && (
             <>
               {!isCollapsed && (
                 <div className="px-4 pt-4 pb-2">
@@ -416,7 +385,7 @@ export default function Sidebar() {
           )}
 
           {/* Menu Principal para ADMIN */}
-          {isAdmin && !showConfigMenu && !showPowerBIMenu && !showWhatsAppMenu && !showAdministradorMenu && !showAdminMenu && !showDevMenu && !pathname.startsWith('/tela') && !pathname.startsWith('/dashboard') && (
+          {isAdmin && !showConfigMenu && !showPowerBIMenu && !showWhatsAppMenu && !showAdministradorMenu && !showAdminMenu && !showDevMenu && !pathname.startsWith('/tela') && !pathname.startsWith('/dashboard') && !pathname.startsWith('/assistente-ia') && (
             <>
               {!isCollapsed && (
                 <div className="px-4 pt-4 pb-2">
@@ -705,8 +674,13 @@ export default function Sidebar() {
               <nav className="px-2 pb-4 border-b border-gray-100 mb-2">
                 {assistenteIAMenuItems.map((item) => {
                   const Icon = item.icon;
-                  const isActive = pathname === item.href || 
+                  let isActive = pathname === item.href || 
                     (item.href !== '/assistente-ia/treinar' && pathname.startsWith(item.href));
+                  
+                  // Se estiver em /assistente-ia/contextos, marcar o item "Modelo" como ativo
+                  if (item.href === '/assistente-ia/modelo' && pathname.startsWith('/assistente-ia/contextos')) {
+                    isActive = true;
+                  }
                   
                   return (
                     <Link

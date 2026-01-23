@@ -253,9 +253,15 @@ export default function Header({ user }: HeaderProps) {
     return developer?.primary_color || '#0ea5e9';
   }, [user.is_master, user.is_developer, developer?.primary_color, activeGroup?.primary_color, activeGroup?.use_developer_colors]);
 
+  // Ref para rastrear a última cor aplicada e evitar loop infinito
+  const lastAppliedColorRef = useRef<string | null>(null);
 
   useEffect(() => {
-    setPrimaryColor(primaryColorValue);
+    // Só atualiza se a cor for diferente da última aplicada
+    if (lastAppliedColorRef.current !== primaryColorValue) {
+      setPrimaryColor(primaryColorValue);
+      lastAppliedColorRef.current = primaryColorValue;
+    }
   }, [primaryColorValue, setPrimaryColor]);
 
   const loadGroups = useCallback(async () => {
@@ -394,14 +400,29 @@ export default function Header({ user }: HeaderProps) {
     }
   }, [user?.id, user?.is_master, setDeveloper, setActiveGroup]);
 
+  // Ref para rastrear se já carregou grupos para este usuário
+  const loadedUserIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     // SEGURANÇA: Carregar grupos quando o componente monta ou quando o usuário muda
-    // Limpar grupos anteriores para evitar mostrar grupos do dev anterior
-    if (user?.id) {
-      setGroups([]); // Limpar grupos anteriores antes de carregar novos
-      loadGroups();
+    // Evitar chamadas repetidas se já carregou para este usuário
+    if (!user?.id) {
+      return;
     }
-  }, [user?.id, loadGroups]); // Recarregar grupos sempre que o usuário mudar
+
+    // Se já carregou para este usuário, não carregar novamente
+    if (loadedUserIdRef.current === user.id) {
+      return;
+    }
+
+    // Marcar que está carregando para este usuário
+    loadedUserIdRef.current = user.id;
+    
+    // Limpar grupos anteriores antes de carregar novos
+    setGroups([]);
+    loadGroups();
+  }, [user?.id]); // loadGroups não está nas dependências para evitar loop infinito
+                   // O ref loadedUserIdRef garante que só carrega uma vez por usuário
 
   async function handleLogout() {
     try {

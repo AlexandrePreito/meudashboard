@@ -52,14 +52,6 @@ export async function GET() {
       // 2. Verificar se e desenvolvedor
       try {
         developerId = await getUserDeveloperId(user.id);
-        
-        // DEBUG: Log para rastrear developer_id encontrado
-        console.log('[DEBUG /api/user/groups]', {
-          userId: user.id,
-          userEmail: user.email,
-          developerId: developerId || 'NÃO ENCONTRADO',
-          isMaster: user.is_master
-        });
       } catch (devIdError: any) {
         console.error('[ERROR /api/user/groups] Erro ao buscar developer_id:', {
           message: devIdError?.message || 'Erro desconhecido',
@@ -91,14 +83,6 @@ export async function GET() {
             return NextResponse.json({ error: 'Erro ao buscar grupos', details: error.message }, { status: 500 });
           }
           groups = data || [];
-        
-          // DEBUG: Log dos grupos retornados
-          console.log('[DEBUG /api/user/groups] Grupos retornados para dev:', {
-            developerId,
-            totalGrupos: groups.length,
-            grupoIds: groups.map(g => g.id),
-            grupoNames: groups.map(g => g.name)
-          });
         } catch (devGroupsError: any) {
           console.error('[ERROR /api/user/groups] Exceção ao buscar grupos (developer):', {
             message: devGroupsError?.message || 'Erro desconhecido',
@@ -168,13 +152,7 @@ export async function GET() {
         .single();
       
       if (devError) {
-        console.error('[DEBUG /api/user/groups] Erro ao buscar developer:', devError);
-      } else {
-        console.log('[DEBUG /api/user/groups] Developer encontrado:', {
-          id: devData?.id,
-          name: devData?.name,
-          logo_url: devData?.logo_url
-        });
+        console.error('Erro ao buscar developer:', devError);
       }
       
       developerInfo = devData;

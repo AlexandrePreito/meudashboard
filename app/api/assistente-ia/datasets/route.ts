@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getUserGroupMembership } from '@/lib/auth';
 
 // GET - Listar datasets (baseado nos relatórios)
 export async function GET(request: Request) {
@@ -11,36 +11,47 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const groupId = searchParams.get('group_id');
+    let groupId = searchParams.get('group_id');
 
-    const supabase = createAdminClient();
-
-    // Se tem filtro de grupo, primeiro buscar as conexões desse grupo
-    let validConnectionIds: string[] = [];
-    
-    if (groupId) {
-      const { data: groupConnections } = await supabase
-        .from('powerbi_connections')
-        .select('id')
-        .eq('company_group_id', groupId);
-      
-      validConnectionIds = groupConnections?.map(c => c.id) || [];
-      
-      if (validConnectionIds.length === 0) {
-        return NextResponse.json({ datasets: [] });
+    // Se não passou group_id, pegar do membership do usuário
+    if (!groupId) {
+      const membership = await getUserGroupMembership();
+      if (membership?.company_group_id) {
+        groupId = membership.company_group_id;
       }
     }
 
-    // Buscar relatórios
-    let query = supabase
-      .from('powerbi_reports')
-      .select('id, name, dataset_id, connection_id');
-
-    if (groupId && validConnectionIds.length > 0) {
-      query = query.in('connection_id', validConnectionIds);
+    if (!groupId) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Grupo não identificado' 
+      }, { status: 400 });
     }
 
-    const { data: reports, error } = await query;
+    const supabase = createAdminClient();
+
+    // Buscar conexões do grupo
+    const { data: groupConnections } = await supabase
+      .from('powerbi_connections')
+      .select('id')
+      .eq('company_group_id', groupId)
+      .eq('is_active', true);
+    
+    const validConnectionIds = groupConnections?.map(c => c.id) || [];
+    
+    if (validConnectionIds.length === 0) {
+      return NextResponse.json({ 
+        success: true, 
+        data: [] 
+      });
+    }
+
+    // Buscar relatórios das conexões do grupo
+    const { data: reports, error } = await supabase
+      .from('powerbi_reports')
+      .select('id, name, dataset_id, connection_id')
+      .in('connection_id', validConnectionIds)
+      .eq('is_active', true);
 
     if (error) {
       console.error('Erro ao buscar datasets:', error);
@@ -63,10 +74,31 @@ export async function GET(request: Request) {
 
     const datasets = Array.from(datasetsMap.values());
 
-    return NextResponse.json({ datasets });
+    // Buscar nomes das conexões para incluir no response
+    if (datasets.length > 0) {
+      const connectionIds = [...new Set(datasets.map((d: any) => d.connection_id))];
+      const { data: connections } = await supabase
+        .from('powerbi_connections')
+        .select('id, name')
+        .in('id', connectionIds);
 
-  } catch (error) {
+      const connectionsMap = new Map(connections?.map((c: any) => [c.id, c.name]) || []);
+      
+      datasets.forEach((dataset: any) => {
+        dataset.connection_name = connectionsMap.get(dataset.connection_id) || 'Conexão desconhecida';
+      });
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      data: datasets 
+    });
+
+  } catch (error: any) {
     console.error('Erro:', error);
-    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
+    return NextResponse.json({ 
+      success: false,
+      error: error.message || 'Erro interno' 
+    }, { status: 500 });
   }
 }
