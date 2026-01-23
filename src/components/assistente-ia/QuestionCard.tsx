@@ -56,7 +56,7 @@ export default function QuestionCard({ question, onTrain, onIgnore }: QuestionCa
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <p className="text-gray-900 font-medium leading-relaxed">
-                "{question.user_question}"
+                &quot;{question.user_question}&quot;
               </p>
               {question.error_message && (
                 <div className="inline-block max-w-xs px-2 py-0.5 bg-red-50 rounded border border-red-200">

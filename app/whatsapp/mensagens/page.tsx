@@ -51,15 +51,15 @@ function MensagensContent() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
-  useEffect(() => {
-    loadData(activeGroup);
-  }, [filterDirection, activeGroup]);
-
   async function loadData(currentGroup?: { id: string; name: string } | null) {
     setLoading(true);
     await Promise.all([loadMessages(currentGroup), loadInstances()]);
     setLoading(false);
   }
+
+  useEffect(() => {
+    loadData(activeGroup);
+  }, [filterDirection, activeGroup]);
 
   async function loadMessages(currentGroup?: { id: string; name: string } | null) {
     try {

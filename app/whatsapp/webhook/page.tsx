@@ -26,15 +26,6 @@ function WebhookContent() {
   const [webhookUrl, setWebhookUrl] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   
-  useEffect(() => {
-    checkAccess();
-  }, []);
-
-  useEffect(() => {
-    const baseUrl = window.location.origin;
-    setWebhookUrl(`${baseUrl}/api/whatsapp/webhook`);
-  }, []);
-
   async function checkAccess() {
     try {
       const res = await fetch('/api/auth/me');
@@ -69,6 +60,15 @@ function WebhookContent() {
       alert('Erro ao copiar');
     }
   }
+
+  useEffect(() => {
+    checkAccess();
+  }, []);
+
+  useEffect(() => {
+    const baseUrl = window.location.origin;
+    setWebhookUrl(`${baseUrl}/api/whatsapp/webhook`);
+  }, []);
 
   // Loading state
   if (userRole === 'loading') {

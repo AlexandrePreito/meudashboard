@@ -14,10 +14,6 @@ export default function PermissionGuard({ children }: PermissionGuardProps) {
   const [isChecking, setIsChecking] = useState(true);
   const [hasPermission, setHasPermission] = useState(false);
 
-  useEffect(() => {
-    checkPermission();
-  }, []);
-
   const checkPermission = async () => {
     try {
       // Buscar dados do usuário
@@ -44,6 +40,10 @@ export default function PermissionGuard({ children }: PermissionGuardProps) {
       router.push('/login');
     }
   };
+
+  useEffect(() => {
+    checkPermission();
+  }, []);
 
   if (isChecking) {
     return (

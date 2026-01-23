@@ -27,7 +27,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   // Evita hydration mismatch - só renderiza toasts no cliente
   useEffect(() => {
-    setMounted(true);
+    // Usar setTimeout para evitar setState síncrono em effect
+    setTimeout(() => setMounted(true), 0);
   }, []);
 
   const showToast = useCallback((message: string, type: ToastType = 'info') => {

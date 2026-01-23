@@ -481,7 +481,7 @@ export default function NovoTreinamentoPage() {
                   <MessageSquare className="w-4 h-4 text-blue-600" />
                   <span className="text-xs font-semibold text-blue-700">Pergunta a ser ensinada:</span>
                 </div>
-                <p className="text-sm text-gray-900 font-medium">"{questionFromUrl}"</p>
+                <p className="text-sm text-gray-900 font-medium">&quot;{questionFromUrl}&quot;</p>
               </div>
             </div>
           </div>

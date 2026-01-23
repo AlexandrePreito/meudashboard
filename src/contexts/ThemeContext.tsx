@@ -33,14 +33,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const saved = localStorage.getItem('theme-color');
     if (saved) {
       const colorConfig = getColorConfig(saved);
-      setColors(colorConfig);
-      setPrimaryColorState(saved);
+      // Usar setTimeout para evitar setState síncrono em effect
+      setTimeout(() => {
+        setColors(colorConfig);
+        setPrimaryColorState(saved);
+      }, 0);
       document.documentElement.style.setProperty('--color-primary', colorConfig.primary);
       document.documentElement.style.setProperty('--color-primary-hover', colorConfig.hover);
       document.documentElement.style.setProperty('--color-primary-light', colorConfig.light);
       document.documentElement.style.setProperty('--color-primary-text', colorConfig.text);
     }
-    setMounted(true);
+    setTimeout(() => setMounted(true), 0);
   }, []);
 
   function setPrimaryColor(color: string) {

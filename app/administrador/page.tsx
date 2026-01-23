@@ -9,10 +9,6 @@ export default function AdministradorPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    detectAndRedirect();
-  }, []);
-
   async function detectAndRedirect() {
     try {
       setLoading(true);
@@ -76,6 +72,10 @@ export default function AdministradorPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    detectAndRedirect();
+  }, []);
 
   if (loading) {
     return (
