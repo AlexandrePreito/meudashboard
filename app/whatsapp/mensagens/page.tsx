@@ -94,7 +94,9 @@ function MensagensContent() {
   }
 
   useEffect(() => {
-    loadData(activeGroup);
+    setTimeout(() => {
+      loadData(activeGroup);
+    }, 0);
   }, [filterDirection, activeGroup]);
 
   function openDetailsPanel(message: Message) {
@@ -185,7 +187,9 @@ function MensagensContent() {
 
   // Reset para página 1 quando mudar filtros
   useEffect(() => {
-    setCurrentPage(1);
+    setTimeout(() => {
+      setCurrentPage(1);
+    }, 0);
   }, [searchTerm, filterDirection, filterInstance]);
 
   return (
