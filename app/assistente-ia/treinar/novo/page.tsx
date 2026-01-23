@@ -1,14 +1,14 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
 import { 
   Plus,
   X,
-  Play,
-  Save,
+  Play, 
+  Save, 
   ChevronDown,
   ChevronRight,
   Loader2,
@@ -113,7 +113,7 @@ const TAG_SUGGESTIONS = [
   'semanal', 'subgrupo', 'vencimento', 'vendas', 'vendedor'
 ].sort();
 
-export default function NovoTreinamentoPage() {
+function NovoTreinamentoPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
@@ -310,7 +310,7 @@ export default function NovoTreinamentoPage() {
       if (limit > 0) {
         dax += `,\n    [Valor], ${orderBy}\n)`;
       }
-    } else {
+        } else {
       // Sem agrupadores - usar ROW com CALCULATE se houver filtros
       if (filterExpressions.length > 0) {
         dax += `ROW("Valor", CALCULATE(${measureRef}, ${filterExpressions.join(', ')}))`;
@@ -480,9 +480,9 @@ export default function NovoTreinamentoPage() {
                 <div className="flex items-center gap-2 mb-2">
                   <MessageSquare className="w-4 h-4 text-blue-600" />
                   <span className="text-xs font-semibold text-blue-700">Pergunta a ser ensinada:</span>
-                </div>
+        </div>
                 <p className="text-sm text-gray-900 font-medium">&quot;{questionFromUrl}&quot;</p>
-              </div>
+      </div>
             </div>
           </div>
         )}
@@ -492,8 +492,8 @@ export default function NovoTreinamentoPage() {
           {/* Dataset */}
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 mb-2">Dataset Power BI</label>
-            <select
-              value={selectedDataset}
+        <select
+          value={selectedDataset}
               onChange={(e) => {
                 setSelectedDataset(e.target.value);
                 setSelectedMeasure(null);
@@ -503,12 +503,12 @@ export default function NovoTreinamentoPage() {
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
             >
               <option value="">Selecione um dataset</option>
-              {datasets.map(ds => (
+          {datasets.map(ds => (
                 <option key={ds.id} value={ds.id}>{ds.name}</option>
-              ))}
-            </select>
-          </div>
-          
+          ))}
+        </select>
+      </div>
+      
           {/* Tags */}
           <div className="flex-1 relative">
             <label className="block text-sm font-medium text-gray-700 mb-2">Tags</label>
@@ -541,8 +541,8 @@ export default function NovoTreinamentoPage() {
                 placeholder={tags.length === 0 ? "Digite ou selecione tags..." : ""}
                 className="flex-1 min-w-[120px] outline-none text-sm bg-transparent"
               />
-            </div>
-            
+      </div>
+      
             {showTagSuggestions && (
               <>
                 <div className="fixed inset-0 z-[100]" onClick={() => setShowTagSuggestions(false)} />
@@ -551,7 +551,7 @@ export default function NovoTreinamentoPage() {
                     {TAG_SUGGESTIONS
                       .filter(s => !tags.includes(s) && s.toLowerCase().includes(tagInput.toLowerCase()))
                       .map(suggestion => (
-                        <button
+        <button
                           key={suggestion}
                           onClick={() => {
                             setTags([...tags, suggestion]);
@@ -561,15 +561,15 @@ export default function NovoTreinamentoPage() {
                           className="px-2 py-1.5 text-xs text-left text-gray-700 hover:bg-blue-50 hover:text-blue-700 rounded transition-colors"
                         >
                           <span className="text-blue-500">#</span>{suggestion}
-                        </button>
+        </button>
                       ))}
-                  </div>
-                </div>
+      </div>
+    </div>
               </>
             )}
-          </div>
         </div>
-
+      </div>
+      
         {/* Botão Salvar - Fixo no lado direito */}
         <div className="fixed right-6 top-24 z-50">
           <button
@@ -588,7 +588,7 @@ export default function NovoTreinamentoPage() {
             <div className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-blue-600" />
               <span className="font-semibold text-gray-900 text-sm">Pergunta do Usuário</span>
-            </div>
+        </div>
           </div>
           <div className="p-4">
             <input
@@ -610,8 +610,8 @@ export default function NovoTreinamentoPage() {
               <div className="flex items-center gap-2">
                 <Calculator className="w-4 h-4 text-blue-600" />
                 <span className="font-semibold text-gray-900 text-sm">O que você quer ver?</span>
-              </div>
             </div>
+          </div>
             <div className="p-4 flex-1 flex flex-col relative">
               {loadingMetadata ? (
                 <div className="flex items-center gap-2 text-gray-500 py-4">
@@ -620,7 +620,7 @@ export default function NovoTreinamentoPage() {
                 </div>
               ) : (
                 <>
-                  <button
+          <button
                     onClick={() => {
                       console.log('=== Botão clicado ===');
                       console.log('measures.length:', measures.length);
@@ -634,7 +634,7 @@ export default function NovoTreinamentoPage() {
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-sm text-gray-900 truncate">{selectedMeasure.label}</div>
                         <div className="text-xs text-gray-500 truncate">{selectedMeasure.description}</div>
-                      </div>
+        </div>
                     ) : (
                       <span className="text-gray-400 text-sm">Selecione uma medida...</span>
                     )}
@@ -651,7 +651,7 @@ export default function NovoTreinamentoPage() {
                         {Object.keys(measuresByCategory).length === 0 ? (
                           <div className="px-4 py-3 text-sm text-gray-500 text-center">
                             Nenhuma medida disponível
-                          </div>
+                </div>
                         ) : (
                           <div className="overflow-y-auto max-h-80">
                             {Object.entries(measuresByCategory).map(([category, categoryMeasures]) => (
@@ -666,7 +666,7 @@ export default function NovoTreinamentoPage() {
                                   <div className="flex items-center gap-2.5">
                                     <span className="font-semibold text-sm text-gray-900">{category}</span>
                                     <span className="text-xs text-gray-500">({categoryMeasures.length})</span>
-                                  </div>
+              </div>
                                   {expandedCategories.includes(category) ? (
                                     <ChevronDown className="w-4 h-4 text-gray-400" />
                                   ) : (
@@ -690,18 +690,18 @@ export default function NovoTreinamentoPage() {
                                         <div className="flex-1 min-w-0">
                                           <div className="text-sm font-medium text-gray-900">{measure.label}</div>
                                           <div className="text-xs text-gray-500 truncate">{measure.description}</div>
-                                        </div>
+                </div>
                                         {selectedMeasure?.name === measure.name && (
                                           <Check className="w-4 h-4 text-blue-600 flex-shrink-0 ml-2" />
                                         )}
                                       </button>
                                     ))}
-                                  </div>
+              </div>
                                 )}
                               </div>
                             ))}
-                          </div>
-                        )}
+            </div>
+          )}
                       </div>
                     </>
                   )}
@@ -711,8 +711,8 @@ export default function NovoTreinamentoPage() {
                 <p className="text-xs text-gray-500 mt-2">Nenhuma medida encontrada</p>
               )}
             </div>
-              </div>
-
+          </div>
+          
           {/* Card 2: Agrupadores */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col h-full overflow-visible min-h-[250px]">
             <div className="px-4 py-3 bg-gradient-to-r from-emerald-50 to-emerald-100 border-b border-emerald-200">
@@ -720,8 +720,8 @@ export default function NovoTreinamentoPage() {
                 <Layers className="w-4 h-4 text-emerald-600" />
                 <span className="font-semibold text-gray-900 text-sm">Agrupar por</span>
                 <span className="text-xs text-gray-500">(opcional)</span>
-              </div>
             </div>
+          </div>
             <div className="p-4 flex-1 flex flex-col">
               {selectedGroupers.length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-3">
@@ -736,19 +736,19 @@ export default function NovoTreinamentoPage() {
                           </button>
                         </span>
                       ))}
-                    </div>
-                  )}
-                  
+        </div>
+      )}
+      
                   <div className="relative">
-                    <button
+        <button
                       onClick={() => setShowGrouperDropdown(!showGrouperDropdown)}
                       disabled={!selectedDataset || groupers.length === 0}
                       className="inline-flex items-center gap-2 px-3 py-2 text-xs text-gray-600 border border-dashed border-gray-300 rounded-lg hover:border-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 transition-colors"
-                    >
+        >
                       <Plus className="w-3 h-3" />
                       Adicionar
-                    </button>
-                    
+        </button>
+        
                     {showGrouperDropdown && (
                       <>
                         <div 
@@ -765,7 +765,7 @@ export default function NovoTreinamentoPage() {
                               {groupers.map(grouper => {
                                 const isSelected = selectedGroupers.find(g => g.table === grouper.table && g.column === grouper.column);
                                 return (
-                                  <button
+          <button
                                     key={`${grouper.table}-${grouper.column}`}
                                     onClick={(e) => {
                                       e.stopPropagation();
@@ -776,18 +776,18 @@ export default function NovoTreinamentoPage() {
                                   >
                                     <span className="font-medium text-gray-900">{grouper.label}</span>
                                     {isSelected && <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />}
-                                  </button>
+          </button>
                                 );
                               })}
-                            </div>
+        </div>
                           )}
-                        </div>
+      </div>
                       </>
                     )}
-                  </div>
-                </div>
-              </div>
-
+          </div>
+          </div>
+        </div>
+        
           {/* Card 3: Filtros */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col h-full overflow-visible min-h-[250px]">
             <div className="px-4 py-3 bg-gradient-to-r from-purple-50 to-purple-100 border-b border-purple-200">
@@ -795,8 +795,8 @@ export default function NovoTreinamentoPage() {
                 <Filter className="w-4 h-4 text-purple-600" />
                 <span className="font-semibold text-gray-900 text-sm">Filtrar por</span>
                 <span className="text-xs text-gray-500">(opcional)</span>
-              </div>
-            </div>
+          </div>
+        </div>
             <div className="p-4 space-y-2 flex-1 flex flex-col">
               {selectedFilters.map(filter => {
                     const filterOpt = filterOptions.find(f => f.table === filter.table && f.column === filter.column);
@@ -835,20 +835,20 @@ export default function NovoTreinamentoPage() {
                         <button onClick={() => removeFilter(filter.id)} className="p-1 text-gray-400 hover:text-red-500">
                           <X className="w-3 h-3" />
                         </button>
-                      </div>
+              </div>
                     );
                   })}
                   
                   <div className="relative">
-                    <button
+        <button
                       onClick={() => setShowFilterDropdown(!showFilterDropdown)}
                       disabled={!selectedDataset || filterOptions.length === 0}
                       className="inline-flex items-center gap-2 px-3 py-2 text-xs text-gray-600 border border-dashed border-gray-300 rounded-lg hover:border-purple-400 hover:text-purple-600 hover:bg-purple-50 disabled:opacity-50 transition-colors"
-                    >
+        >
                       <Plus className="w-3 h-3" />
                       Adicionar
-                    </button>
-                    
+        </button>
+        
                     {showFilterDropdown && (
                       <>
                         <div 
@@ -863,7 +863,7 @@ export default function NovoTreinamentoPage() {
                           ) : (
                             <div className="overflow-y-auto max-h-80">
                               {filterOptions.map(filter => (
-                                <button
+        <button
                                   key={`${filter.table}-${filter.column}`}
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -872,31 +872,31 @@ export default function NovoTreinamentoPage() {
                                   className="w-full px-4 py-2.5 text-left hover:bg-purple-50 text-sm transition-colors"
                                 >
                                   <span className="font-medium text-gray-900">{filter.label}</span>
-                                </button>
+        </button>
                               ))}
-                            </div>
+      </div>
                           )}
-                        </div>
+    </div>
                       </>
                     )}
-                  </div>
+        </div>
                 </div>
-              </div>
-
+      </div>
+      
           {/* Card 4: Opções */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col h-full overflow-visible min-h-[250px]">
             <div className="px-4 py-3 bg-gradient-to-r from-orange-50 to-orange-100 border-b border-orange-200">
               <div className="flex items-center gap-2">
                 <Settings className="w-4 h-4 text-orange-600" />
                 <span className="font-semibold text-gray-900 text-sm">Opções</span>
-              </div>
-            </div>
+        </div>
+        </div>
             <div className="p-4 space-y-4 flex-1 flex flex-col justify-center">
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-2">Ordenar</label>
                     <div className="flex gap-1">
                       {ORDER_OPTIONS.map(opt => (
-                        <button
+            <button
                           key={opt.value}
                           onClick={() => setOrderBy(opt.value as 'DESC' | 'ASC')}
                           className={`flex-1 px-2 py-1.5 text-xs rounded-lg border transition-colors ${
@@ -906,16 +906,16 @@ export default function NovoTreinamentoPage() {
                           }`}
                         >
                           {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  
+            </button>
+          ))}
+        </div>
+      </div>
+      
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-2">Limite</label>
                     <div className="flex flex-wrap gap-1">
                       {LIMIT_OPTIONS.map(opt => (
-                        <button
+        <button
                           key={opt.value}
                           onClick={() => setLimit(opt.value)}
                           className={`px-2 py-1.5 text-xs rounded-lg border transition-colors ${
@@ -925,7 +925,7 @@ export default function NovoTreinamentoPage() {
                           }`}
                         >
                           {opt.label}
-                        </button>
+        </button>
                       ))}
                     </div>
                   </div>
@@ -938,14 +938,14 @@ export default function NovoTreinamentoPage() {
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm mb-6">
           <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
             <span className="text-sm font-semibold text-gray-700">DAX Gerado</span>
-            <button
+          <button
               onClick={copyDax}
               disabled={!generatedDax}
               className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg disabled:opacity-50 transition-colors"
               title="Copiar DAX"
             >
               <Copy className="w-4 h-4" />
-            </button>
+          </button>
           </div>
           <div className="p-4 bg-gray-50 border border-gray-100 rounded-lg mx-4 my-3">
             <pre className="text-sm text-gray-700 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
@@ -953,7 +953,7 @@ export default function NovoTreinamentoPage() {
             </pre>
           </div>
           <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex justify-end">
-            <button
+          <button
               onClick={executeDax}
               disabled={!generatedDax || executing}
               className="w-10 h-10 rounded-lg bg-green-500 hover:bg-green-600 text-white flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -961,12 +961,12 @@ export default function NovoTreinamentoPage() {
             >
               {executing ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
+            ) : (
                 <Play className="w-5 h-5" />
-              )}
-            </button>
-          </div>
+            )}
+          </button>
         </div>
+      </div>
 
         {/* Resultado - Abaixo dos cards */}
         {daxResult && (
@@ -985,8 +985,8 @@ export default function NovoTreinamentoPage() {
                       {daxResult.rowCount} registro(s) • {daxResult.executionTime}ms
                     </span>
                   )}
-                </div>
-              </div>
+            </div>
+          </div>
               <div className="p-4 max-h-64 overflow-auto">
                 {daxResult.success ? (
                   daxResult.rowCount === 0 ? (
@@ -996,7 +996,7 @@ export default function NovoTreinamentoPage() {
                       {daxResult.warning && (
                         <p className="text-xs text-gray-500 mt-1">{daxResult.warning}</p>
                       )}
-                    </div>
+        </div>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
@@ -1024,17 +1024,31 @@ export default function NovoTreinamentoPage() {
                           ))}
                         </tbody>
                       </table>
-                    </div>
+        </div>
                   )
                 ) : (
                   <div className="text-sm text-red-700">
                     <p className="font-medium">{daxResult.error}</p>
-                  </div>
+      </div>
                 )}
-              </div>
+    </div>
             </div>
           )}
       </div>
     </MainLayout>
+  );
+}
+
+export default function NovoTreinamentoPage() {
+  return (
+    <Suspense fallback={
+      <MainLayout>
+        <div className="flex items-center justify-center min-h-screen">
+          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+        </div>
+      </MainLayout>
+    }>
+      <NovoTreinamentoPageContent />
+    </Suspense>
   );
 }
