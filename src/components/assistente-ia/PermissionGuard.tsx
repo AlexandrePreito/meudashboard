@@ -42,7 +42,9 @@ export default function PermissionGuard({ children }: PermissionGuardProps) {
   };
 
   useEffect(() => {
-    checkPermission();
+    setTimeout(() => {
+      checkPermission();
+    }, 0);
   }, []);
 
   if (isChecking) {

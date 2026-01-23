@@ -51,16 +51,6 @@ function MensagensContent() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
-  async function loadData(currentGroup?: { id: string; name: string } | null) {
-    setLoading(true);
-    await Promise.all([loadMessages(currentGroup), loadInstances()]);
-    setLoading(false);
-  }
-
-  useEffect(() => {
-    loadData(activeGroup);
-  }, [filterDirection, activeGroup]);
-
   async function loadMessages(currentGroup?: { id: string; name: string } | null) {
     try {
       let url = '/api/whatsapp/messages?limit=100';
@@ -96,6 +86,16 @@ function MensagensContent() {
       console.error('Erro ao carregar instâncias:', err);
     }
   }
+
+  async function loadData(currentGroup?: { id: string; name: string } | null) {
+    setLoading(true);
+    await Promise.all([loadMessages(currentGroup), loadInstances()]);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadData(activeGroup);
+  }, [filterDirection, activeGroup]);
 
   function openDetailsPanel(message: Message) {
     setSelectedMessage(message);

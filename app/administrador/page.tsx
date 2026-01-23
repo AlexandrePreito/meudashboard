@@ -74,7 +74,9 @@ export default function AdministradorPage() {
   }
 
   useEffect(() => {
-    detectAndRedirect();
+    setTimeout(() => {
+      detectAndRedirect();
+    }, 0);
   }, []);
 
   if (loading) {

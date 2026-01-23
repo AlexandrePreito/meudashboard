@@ -62,12 +62,16 @@ function WebhookContent() {
   }
 
   useEffect(() => {
-    checkAccess();
+    setTimeout(() => {
+      checkAccess();
+    }, 0);
   }, []);
 
   useEffect(() => {
     const baseUrl = window.location.origin;
-    setWebhookUrl(`${baseUrl}/api/whatsapp/webhook`);
+    setTimeout(() => {
+      setWebhookUrl(`${baseUrl}/api/whatsapp/webhook`);
+    }, 0);
   }, []);
 
   // Loading state
