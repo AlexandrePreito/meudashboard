@@ -167,17 +167,26 @@ function NumerosContent() {
 
   function openEdit(number: AuthorizedNumber) {
     setEditingNumber(number);
+    // Converter datasets do formato da API para o formato do formData
+    const datasets = (number.datasets || []).map((d: any) => ({
+      connection_id: d.connection_id,
+      dataset_id: d.dataset_id,
+      dataset_name: d.dataset_name || d.dataset_id
+    }));
+    
+    console.log('[DEBUG] Editando número:', {
+      numberId: number.id,
+      datasetsFromAPI: number.datasets,
+      datasetsMapped: datasets
+    });
+    
     setFormData({
       phone_number: number.phone_number,
       name: number.name,
       instance_id: number.instance?.id || '',
       can_receive_alerts: number.can_receive_alerts,
       can_use_chat: number.can_use_chat,
-      datasets: number.datasets?.map(d => ({
-        connection_id: d.connection_id,
-        dataset_id: d.dataset_id,
-        dataset_name: d.dataset_name
-      })) || []
+      datasets: datasets
     });
     setShowModal(true);
   }
@@ -190,13 +199,19 @@ function NumerosContent() {
 
     setSaving(true);
     try {
+      console.log('[DEBUG] Salvando número:', {
+        editing: !!editingNumber,
+        datasets: formData.datasets,
+        activeGroup: activeGroup?.id
+      });
+      
       const payload: any = {
         phone_number: formData.phone_number,
         name: formData.name,
         instance_id: formData.instance_id || null,
         can_receive_alerts: formData.can_receive_alerts,
         can_use_chat: formData.can_use_chat,
-        datasets: formData.datasets
+        datasets: formData.datasets || [] // Garantir que sempre seja um array
       };
 
       // Se admin ou developer, adicionar company_group_id
@@ -532,7 +547,7 @@ function NumerosContent() {
 
                 {/* DatasetSelector */}
                 <DatasetSelector
-                  companyGroupId={userRole === 'admin' ? userGroupIds[0] : undefined}
+                  companyGroupId={activeGroup?.id || (userRole === 'admin' ? userGroupIds[0] : undefined)}
                   selectedDatasets={formData.datasets}
                   onChange={(datasets) => setFormData({...formData, datasets})}
                 />
