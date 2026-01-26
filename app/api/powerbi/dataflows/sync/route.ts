@@ -9,8 +9,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    // Permitir master, developer ou admin
-    const canSync = user.is_master || user.is_developer || user.role === 'admin' || user.role === 'developer';
+    // Permitir master ou developer
+    const canSync = user.is_master || user.is_developer;
     if (!canSync) {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     }
