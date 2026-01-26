@@ -9,7 +9,7 @@ import {
   ParsedDocumentation 
 } from '@/lib/assistente-ia/documentation-parser';
 import { generateWhatsAppPrompt } from '@/lib/prompts/system-prompt';
-import { getQueryContext, formatQueryContextForPrompt, saveQueryLearning } from '@/lib/query-learning';
+import { getQueryContext, formatQueryContextForPrompt, saveQueryLearning, markTrainingExampleUsed } from '@/lib/query-learning';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY || '',
