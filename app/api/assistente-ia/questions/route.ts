@@ -25,34 +25,73 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
     const countsOnly = searchParams.get('counts') === 'true';
+    const groupIdParam = searchParams.get('group_id'); // Grupo específico do header
 
     let groupIds: string[] = [];
 
-    if (isDeveloper) {
-      // Para developers: buscar todos os grupos que ele gerencia via user_id
-      const { data: user } = await supabase
-        .from('users')
-        .select('developer_id')
-        .eq('id', membership.user_id)
-        .single();
+    // Se foi passado group_id específico, usar ele (prioridade)
+    if (groupIdParam) {
+      // Validar se o usuário tem acesso a esse grupo
+      if (isDeveloper) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('developer_id')
+          .eq('id', membership.user_id)
+          .single();
 
-      if (user?.developer_id) {
-        const { data: groups, error: groupsError } = await supabase
-          .from('company_groups')
-          .select('id')
-          .eq('developer_id', user.developer_id);
+        if (user?.developer_id) {
+          // Verificar se o grupo pertence ao developer
+          const { data: group } = await supabase
+            .from('company_groups')
+            .select('id')
+            .eq('id', groupIdParam)
+            .eq('developer_id', user.developer_id)
+            .single();
 
-        if (!groupsError && groups) {
-          groupIds = groups.map(g => g.id);
+          if (group) {
+            groupIds = [groupIdParam];
+          } else {
+            return NextResponse.json({ success: false, error: 'Grupo não encontrado ou sem permissão' }, { status: 403 });
+          }
+        } else {
+          return NextResponse.json({ success: false, error: 'Usuário não é developer' }, { status: 403 });
+        }
+      } else {
+        // Para não-developers, verificar se o grupo é o mesmo do membership
+        if (membership.company_group_id === groupIdParam) {
+          groupIds = [groupIdParam];
+        } else {
+          return NextResponse.json({ success: false, error: 'Sem permissão para acessar este grupo' }, { status: 403 });
         }
       }
+    } else {
+      // Comportamento original: buscar grupos baseado no membership
+      if (isDeveloper) {
+        // Para developers: buscar todos os grupos que ele gerencia via user_id
+        const { data: user } = await supabase
+          .from('users')
+          .select('developer_id')
+          .eq('id', membership.user_id)
+          .single();
 
-      // Fallback: usar o company_group_id do membership se nao encontrar grupos
-      if (groupIds.length === 0 && membership.company_group_id) {
+        if (user?.developer_id) {
+          const { data: groups, error: groupsError } = await supabase
+            .from('company_groups')
+            .select('id')
+            .eq('developer_id', user.developer_id);
+
+          if (!groupsError && groups) {
+            groupIds = groups.map(g => g.id);
+          }
+        }
+
+        // Fallback: usar o company_group_id do membership se nao encontrar grupos
+        if (groupIds.length === 0 && membership.company_group_id) {
+          groupIds = [membership.company_group_id];
+        }
+      } else if (membership.company_group_id) {
         groupIds = [membership.company_group_id];
       }
-    } else if (membership.company_group_id) {
-      groupIds = [membership.company_group_id];
     }
 
     // Se pediu apenas contadores, retornar todos de uma vez

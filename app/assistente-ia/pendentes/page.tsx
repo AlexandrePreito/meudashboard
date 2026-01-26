@@ -10,11 +10,13 @@ import Button from '@/components/ui/Button';
 import { useNotification } from '@/hooks/useNotification';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
+import { useMenu } from '@/contexts/MenuContext';
 
 // Componente interno que usa o contexto
 function PerguntasPendentesContent() {
   const router = useRouter();
   const { success, error } = useNotification();
+  const { activeGroup } = useMenu();
   const [questions, setQuestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -27,13 +29,21 @@ function PerguntasPendentesContent() {
   });
 
   useEffect(() => {
-    fetchStats();
-    fetchQuestions();
-  }, [statusFilter]);
+    if (activeGroup?.id) {
+      fetchStats();
+      fetchQuestions();
+    } else {
+      setQuestions([]);
+      setStats({ total: 0, pending: 0, resolved: 0, ignored: 0 });
+      setLoading(false);
+    }
+  }, [statusFilter, activeGroup?.id]);
 
   const fetchStats = async () => {
+    if (!activeGroup?.id) return;
+    
     try {
-      const res = await fetch('/api/assistente-ia/questions?counts=true');
+      const res = await fetch(`/api/assistente-ia/questions?counts=true&group_id=${activeGroup.id}`);
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.counts) {
@@ -46,11 +56,18 @@ function PerguntasPendentesContent() {
   };
 
   const fetchQuestions = async () => {
+    if (!activeGroup?.id) {
+      setQuestions([]);
+      setLoading(false);
+      return;
+    }
+    
     setLoading(true);
     try {
       const params = new URLSearchParams({
         status: statusFilter,
-        limit: '50'
+        limit: '50',
+        group_id: activeGroup.id
       });
 
       if (search) {
@@ -62,9 +79,12 @@ function PerguntasPendentesContent() {
 
       if (data.success) {
         setQuestions(data.data || []);
+      } else {
+        setQuestions([]);
       }
     } catch (err) {
       console.error('Erro ao buscar perguntas:', err);
+      setQuestions([]);
     } finally {
       setLoading(false);
     }

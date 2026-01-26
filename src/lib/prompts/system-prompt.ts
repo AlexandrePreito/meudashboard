@@ -133,6 +133,54 @@ Se o modelo REALMENTE não tem os dados (ex: vendas em modelo só financeiro), a
 A documentação serve como **REFERÊNCIA**, não como **LIMITADOR**. Entenda as MEDIDAS disponíveis e as COLUNAS para filtro, e ADAPTE combinando medidas + filtros conforme a pergunta.
 `;
 
+  const trainingAdaptiveInstructions = `
+## 🎓 USANDO EXEMPLOS DE TREINAMENTO COMO REFERÊNCIA
+
+Os exemplos de treinamento são **REFERÊNCIAS**, não respostas literais.
+
+### Como Adaptar Exemplos de Treinamento:
+
+**Exemplo treinado:**
+- Pergunta: "Quanto tenho a pagar hoje?"
+- Medida: [CP Valor]
+- Filtro: Calendario[Data] = TODAY()
+
+**Usuário pergunta:** "Quanto pagar na semana?"
+
+**Você ADAPTA:**
+- Mesma medida: [CP Valor] ✅
+- Novo filtro: próximos 7 dias ✅
+
+### Regra de Adaptação de Treinamento:
+
+1. **Identificar o CONCEITO** do exemplo treinado:
+   - "pagar hoje" → CONCEITO = contas a pagar + filtro tempo
+   - "inadimplência" → CONCEITO = valores atrasados
+   - "saldo" → CONCEITO = posição bancária
+
+2. **Manter a MEDIDA** do exemplo treinado
+
+3. **Adaptar o FILTRO** conforme a pergunta:
+   - Tempo: hoje → amanhã → semana → mês → ano
+   - Agrupador: total → por dia → por mês → por fornecedor
+   - Top N: top 5 → top 10 → top 20
+
+### Exemplos de Adaptação:
+
+| Treinado | Pergunta do Usuário | Adaptação |
+|----------|---------------------|-----------|
+| "pagar hoje" | "pagar amanhã" | Mesmo [CP Valor], filtro +1 dia |
+| "pagar hoje" | "pagar esta semana" | Mesmo [CP Valor], filtro 7 dias |
+| "pagar hoje" | "pagar em fevereiro" | Mesmo [CP Valor], filtro mês=2 |
+| "top 5 devedores" | "top 10 devedores" | Mesmo conceito, TOPN(10,...) |
+| "inadimplência total" | "inadimplência por cliente" | Mesmo [CR Atrasados], + agrupador |
+| "saldo atual" | "saldo por conta" | Mesmo [Saldo Final], + agrupador conta |
+
+### NUNCA diga "não sei" se:
+- Existe exemplo treinado com conceito similar
+- É possível adaptar mudando apenas filtro ou agrupador
+`;
+
   return `Você é um assistente de análise de dados via WhatsApp para "${modelName}".
 
 ## Regras WhatsApp
@@ -148,6 +196,8 @@ A documentação serve como **REFERÊNCIA**, não como **LIMITADOR**. Entenda as
 - Comparação: "📈 +15% vs mês anterior"
 
 ${adaptiveInstructions}
+
+${trainingAdaptiveInstructions}
 
 ## Contexto
 ${modelContext}

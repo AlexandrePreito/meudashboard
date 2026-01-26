@@ -1463,7 +1463,10 @@ Ano: ${currentYear}`;
       }
     }
 
-    if (!assistantMessage.trim()) {
+    // Se a resposta está vazia, considerar como falha
+    const isEmptyResponse = !assistantMessage.trim();
+    
+    if (isEmptyResponse) {
       if (daxError) {
         assistantMessage = `📊 Não encontrei esses dados específicos.
 
@@ -1471,7 +1474,7 @@ Ano: ${currentYear}`;
 1️⃣ Qual o faturamento total?
 2️⃣ Vendas por filial
 3️⃣ Top 10 produtos vendidos`;
-          } else {
+      } else {
         assistantMessage = `Não entendi sua pergunta. 🤔
 
 📊 *Análises sugeridas:*
@@ -1479,6 +1482,8 @@ Ano: ${currentYear}`;
 2️⃣ Vendas por garçom
 3️⃣ Ticket médio`;
       }
+      // Resposta vazia também é considerada falha
+      console.log('[Webhook] ⚠️ Resposta vazia detectada, será salva como pendente');
     }
 
     console.log('[Webhook] Resposta:', assistantMessage.length, 'chars | Total:', Date.now() - startTime, 'ms');
@@ -1492,56 +1497,154 @@ Ano: ${currentYear}`;
     }
 
     // ========== DETECTAR E SALVAR PERGUNTAS NÃO RESPONDIDAS ==========
-    const evasivePatterns = [
-      'não encontrei',
-      'não consegui', 
-      'não tenho acesso',
-      'não possuo',
-      'não foi possível',
-      'não tenho informações',
-      'não tenho dados',
-      'sem dados',
-      'dados não disponíveis',
-      'informação não disponível',
-      'não entendi',
-      'não localizei',
-      'não há dados',
-      'não existe'
-    ];
+    
+    // Função para detectar se a resposta é uma falha/genérica
+    function isFailureResponse(response: string): boolean {
+      const failureIndicators = [
+        'não encontrei',
+        'não consegui', 
+        'não tenho acesso',
+        'não possuo',
+        'não foi possível',
+        'não tenho informações',
+        'não tenho dados',
+        'sem dados',
+        'dados não disponíveis',
+        'informação não disponível',
+        'não entendi',
+        'não localizei',
+        'não há dados',
+        'não existe',
+        'não sei responder',
+        'não posso responder',
+        'análises sugeridas',
+        'análises disponíveis',
+        'tente perguntar',
+        'não consegui processar',
+        'não foi possível encontrar',
+        'não localizei informações',
+        'desculpe, não',
+        'não tenho essa informação'
+      ];
+      
+      const normalized = response.toLowerCase();
+      return failureIndicators.some(indicator => normalized.includes(indicator));
+    }
 
-    const assistantMessageLower = assistantMessage.toLowerCase();
-    const isEvasiveResponse = evasivePatterns.some(pattern => 
-      assistantMessageLower.includes(pattern)
-    );
+    // Identificar razão da falha
+    function identifyFailureReason(response: string, hasDaxError: boolean): string {
+      if (hasDaxError) return 'execution_error';
+      
+      const normalized = response.toLowerCase();
+      if (normalized.includes('não encontrei dados') || normalized.includes('sem dados')) return 'no_data';
+      if (normalized.includes('não localizei query') || normalized.includes('não entendi')) return 'no_query_match';
+      if (normalized.includes('erro ao executar') || normalized.includes('erro dax')) return 'execution_error';
+      if (normalized.includes('análises sugeridas')) return 'no_query_match';
+      
+      return 'unknown';
+    }
 
-    if (isEvasiveResponse || daxError) {
-      console.log('[Webhook] 🔴 Resposta evasiva detectada, salvando pergunta pendente...');
+    // Verificar se foi falha (incluindo resposta vazia)
+    // IMPORTANTE: Verificar DEPOIS de preencher a resposta vazia
+    const isEvasiveResponse = isFailureResponse(assistantMessage) || isEmptyResponse;
+    const failureReason = identifyFailureReason(assistantMessage, !!daxError);
+    
+    // Debug: Log da resposta para verificar detecção
+    console.log('[Webhook] DEBUG - Verificando resposta:', {
+      length: assistantMessage.length,
+      preview: assistantMessage.substring(0, 100),
+      isEmpty: isEmptyResponse,
+      isEvasive: isFailureResponse(assistantMessage),
+      hasDaxError: !!daxError,
+      failureReason
+    });
+    
+    // Construir mensagem de erro completa
+    let errorMessage = '';
+    if (daxError) {
+      errorMessage = `Erro DAX: ${daxError}`;
+    } else if (isEmptyResponse) {
+      errorMessage = 'Resposta vazia da IA';
+    } else if (isEvasiveResponse) {
+      errorMessage = `Resposta evasiva: ${assistantMessage.substring(0, 200)}`;
+    }
+
+    if (isEvasiveResponse || daxError || isEmptyResponse) {
+      console.log('[Webhook] 🔴 Resposta evasiva/falha detectada, salvando pergunta pendente...');
+      console.log('[Webhook] Razão da falha:', failureReason);
+      console.log('[Webhook] DEBUG - Resposta:', assistantMessage.substring(0, 100));
+      console.log('[Webhook] DEBUG - É evasiva?', isEvasiveResponse);
+      console.log('[Webhook] DEBUG - Context:', {
+        group: authorizedNumber?.company_group_id,
+        dataset: datasetId,
+        connection: connectionId,
+        phone: phone,
+        question: processedMessage.substring(0, 50)
+      });
+      
       try {
-        // Verificar se já existe pergunta similar pendente
+        // Tentar salvar em ai_pending_questions primeiro (nova tabela)
+        // Se não existir, usar ai_unanswered_questions (tabela antiga)
+        let saved = false;
+        
+        // Tentar ai_pending_questions
+        const { error: pendingError } = await supabase
+          .from('ai_pending_questions')
+          .insert({
+            company_group_id: authorizedNumber.company_group_id,
+            connection_id: connectionId || null,
+            dataset_id: datasetId || null,
+            user_question: processedMessage,
+            user_phone: phone,
+            ai_response: assistantMessage,
+            failure_reason: failureReason,
+            source: 'whatsapp',
+            status: 'pending',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+
+        if (!pendingError) {
+          console.log('[Webhook] ✅ Pergunta salva em ai_pending_questions:', processedMessage.substring(0, 50));
+          saved = true;
+        } else {
+          console.log('[Webhook] ⚠️ Tabela ai_pending_questions não existe ou erro:', pendingError.message);
+          // Continuar para tentar ai_unanswered_questions
+        }
+
+        // Também salvar em ai_unanswered_questions (tabela existente) para compatibilidade
+        // Verificar se já existe pergunta similar pendente (busca mais flexível)
         const { data: existingQuestion } = await supabase
           .from('ai_unanswered_questions')
-          .select('id, user_count, attempt_count')
+          .select('id, user_count, attempt_count, phone_number')
           .eq('company_group_id', authorizedNumber.company_group_id)
-          .ilike('user_question', processedMessage)
+          .ilike('user_question', `%${processedMessage.substring(0, 50)}%`) // Busca parcial
           .eq('status', 'pending')
           .maybeSingle();
 
         if (existingQuestion) {
+          // Verificar se é o mesmo usuário ou diferente
+          const isSameUser = existingQuestion.phone_number === phone;
+          const newUserCount = isSameUser 
+            ? existingQuestion.user_count 
+            : (existingQuestion.user_count || 1) + 1;
+          
           // Atualizar pergunta existente
           const { error: updateError } = await supabase
             .from('ai_unanswered_questions')
             .update({
               attempt_count: (existingQuestion.attempt_count || 0) + 1,
-              user_count: (existingQuestion.user_count || 0) + 1,
+              user_count: newUserCount,
               last_asked_at: new Date().toISOString(),
-              error_message: daxError || 'Resposta evasiva da IA'
+              error_message: errorMessage || 'Resposta evasiva da IA',
+              updated_at: new Date().toISOString()
             })
             .eq('id', existingQuestion.id);
           
           if (updateError) {
-            console.error('[Webhook] Erro ao atualizar pergunta pendente:', updateError.message);
+            console.error('[Webhook] Erro ao atualizar pergunta em ai_unanswered_questions:', updateError.message);
           } else {
-            console.log('[Webhook] ✅ Pergunta pendente atualizada:', existingQuestion.id);
+            console.log('[Webhook] ✅ Pergunta atualizada em ai_unanswered_questions:', existingQuestion.id, `| Tentativas: ${(existingQuestion.attempt_count || 0) + 1}`);
           }
         } else {
           // Criar nova pergunta pendente
@@ -1553,26 +1656,30 @@ Ano: ${currentYear}`;
               dataset_id: datasetId || null,
               user_question: processedMessage,
               phone_number: phone,
-              attempted_dax: null,
-              error_message: daxError || 'Resposta evasiva da IA',
+              attempted_dax: null, // Pode ser preenchido depois se tiver
+              error_message: errorMessage || 'Resposta evasiva da IA',
               status: 'pending',
               attempt_count: 1,
               user_count: 1,
               first_asked_at: new Date().toISOString(),
-              last_asked_at: new Date().toISOString()
+              last_asked_at: new Date().toISOString(),
+              created_at: new Date().toISOString()
             })
             .select('id')
             .single();
           
           if (insertError) {
-            console.error('[Webhook] Erro ao criar pergunta pendente:', insertError.message, insertError.details);
+            console.error('[Webhook] Erro ao criar pergunta em ai_unanswered_questions:', insertError.message, insertError.details);
           } else {
-            console.log('[Webhook] ✅ Nova pergunta pendente criada:', newQuestion?.id, '| Pergunta:', processedMessage);
+            console.log('[Webhook] ✅ Nova pergunta criada em ai_unanswered_questions:', newQuestion?.id, '| Pergunta:', processedMessage.substring(0, 50));
           }
         }
       } catch (saveError: any) {
         console.error('[Webhook] ❌ Erro ao salvar pergunta pendente:', saveError.message);
+        console.error('[Webhook] Stack:', saveError.stack);
       }
+    } else {
+      console.log('[Webhook] ✅ Resposta OK, não é evasiva. Não salvando como pendente.');
     }
     // ========== FIM - DETECTAR E SALVAR PERGUNTAS NÃO RESPONDIDAS ==========
 

@@ -35,6 +35,8 @@ export interface TrainingExample {
   category: string;
   tags: string[];
   similarity_score?: number;
+  measures_used?: string[];
+  concept_match?: number;
 }
 
 export interface QueryContext {
@@ -77,6 +79,38 @@ export function identifyQuestionIntent(question: string): string {
   if (q.match(/saldo|caixa|banco/)) return 'saldo';
   
   return 'outros';
+}
+
+/**
+ * Mapeamento de conceitos para busca semântica
+ */
+const conceptMapping: Record<string, string[]> = {
+  'pagar': ['pagar', 'pagamento', 'despesa', 'saída', 'contas a pagar', 'cp', 'fornecedor', 'a pagar', 'vencer'],
+  'receber': ['receber', 'recebimento', 'receita', 'entrada', 'contas a receber', 'cr', 'cliente', 'a receber'],
+  'inadimplencia': ['inadimplência', 'inadimplencia', 'atraso', 'atrasado', 'vencido', 'devendo', 'dívida', 'devedor'],
+  'saldo': ['saldo', 'banco', 'disponível', 'caixa', 'conta bancária', 'posição'],
+  'fluxo': ['fluxo', 'movimentação', 'entradas e saídas', 'dfc', 'fluxo de caixa'],
+  'vencimento': ['vence', 'vencimento', 'vencer', 'vencida', 'vencidas'],
+  'tempo': ['hoje', 'amanhã', 'ontem', 'semana', 'mês', 'ano', 'dia', 'período', 'data'],
+  'ranking': ['top', 'melhor', 'pior', 'maior', 'menor', 'ranking', 'mais', 'menos'],
+  'faturamento': ['faturamento', 'faturou', 'vendas', 'receita', 'vendeu'],
+  'margem': ['margem', 'lucro', 'lucratividade', 'rentabilidade']
+};
+
+/**
+ * Identifica conceitos da pergunta
+ */
+function identifyConcept(question: string): string[] {
+  const normalized = question.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const concepts: string[] = [];
+  
+  for (const [concept, keywords] of Object.entries(conceptMapping)) {
+    if (keywords.some(kw => normalized.includes(kw))) {
+      concepts.push(concept);
+    }
+  }
+  
+  return concepts;
 }
 
 /**
@@ -124,7 +158,7 @@ function calculateSimilarity(question1: string, question2: string): number {
 }
 
 /**
- * Busca exemplos de treinamento relevantes para a pergunta
+ * Busca exemplos de treinamento relevantes para a pergunta (por CONCEITO)
  */
 export async function findTrainingExamples(
   supabase: SupabaseClient,
@@ -134,10 +168,11 @@ export async function findTrainingExamples(
 ): Promise<TrainingExample[]> {
   try {
     const keywords = extractKeywords(question);
+    const concepts = identifyConcept(question);
     
     const { data, error } = await supabase
       .from('ai_training_examples')
-      .select('id, user_question, dax_query, formatted_response, category, tags')
+      .select('id, user_question, dax_query, formatted_response, category, tags, measures_used')
       .eq('dataset_id', datasetId)
       .eq('is_validated', true)
       .limit(50);
@@ -147,17 +182,23 @@ export async function findTrainingExamples(
       return [];
     }
 
-    // Calcular similaridade
+    // Calcular similaridade por CONCEITO e keywords
     const scored = data.map(example => {
       const exampleKeywords = extractKeywords(example.user_question);
+      const exampleConcepts = identifyConcept(example.user_question);
+      
       let score = 0;
       
-      // Match por keywords da pergunta
+      // Match por CONCEITO (peso maior - 5 pontos por conceito)
+      const matchingConcepts = concepts.filter(c => exampleConcepts.includes(c));
+      score += matchingConcepts.length * 5;
+      
+      // Match por keywords da pergunta (peso médio - 2 pontos)
       keywords.forEach(kw => {
         if (exampleKeywords.includes(kw)) score += 2;
       });
       
-      // Match por tags
+      // Match por tags (peso baixo - 1 ponto)
       if (example.tags && Array.isArray(example.tags)) {
         keywords.forEach(kw => {
           if (example.tags.some((tag: string) => tag.toLowerCase().includes(kw))) {
@@ -166,7 +207,7 @@ export async function findTrainingExamples(
         });
       }
 
-      // Match por categoria (se a pergunta mencionar)
+      // Match por categoria (peso baixo - 1 ponto)
       if (example.category) {
         const categoryLower = example.category.toLowerCase();
         keywords.forEach(kw => {
@@ -177,18 +218,26 @@ export async function findTrainingExamples(
       return { 
         ...example, 
         similarity_score: score,
+        concept_match: matchingConcepts.length,
         tags: example.tags || []
       };
     });
 
-    // Filtrar e ordenar
+    // Filtrar e ordenar (priorizar matches de conceito)
     const filtered = scored
       .filter(e => e.similarity_score > 0)
-      .sort((a, b) => b.similarity_score! - a.similarity_score!)
+      .sort((a, b) => {
+        // Primeiro por número de conceitos matchados
+        if (b.concept_match !== a.concept_match) {
+          return b.concept_match - a.concept_match;
+        }
+        // Depois por score total
+        return (b.similarity_score || 0) - (a.similarity_score || 0);
+      })
       .slice(0, limit);
 
     if (filtered.length > 0) {
-      console.log(`[findTrainingExamples] Encontrados ${filtered.length} exemplos de treinamento`);
+      console.log(`[findTrainingExamples] Encontrados ${filtered.length} exemplos (conceitos: ${concepts.join(', ')})`);
     }
 
     return filtered;
@@ -199,32 +248,56 @@ export async function findTrainingExamples(
 }
 
 /**
- * Formata exemplos de treinamento para o prompt
+ * Formata exemplos de treinamento para o prompt (com instruções de adaptação)
  */
 export function formatTrainingExamplesForPrompt(examples: TrainingExample[]): string {
   if (examples.length === 0) return '';
 
   const parts: string[] = [];
-  parts.push('\n## Exemplos de Perguntas/Respostas Treinados\n');
-  parts.push('Estes exemplos foram cadastrados manualmente e são referência obrigatória:\n');
+  parts.push('\n## 🎓 EXEMPLOS DE TREINAMENTO (use como REFERÊNCIA ADAPTÁVEL)\n');
+  parts.push('Estes exemplos mostram como responder. **ADAPTE conforme a pergunta do usuário.**');
+  parts.push('Se a pergunta for similar mas com período diferente, use a mesma medida e adapte o filtro.\n');
 
   examples.forEach((ex, i) => {
-    parts.push(`### Exemplo ${i + 1}`);
-    parts.push(`**Pergunta:** ${ex.user_question}`);
+    // Extrair medidas usadas se disponível
+    const measures = (ex as any).measures_used || extractMeasuresAndColumns(ex.dax_query).measures;
+    const measuresText = measures.length > 0 ? measures.join(', ') : 'não especificado';
+    
+    parts.push(`### Exemplo ${i + 1}: "${ex.user_question}"`);
+    parts.push(`**Medidas:** ${measuresText}`);
     parts.push(`**Query DAX:**`);
     parts.push('```dax');
     parts.push(ex.dax_query);
     parts.push('```');
     if (ex.formatted_response) {
-      parts.push(`**Resposta esperada:** ${ex.formatted_response}`);
+      parts.push(`**Resposta modelo:** "${ex.formatted_response}"`);
     }
     parts.push('');
+    parts.push('💡 **Para adaptar:** Mantenha a medida, mude o filtro de data/período conforme necessário.');
+    parts.push('---\n');
   });
 
-  parts.push('**Instruções:**');
-  parts.push('- Use estes exemplos como base para sua resposta');
-  parts.push('- Adapte a query DAX conforme necessário');
-  parts.push('- Mantenha o formato de resposta similar');
+  parts.push('### 📋 REGRAS DE ADAPTAÇÃO DE TREINAMENTO:\n');
+  parts.push('1. **Identificar o CONCEITO** do exemplo treinado:');
+  parts.push('   - "pagar hoje" → CONCEITO = contas a pagar + filtro tempo');
+  parts.push('   - "inadimplência" → CONCEITO = valores atrasados');
+  parts.push('   - "saldo" → CONCEITO = posição bancária\n');
+  parts.push('2. **Manter a MEDIDA** do exemplo treinado\n');
+  parts.push('3. **Adaptar o FILTRO** conforme a pergunta:');
+  parts.push('   - Tempo: hoje → amanhã → semana → mês → ano');
+  parts.push('   - Agrupador: total → por dia → por mês → por fornecedor');
+  parts.push('   - Top N: top 5 → top 10 → top 20\n');
+  parts.push('### Exemplos de Adaptação:\n');
+  parts.push('| Treinado | Pergunta do Usuário | Adaptação |');
+  parts.push('|----------|---------------------|-----------|');
+  parts.push('| "pagar hoje" | "pagar amanhã" | Mesmo [CP Valor], filtro +1 dia |');
+  parts.push('| "pagar hoje" | "pagar esta semana" | Mesmo [CP Valor], filtro 7 dias |');
+  parts.push('| "pagar hoje" | "pagar em fevereiro" | Mesmo [CP Valor], filtro mês=2 |');
+  parts.push('| "top 5 devedores" | "top 10 devedores" | Mesmo conceito, TOPN(10,...) |');
+  parts.push('| "inadimplência total" | "inadimplência por cliente" | Mesmo [CR Atrasados], + agrupador |\n');
+  parts.push('### ⚠️ NUNCA diga "não sei" se:');
+  parts.push('- Existe exemplo treinado com conceito similar');
+  parts.push('- É possível adaptar mudando apenas filtro ou agrupador');
 
   return parts.join('\n');
 }
