@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const user = await getAuthUser();
     
@@ -11,25 +11,91 @@ export async function GET() {
     }
 
     const supabase = createAdminClient();
+    const { searchParams } = new URL(request.url);
+    const groupId = searchParams.get('group_id');
 
-    // Buscar TODOS os screens (telas)
-    const { data: screens, error: screensError } = await supabase
+    let userGroupIds: string[] = [];
+    let validConnectionIds: string[] = [];
+
+    if (user.is_master) {
+      // Master vê tudo
+    } else {
+      const developerId = await getUserDeveloperId(user.id);
+      if (developerId) {
+        const { data: devGroups } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('developer_id', developerId)
+          .eq('status', 'active');
+        userGroupIds = devGroups?.map(g => g.id) || [];
+      } else {
+        const { data: memberships } = await supabase
+          .from('user_group_membership')
+          .select('company_group_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+        userGroupIds = memberships?.map(m => m.company_group_id) || [];
+      }
+
+      if (userGroupIds.length === 0) {
+        return NextResponse.json({
+          summary: { healthPercentage: 0, total: 0, updated: 0, failed: 0, stale: 0 },
+          datasets: { total: 0, ok: 0, failed: 0, stale: 0 },
+          dataflows: { total: 0, ok: 0, failed: 0, stale: 0 }
+        });
+      }
+    }
+
+    // Buscar conexões válidas para filtrar dataflows
+    if (groupId) {
+      const { data: groupConnections } = await supabase
+        .from('powerbi_connections')
+        .select('id')
+        .eq('company_group_id', groupId);
+      validConnectionIds = groupConnections?.map(c => c.id) || [];
+    } else if (!user.is_master && userGroupIds.length > 0) {
+      const { data: userConnections } = await supabase
+        .from('powerbi_connections')
+        .select('id')
+        .in('company_group_id', userGroupIds);
+      validConnectionIds = userConnections?.map(c => c.id) || [];
+    }
+
+    // ========== DATASETS (de powerbi_dashboard_screens) ==========
+    let screensQuery = supabase
       .from('powerbi_dashboard_screens')
-      .select('id, title, is_active, last_refresh_date, refresh_status, company_group_id');
+      .select('id, title, is_active, last_refresh_date, refresh_status, company_group_id')
+      .eq('is_active', true);
 
-    // Buscar TODOS os reports (relatórios)
-    const { data: reports, error: reportsError } = await supabase
-      .from('powerbi_reports')
-      .select('id, name, is_active, last_refresh_date, refresh_status, connection_id, connection:powerbi_connections(company_group_id)');
+    if (groupId) {
+      screensQuery = screensQuery.eq('company_group_id', groupId);
+    } else if (!user.is_master && userGroupIds.length > 0) {
+      screensQuery = screensQuery.in('company_group_id', userGroupIds);
+    }
 
-    if (screensError || reportsError) {
-      console.error('Erro ao buscar recursos:', { screensError, reportsError });
+    const { data: screens, error: screensError } = await screensQuery;
+
+    // ========== DATAFLOWS (de powerbi_dataflows - CORRIGIDO!) ==========
+    let dataflowsQuery = supabase
+      .from('powerbi_dataflows')  // CORRETO: usar powerbi_dataflows, NÃO powerbi_reports
+      .select('id, name, is_active, last_refresh_date, refresh_status, connection_id')
+      .eq('is_active', true);
+
+    if (validConnectionIds.length > 0) {
+      dataflowsQuery = dataflowsQuery.in('connection_id', validConnectionIds);
+    } else if (!user.is_master) {
+      dataflowsQuery = dataflowsQuery.in('connection_id', ['00000000-0000-0000-0000-000000000000']);
+    }
+
+    const { data: dataflows, error: dataflowsError } = await dataflowsQuery;
+
+    if (screensError || dataflowsError) {
+      console.error('Erro ao buscar recursos:', { screensError, dataflowsError });
     }
 
     const allScreens = screens || [];
-    const allReports = reports || [];
+    const allDataflows = dataflows || [];
 
-    // Calcular estatísticas
     const now = new Date();
     const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
@@ -41,10 +107,7 @@ export async function GET() {
     let dataflowsFailed = 0;
     let dataflowsStale = 0;
 
-    // Processar screens (datasets)
     for (const screen of allScreens) {
-      if (!screen.is_active) continue;
-
       if (screen.refresh_status === 'Failed' || screen.refresh_status === 'Error') {
         datasetsFailed++;
       } else {
@@ -57,14 +120,11 @@ export async function GET() {
       }
     }
 
-    // Processar reports (dataflows)
-    for (const report of allReports) {
-      if (!report.is_active) continue;
-
-      if (report.refresh_status === 'Failed' || report.refresh_status === 'Error') {
+    for (const dataflow of allDataflows) {
+      if (dataflow.refresh_status === 'Failed' || dataflow.refresh_status === 'Error') {
         dataflowsFailed++;
       } else {
-        const lastRefresh = report.last_refresh_date ? new Date(report.last_refresh_date) : null;
+        const lastRefresh = dataflow.last_refresh_date ? new Date(dataflow.last_refresh_date) : null;
         if (!lastRefresh || lastRefresh < oneDayAgo) {
           dataflowsStale++;
         } else {
@@ -73,7 +133,7 @@ export async function GET() {
       }
     }
 
-    const totalActive = allScreens.filter(s => s.is_active).length + allReports.filter(r => r.is_active).length;
+    const totalActive = allScreens.length + allDataflows.length;
     const totalOk = datasetsOk + dataflowsOk;
     const totalFailed = datasetsFailed + dataflowsFailed;
     const totalStale = datasetsStale + dataflowsStale;
@@ -89,13 +149,13 @@ export async function GET() {
         stale: totalStale
       },
       datasets: {
-        total: allScreens.filter(s => s.is_active).length,
+        total: allScreens.length,
         ok: datasetsOk,
         failed: datasetsFailed,
         stale: datasetsStale
       },
       dataflows: {
-        total: allReports.filter(r => r.is_active).length,
+        total: allDataflows.length,
         ok: dataflowsOk,
         failed: dataflowsFailed,
         stale: dataflowsStale

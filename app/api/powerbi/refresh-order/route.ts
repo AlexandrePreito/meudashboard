@@ -83,6 +83,12 @@ export async function GET(request: Request) {
     if (connError) throw connError;
 
     const connectionIds = connections?.map(c => c.id) || [];
+    
+    console.log('[DEBUG /api/powerbi/refresh-order] Conexões encontradas:', {
+      groupId,
+      totalConnections: connections?.length || 0,
+      connectionIds
+    });
 
     // 2. Buscar dataflows das conexões do grupo
     let dataflows: any[] = [];
@@ -94,12 +100,27 @@ export async function GET(request: Request) {
         .eq('is_active', true)
         .order('refresh_order', { ascending: true });
 
-      if (dfError) throw dfError;
+      if (dfError) {
+        console.error('[ERROR /api/powerbi/refresh-order] Erro ao buscar dataflows:', dfError);
+        throw dfError;
+      }
+      
       dataflows = df || [];
+      console.log('[DEBUG /api/powerbi/refresh-order] Dataflows encontrados:', {
+        total: dataflows.length,
+        dataflows: dataflows.map((d: any) => ({
+          id: d.id,
+          name: d.name,
+          connection_id: d.connection_id
+        }))
+      });
+    } else {
+      console.log('[DEBUG /api/powerbi/refresh-order] Nenhuma conexão encontrada para o grupo');
     }
 
     // 3. Buscar datasets/reports do grupo
-    const { data: datasets, error: datasetsError } = await supabase
+    // Filtrar datasets pelas conexões do grupo (mais eficiente)
+    let datasetsQuery = supabase
       .from('powerbi_reports')
       .select(`
         id,
@@ -112,11 +133,26 @@ export async function GET(request: Request) {
       `)
       .not('dataset_id', 'is', null);
 
-    if (datasetsError) throw datasetsError;
+    // Filtrar por conexões do grupo se houver conexões
+    if (connectionIds.length > 0) {
+      datasetsQuery = datasetsQuery.in('connection_id', connectionIds);
+    }
+
+    const { data: datasets, error: datasetsError } = await datasetsQuery;
+
+    if (datasetsError) {
+      console.error('[ERROR /api/powerbi/refresh-order] Erro ao buscar datasets:', datasetsError);
+      throw datasetsError;
+    }
 
     // Filtrar datasets por grupo e remover duplicatas
     const uniqueDatasets = datasets
-      ?.filter((d: any) => d.powerbi_dashboard_screens?.some((s: any) => s.company_group_id === groupId))
+      ?.filter((d: any) => {
+        // Verificar se tem tela do grupo OU se a conexão pertence ao grupo
+        const hasScreenFromGroup = d.powerbi_dashboard_screens?.some((s: any) => s.company_group_id === groupId);
+        const connectionBelongsToGroup = connectionIds.includes(d.connection_id);
+        return hasScreenFromGroup || connectionBelongsToGroup;
+      })
       .reduce((acc: any[], current: any) => {
         const exists = acc.find(item => item.dataset_id === current.dataset_id);
         if (!exists) {
@@ -124,6 +160,15 @@ export async function GET(request: Request) {
         }
         return acc;
       }, []) || [];
+
+    console.log('[DEBUG /api/powerbi/refresh-order] Datasets encontrados:', {
+      total: uniqueDatasets.length,
+      datasets: uniqueDatasets.map((d: any) => ({
+        id: d.id,
+        name: d.name,
+        dataset_id: d.dataset_id
+      }))
+    });
 
     // 4. Montar lista combinada: dataflows primeiro, depois datasets
     const items: any[] = [];
@@ -150,6 +195,13 @@ export async function GET(request: Request) {
         connection_id: ds.connection_id,
         order: dataflows.length + index + 1
       });
+    });
+
+    console.log('[DEBUG /api/powerbi/refresh-order] Items finais:', {
+      total: items.length,
+      dataflows: items.filter(i => i.type === 'dataflow').length,
+      datasets: items.filter(i => i.type === 'dataset').length,
+      items: items.map(i => ({ type: i.type, name: i.name }))
     });
 
     return NextResponse.json({ items });

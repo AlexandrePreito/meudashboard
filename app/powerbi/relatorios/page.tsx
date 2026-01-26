@@ -200,12 +200,30 @@ function RelatoriosContent() {
     
     setLoadingPbiData(true);
     try {
-      const res = await fetch(`/api/powerbi/datasets?connection_id=${connectionId}`);
+      // Montar URL com group_id se houver grupo ativo
+      const url = activeGroup
+        ? `/api/powerbi/datasets?connection_id=${connectionId}&group_id=${activeGroup.id}`
+        : `/api/powerbi/datasets?connection_id=${connectionId}`;
+      
+      console.log('[DEBUG /powerbi/relatorios] Buscando datasets e reports:', url);
+      
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
+        console.log('[DEBUG /powerbi/relatorios] Datasets e reports recebidos:', {
+          datasets: data.datasets?.length || 0,
+          reports: data.reports?.length || 0,
+          datasetsList: data.datasets?.map((d: any) => ({ id: d.id, name: d.name })),
+          reportsList: data.reports?.map((r: any) => ({ id: r.id, name: r.name, datasetId: r.datasetId }))
+        });
         setDatasets(data.datasets || []);
         setPbiReports(data.reports || []);
       } else {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('[ERROR /powerbi/relatorios] Erro ao carregar dados do Power BI:', {
+          status: res.status,
+          error: errorData
+        });
         setDatasets([]);
         setPbiReports([]);
       }

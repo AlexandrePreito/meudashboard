@@ -1,398 +1,786 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Brain, Plus, Edit, Trash2, Search, Eye } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Trash2, Upload, MessageSquare, Database, Download } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import PermissionGuard from '@/components/assistente-ia/PermissionGuard';
-import Button from '@/components/ui/Button';
-import LoadingSpinner from '@/components/ui/LoadingSpinner';
-import { useNotification } from '@/hooks/useNotification';
+import { parseDocumentation, getDocumentationStats, ParsedDocumentation } from '@/lib/assistente-ia/documentation-parser';
+import { useToast } from '@/contexts/ToastContext';
 
-// Componente interno que usa o contexto
-function ContextosContent() {
-  const { success, error, warning } = useNotification();
-  const [contexts, setContexts] = useState<any[]>([]);
+interface Dataset {
+  id: string;
+  name: string;
+  dataset_id?: string;
+}
+
+interface ContextInfo {
+  id: string;
+  dataset_id: string;
+  context_type: 'chat' | 'dax';
+  section_medidas: any[];
+  section_tabelas: any[];
+  section_queries: any[];
+  section_exemplos: any[];
+  parsed_at: string;
+  updated_at: string;
+}
+
+export default function ContextosPage() {
+  const toast = useToast();
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [selectedDataset, setSelectedDataset] = useState<string>('');
+  const [contexts, setContexts] = useState<ContextInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [editingContext, setEditingContext] = useState<any>(null);
-  const [viewingContext, setViewingContext] = useState<any>(null);
+  const [loadingContexts, setLoadingContexts] = useState(false);
   
-  // Form
-  const [contextName, setContextName] = useState('');
-  const [datasetName, setDatasetName] = useState('');
-  const [contextContent, setContextContent] = useState('');
+  const [showHelp, setShowHelp] = useState(false);
+  const [showChatModal, setShowChatModal] = useState(false);
+  const [showDaxModal, setShowDaxModal] = useState(false);
+  
+  // Chat modal state
+  const [chatContent, setChatContent] = useState('');
+  const [chatParsed, setChatParsed] = useState<ParsedDocumentation | null>(null);
+  const [chatStats, setChatStats] = useState<any>(null);
+  const [chatFileName, setChatFileName] = useState<string | null>(null);
+  
+  // DAX modal state
+  const [daxContent, setDaxContent] = useState('');
+  const [daxParsed, setDaxParsed] = useState<any>(null);
+  const [daxFileName, setDaxFileName] = useState<string | null>(null);
+  
   const [saving, setSaving] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const daxFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetchContexts();
+    loadDatasets();
   }, []);
 
-  const fetchContexts = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch('/api/ai/contexts');
-      const data = await response.json();
-      
-      if (data.contexts) {
-        setContexts(data.contexts || []);
-      } else if (data.error) {
-        throw new Error(data.error);
+  useEffect(() => {
+    if (selectedDataset) {
+      loadContexts();
+    }
+  }, [selectedDataset]);
+
+  useEffect(() => {
+    if (chatContent.trim()) {
+      const result = parseDocumentation(chatContent);
+      setChatParsed(result);
+      setChatStats(getDocumentationStats(result));
+    } else {
+      setChatParsed(null);
+      setChatStats(null);
+    }
+  }, [chatContent]);
+
+  useEffect(() => {
+    if (daxContent.trim()) {
+      try {
+        const parsed = JSON.parse(daxContent);
+        setDaxParsed(parsed);
+      } catch {
+        setDaxParsed(null);
       }
-    } catch (err: any) {
-      console.error('Erro ao buscar contextos:', err);
-      error(err.message || 'Erro ao carregar contextos', 'Erro');
+    } else {
+      setDaxParsed(null);
+    }
+  }, [daxContent]);
+
+  const loadDatasets = async () => {
+    try {
+      const res = await fetch('/api/assistente-ia/datasets');
+      const data = await res.json();
+      const datasetsList = data.data || data.datasets || data || [];
+      setDatasets(datasetsList);
+      if (datasetsList.length > 0) {
+        setSelectedDataset(datasetsList[0].dataset_id || datasetsList[0].id);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar datasets:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSave = async () => {
-    if (!contextName || !contextContent) {
-      warning('Preencha nome e conteúdo do contexto', 'Campos obrigatórios');
-      return;
-    }
-
-    setSaving(true);
-
+  const loadContexts = async () => {
+    if (!selectedDataset) return;
+    setLoadingContexts(true);
     try {
-      const method = editingContext ? 'PUT' : 'POST';
-      
-      const response = await fetch('/api/ai/contexts', {
-        method,
+      const res = await fetch(`/api/assistente-ia/context?datasetId=${selectedDataset}`);
+      const data = await res.json();
+      setContexts(data.contexts || []);
+    } catch (error) {
+      console.error('Erro ao carregar contextos:', error);
+    } finally {
+      setLoadingContexts(false);
+    }
+  };
+
+  const handleDownload = (fileName: string) => {
+    const link = document.createElement('a');
+    link.href = `/prompts/${fileName}`;
+    link.download = fileName;
+    link.click();
+  };
+
+  const handleFileImport = (file: File, type: 'chat' | 'dax') => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      if (type === 'chat') {
+        setChatContent(content);
+        setChatFileName(file.name);
+      } else {
+        setDaxContent(content);
+        setDaxFileName(file.name);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(e.type === 'dragenter' || e.type === 'dragover');
+  };
+
+  const handleDrop = (e: React.DragEvent, type: 'chat' | 'dax') => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files?.[0]) {
+      handleFileImport(e.dataTransfer.files[0], type);
+    }
+  };
+
+  const handleSaveChat = async () => {
+    if (!chatParsed || chatParsed.errors.length > 0 || !selectedDataset) return;
+    
+    setSaving(true);
+    try {
+      const res = await fetch('/api/assistente-ia/context', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: editingContext?.id,
-          context_name: contextName,
-          dataset_name: datasetName || undefined,
-          context_content: contextContent,
-          is_active: true
+          datasetId: selectedDataset,
+          contextType: 'chat',
+          content: chatContent,
+          sections: {
+            base: chatParsed.base,
+            medidas: chatParsed.medidas,
+            tabelas: chatParsed.tabelas,
+            queries: chatParsed.queries,
+            exemplos: chatParsed.exemplos
+          }
         })
       });
-
-      const data = await response.json();
-
-      if (data.error) {
-        throw new Error(data.error);
+      
+      const data = await res.json();
+      if (data.success) {
+        setShowChatModal(false);
+        setChatContent('');
+        setChatFileName(null);
+        setChatParsed(null);
+        setChatStats(null);
+        loadContexts();
+        toast.success('Documentação salva com sucesso!');
+      } else {
+        toast.error('Erro: ' + (data.error || 'Erro desconhecido'));
       }
-
-      success('O assistente agora tem acesso a esta documentação', editingContext ? 'Contexto atualizado!' : 'Contexto criado!');
-
-      setShowModal(false);
-      setEditingContext(null);
-      setContextName('');
-      setDatasetName('');
-      setContextContent('');
-      fetchContexts();
-
-    } catch (err: any) {
-      error(err.message, 'Erro ao salvar');
+    } catch (error) {
+      console.error('Erro:', error);
+      toast.error('Erro ao salvar documentação');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleEdit = (context: any) => {
-    setEditingContext(context);
-    setContextName(context.context_name);
-    setDatasetName(context.dataset_name || '');
-    setContextContent(context.context_content);
-    setShowModal(true);
+  const handleSaveDax = async () => {
+    if (!daxParsed || !selectedDataset) return;
+    
+    setSaving(true);
+    try {
+      const res = await fetch('/api/assistente-ia/context', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          datasetId: selectedDataset,
+          contextType: 'dax',
+          daxData: daxParsed
+        })
+      });
+      
+      const data = await res.json();
+      if (data.success) {
+        setShowDaxModal(false);
+        setDaxContent('');
+        setDaxFileName(null);
+        setDaxParsed(null);
+        loadContexts();
+        toast.success('Base de DAX salva com sucesso!');
+      } else {
+        toast.error('Erro: ' + (data.error || 'Erro desconhecido'));
+      }
+    } catch (error) {
+      console.error('Erro:', error);
+      toast.error('Erro ao salvar base de DAX');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este contexto?')) {
-      return;
-    }
-
+    if (!window.confirm('Excluir esta documentação?')) return;
+    
     try {
-      const response = await fetch(`/api/ai/contexts?id=${id}`, {
-        method: 'DELETE'
-      });
-
-      const data = await response.json();
-
-      if (data.error) {
-        throw new Error(data.error);
+      const res = await fetch(`/api/assistente-ia/context?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        loadContexts();
+        toast.success('Documentação excluída com sucesso!');
+      } else {
+        toast.error('Erro ao excluir documentação');
       }
-
-      success('O contexto foi removido com sucesso', 'Contexto excluído');
-      fetchContexts();
-    } catch (err: any) {
-      error(err.message, 'Erro ao excluir');
+    } catch (error) {
+      console.error('Erro:', error);
+      toast.error('Erro ao excluir documentação');
     }
   };
 
-  const filteredContexts = contexts.filter(ctx =>
-    ctx.context_name.toLowerCase().includes(search.toLowerCase()) ||
-    (ctx.dataset_name || '').toLowerCase().includes(search.toLowerCase())
-  );
+  const chatContext = contexts.find(c => c.context_type === 'chat');
+  const daxContext = contexts.find(c => c.context_type === 'dax');
+
+  const getStats = (ctx: ContextInfo | undefined) => {
+    if (!ctx) return null;
+    return {
+      medidas: ctx.section_medidas?.length || 0,
+      colunas: ctx.section_tabelas?.reduce((a: number, t: any) => a + (t.columns?.length || 0), 0) || 0,
+      queries: ctx.section_queries?.length || 0,
+      exemplos: ctx.section_exemplos?.length || 0,
+    };
+  };
+
+  if (loading) {
+    return (
+      <PermissionGuard>
+        <MainLayout>
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
+        </MainLayout>
+      </PermissionGuard>
+    );
+  }
 
   return (
     <PermissionGuard>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Contextos do Modelo</h1>
-            <p className="text-gray-500">Documentação dos modelos Power BI para o assistente</p>
-          </div>
-          <Button
-            onClick={() => {
-              setEditingContext(null);
-              setContextName('');
-              setDatasetName('');
-              setContextContent('');
-              setShowModal(true);
-            }}
-            icon={<Plus className="w-4 h-4" />}
-          >
-            Novo Contexto
-          </Button>
-        </div>
-
-        {/* Info */}
-        <div className="bg-blue-50 rounded-xl border border-blue-200 p-4 mb-6">
-          <h3 className="font-semibold text-blue-900 mb-2">📚 O que é o Contexto?</h3>
-          <p className="text-sm text-blue-700">
-            O contexto é a documentação do seu modelo Power BI (tabelas, colunas, medidas, filtros). 
-            O assistente usa essa informação para criar consultas corretas e responder perguntas com precisão.
-          </p>
-        </div>
-
-        {/* Busca */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por nome do contexto ou dataset..."
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <Button icon={<Search className="w-4 h-4" />}>
-              Buscar
-            </Button>
-          </div>
-        </div>
-
-        {/* Loading */}
-        {loading && (
-          <div className="flex items-center justify-center py-12">
-            <LoadingSpinner size={40} />
-          </div>
-        )}
-
-        {/* Lista */}
-        {!loading && filteredContexts.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredContexts.map((context) => (
-              <div
-                key={context.id}
-                className="bg-white rounded-xl border border-gray-200 p-4 hover:border-blue-300 transition-colors"
+      <MainLayout>
+        <div className="space-y-6">
+          
+          {/* Header */}
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Contextos da IA</h1>
+              <p className="text-gray-500 text-sm mt-1">Configure as documentações que alimentam o assistente de inteligência artificial</p>
+            </div>
+            <div className="flex items-center gap-3">
+              {/* Ícones de Download */}
+              <div className="relative group">
+                <button
+                  onClick={() => handleDownload('prompt-documentacao-chat.md')}
+                  className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Baixar prompt de Documentação Chat"
+                >
+                  <Download size={20} />
+                </button>
+                <div className="absolute right-0 top-full mt-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10 pointer-events-none">
+                  <div className="font-semibold mb-1">Documentação Chat</div>
+                  <div className="text-gray-300">Gera documentação estruturada para a IA responder perguntas dos usuários</div>
+                </div>
+              </div>
+              <div className="relative group">
+                <button
+                  onClick={() => handleDownload('prompt-extrair-dax.md')}
+                  className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                  title="Baixar prompt de Extrair DAX"
+                >
+                  <Download size={20} />
+                </button>
+                <div className="absolute right-0 top-full mt-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10 pointer-events-none">
+                  <div className="font-semibold mb-1">Extrair DAX</div>
+                  <div className="text-gray-300">Extrai todas as medidas e colunas do modelo em formato JSON</div>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowHelp(true)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors border border-gray-300"
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Brain className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">{context.context_name}</h3>
-                      {context.dataset_name && (
-                        <p className="text-xs text-gray-500">{context.dataset_name}</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mb-4">
-                  <p className="text-sm text-gray-600 line-clamp-3">
-                    {context.context_content.substring(0, 150)}...
-                  </p>
-                </div>
-
-                <div className="text-xs text-gray-500 mb-4">
-                  {context.context_content.length.toLocaleString()} caracteres
-                </div>
-
-                <div className="flex gap-2">
-                  <Button
-                    onClick={() => setViewingContext(context)}
-                    variant="ghost"
-                    size="sm"
-                    icon={<Eye className="w-4 h-4" />}
-                    className="flex-1"
-                  >
-                    Ver
-                  </Button>
-                  <Button
-                    onClick={() => handleEdit(context)}
-                    variant="secondary"
-                    size="sm"
-                    icon={<Edit className="w-4 h-4" />}
-                  >
-                    Editar
-                  </Button>
-                  <Button
-                    onClick={() => handleDelete(context.id)}
-                    variant="ghost"
-                    size="sm"
-                    icon={<Trash2 className="w-4 h-4" />}
-                  >
-                    Excluir
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Empty */}
-        {!loading && filteredContexts.length === 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Brain className="w-8 h-8 text-blue-600" />
+                Como usar
+              </button>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Nenhum contexto cadastrado
-            </h3>
-            <p className="text-gray-600 mb-6">
-              Crie o primeiro contexto para o assistente começar a funcionar
-            </p>
-            <Button
-              onClick={() => setShowModal(true)}
-              icon={<Plus className="w-4 h-4" />}
+          </div>
+
+          {/* Seleção de Dataset */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Dataset</label>
+            <select
+              value={selectedDataset}
+              onChange={(e) => setSelectedDataset(e.target.value)}
+              className="w-full max-w-md px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-green-500 bg-white text-gray-900"
             >
-              Criar Primeiro Contexto
-            </Button>
+              {datasets.map((ds) => (
+                <option key={ds.id} value={ds.dataset_id || ds.id}>{ds.name}</option>
+              ))}
+            </select>
           </div>
-        )}
 
-        {/* Modal Criar/Editar */}
-        {showModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="p-6 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-900">
-                  {editingContext ? 'Editar Contexto' : 'Novo Contexto'}
-                </h2>
-              </div>
 
-              <div className="p-6 overflow-y-auto flex-1">
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      📝 Nome do Contexto *
-                    </label>
-                    <input
-                      type="text"
-                      value={contextName}
-                      onChange={(e) => setContextName(e.target.value)}
-                      placeholder="Ex: Modelo Hospcom"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
+          {loadingContexts ? (
+            <div className="text-center py-8 text-gray-500">Carregando contextos...</div>
+          ) : (
+            <>
+              {/* Documentação Chat */}
+              <div className="bg-white rounded-xl border border-gray-200 p-5">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3 flex-1">
+                    <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                      <MessageSquare className="text-blue-600" size={24} />
+                    </div>
+                    <div className="flex-1">
+                      <h2 className="font-semibold text-gray-900 mb-1">Documentação para Chat</h2>
+                      <p className="text-sm text-gray-500">Usada pela IA para responder perguntas dos usuários</p>
+                    </div>
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      📊 Nome do Dataset (opcional)
-                    </label>
-                    <input
-                      type="text"
-                      value={datasetName}
-                      onChange={(e) => setDatasetName(e.target.value)}
-                      placeholder="Ex: Faturamento 2025"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      📚 Conteúdo do Contexto (Markdown) *
-                    </label>
-                    <textarea
-                      value={contextContent}
-                      onChange={(e) => setContextContent(e.target.value)}
-                      placeholder="# Modelo: Nome
-
-## Tabelas
-### Calendario
-- Mes (número 1-12)
-- Ano (número)
-
-## Medidas
-### [sReceitaBruta]
-Descrição: Receita bruta total
-Uso: CALCULATE([sReceitaBruta], filtros)"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                      rows={15}
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      {contextContent.length.toLocaleString()} / 10.000 caracteres
-                    </p>
-                  </div>
+                  <button
+                    onClick={() => setShowChatModal(true)}
+                    className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    {chatContext ? 'Atualizar' : 'Importar'}
+                  </button>
                 </div>
-              </div>
 
-              <div className="p-6 border-t border-gray-200 flex gap-2 justify-end">
-                <Button
-                  onClick={() => {
-                    setShowModal(false);
-                    setEditingContext(null);
-                  }}
-                  variant="ghost"
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={handleSave}
-                  loading={saving}
-                  disabled={!contextName || !contextContent || saving}
-                >
-                  {editingContext ? 'Atualizar' : 'Criar'} Contexto
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Modal Visualizar */}
-        {viewingContext && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="p-6 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-900">
-                  {viewingContext.context_name}
-                </h2>
-                {viewingContext.dataset_name && (
-                  <p className="text-sm text-gray-600">{viewingContext.dataset_name}</p>
+                {!chatContext ? (
+                  <div className="text-center py-12 text-gray-500 border-2 border-dashed border-gray-300 rounded-lg">
+                    <p className="font-medium">Nenhuma documentação configurada</p>
+                    <p className="text-sm mt-1">Importe um arquivo .md para começar</p>
+                  </div>
+                ) : (
+                  <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                          <span className="font-semibold text-gray-900">Documentação Ativa</span>
+                        </div>
+                        <div className="text-sm text-gray-600 mb-3">
+                          Atualizado em {new Date(chatContext.parsed_at || chatContext.updated_at).toLocaleString('pt-BR')}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {(() => {
+                            const s = getStats(chatContext);
+                            return s && (
+                              <>
+                                <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">{s.medidas} medidas</span>
+                                <span className="px-2 py-0.5 bg-green-100 text-green-800 text-xs font-medium rounded-full">{s.colunas} colunas</span>
+                                <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-xs font-medium rounded-full">{s.queries} queries</span>
+                                <span className="px-2 py-0.5 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">{s.exemplos} exemplos</span>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleDelete(chatContext.id)}
+                        className="ml-4 p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Excluir"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
 
-              <div className="p-6 overflow-y-auto flex-1">
-                <pre className="whitespace-pre-wrap text-sm text-gray-700 font-mono bg-gray-50 p-4 rounded-lg">
-                  {viewingContext.context_content}
-                </pre>
-              </div>
+              {/* Base de DAX */}
+              <div className="bg-white rounded-xl border border-gray-200 p-5">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3 flex-1">
+                    <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
+                      <Database className="text-purple-600" size={24} />
+                    </div>
+                    <div className="flex-1">
+                      <h2 className="font-semibold text-gray-900 mb-1">Base de DAX (Treinamento)</h2>
+                      <p className="text-sm text-gray-500">Todas as medidas e colunas do modelo para treinamento</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowDaxModal(true)}
+                    className="px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                  >
+                    {daxContext ? 'Atualizar' : 'Importar'}
+                  </button>
+                </div>
 
-              <div className="p-6 border-t border-gray-200 flex justify-end">
-                <Button onClick={() => setViewingContext(null)}>
-                  Fechar
-                </Button>
+                {!daxContext ? (
+                  <div className="text-center py-12 text-gray-500 border-2 border-dashed border-gray-300 rounded-lg">
+                    <p className="font-medium">Nenhuma base de DAX importada</p>
+                    <p className="text-sm mt-1">Importe um arquivo .json para começar</p>
+                  </div>
+                ) : (
+                  <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                          <span className="font-semibold text-gray-900">Base Ativa</span>
+                        </div>
+                        <div className="text-sm text-gray-600 mb-3">
+                          Atualizado em {new Date(daxContext.parsed_at || daxContext.updated_at).toLocaleString('pt-BR')}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {(() => {
+                            const s = getStats(daxContext);
+                            return s && (
+                              <>
+                                <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">{s.medidas} medidas</span>
+                                <span className="px-2 py-0.5 bg-green-100 text-green-800 text-xs font-medium rounded-full">{s.colunas} colunas</span>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleDelete(daxContext.id)}
+                        className="ml-4 p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Excluir"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Modal de Ajuda */}
+        {showHelp && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-2xl w-full shadow-xl">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-semibold text-gray-900">Como Configurar</h3>
+                <button onClick={() => setShowHelp(false)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+                  <X size={20} className="text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="p-5 bg-blue-50 rounded-lg border border-blue-200">
+                  <h4 className="font-semibold text-gray-900 mb-3">Documentação para Chat</h4>
+                  <ol className="text-sm text-gray-700 space-y-2 list-decimal list-inside ml-2">
+                    <li>Baixe o prompt &quot;Documentação Chat&quot;</li>
+                    <li>Execute no Claude + MCP Power BI</li>
+                    <li>Importe o arquivo .md gerado nesta tela</li>
+                  </ol>
+                  <p className="text-xs text-gray-600 mt-3 font-medium">Usada pela IA para responder perguntas dos usuários</p>
+                </div>
+                
+                <div className="p-5 bg-purple-50 rounded-lg border border-purple-200">
+                  <h4 className="font-semibold text-gray-900 mb-3">Base de DAX</h4>
+                  <ol className="text-sm text-gray-700 space-y-2 list-decimal list-inside ml-2">
+                    <li>Baixe o prompt &quot;Extrair DAX&quot;</li>
+                    <li>Execute no Claude + MCP Power BI</li>
+                    <li>Importe o arquivo .json gerado nesta tela</li>
+                  </ol>
+                  <p className="text-xs text-gray-600 mt-3 font-medium">Base completa para tela de Treinamento</p>
+                </div>
+              </div>
+              
+              <button
+                onClick={() => setShowHelp(false)}
+                className="w-full mt-6 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Entendi
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Chat */}
+        {showChatModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-auto shadow-xl">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-semibold text-gray-900">Importar Documentação para Chat</h3>
+                <button 
+                  onClick={() => { 
+                    setShowChatModal(false); 
+                    setChatContent(''); 
+                    setChatFileName(null);
+                    setChatParsed(null);
+                    setChatStats(null);
+                  }} 
+                  className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X size={20} className="text-gray-500" />
+                </button>
+              </div>
+              
+              {/* Drag & Drop */}
+              {!chatFileName && !chatContent && (
+                <div
+                  onDragEnter={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDragOver={handleDrag}
+                  onDrop={(e) => handleDrop(e, 'chat')}
+                  className={`border-2 border-dashed rounded-lg p-8 text-center mb-4 transition-colors ${
+                    dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".md"
+                    onChange={(e) => e.target.files?.[0] && handleFileImport(e.target.files[0], 'chat')}
+                    className="hidden"
+                  />
+                  <div className="mx-auto mb-4 w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center">
+                    <Upload size={24} className="text-gray-400" />
+                  </div>
+                  <p className="font-medium text-gray-900 mb-1">Arraste um arquivo .md aqui</p>
+                  <p className="text-sm text-gray-500 mb-4">ou</p>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Selecionar arquivo
+                  </button>
+                  
+                  <div className="relative my-4">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-gray-300"></div>
+                    </div>
+                    <div className="relative flex justify-center">
+                      <span className="bg-white px-3 text-sm text-gray-500">ou cole o texto abaixo</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {chatFileName && (
+                <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg mb-4">
+                  <span className="flex-1 font-medium text-green-900">{chatFileName}</span>
+                  <button 
+                    onClick={() => { 
+                      setChatFileName(null); 
+                      setChatContent(''); 
+                    }} 
+                    className="px-2 py-1 text-sm text-green-700 hover:bg-green-100 rounded transition-colors"
+                  >
+                    Remover
+                  </button>
+                </div>
+              )}
+
+              <textarea
+                value={chatContent}
+                onChange={(e) => { 
+                  setChatContent(e.target.value); 
+                  setChatFileName(null); 
+                }}
+                placeholder="Ou cole o conteúdo aqui..."
+                className="w-full h-48 p-4 border border-gray-300 rounded-lg font-mono text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+
+              {chatStats && (
+                <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-center">
+                    {['BASE', 'MEDIDAS', 'COLUNAS', 'QUERIES', 'EXEMPLOS'].map((label, i) => {
+                      const values = [
+                        chatStats.hasBase ? '✅' : '❌', 
+                        chatStats.medidasCount, 
+                        chatStats.colunasCount, 
+                        chatStats.queriesCount, 
+                        chatStats.exemplosCount
+                      ];
+                      const ok = i === 0 ? chatStats.hasBase : values[i] > 0;
+                      return (
+                        <div key={label} className={`p-2 rounded ${ok ? 'bg-green-100' : 'bg-red-100'}`}>
+                          <div className="text-xs text-gray-600">{label}</div>
+                          <div className="font-semibold">{values[i]}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {chatStats.errors?.length > 0 && (
+                    <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                      <span className="font-medium">Avisos: </span>
+                      {chatStats.errors.map((e: string, i: number) => <span key={i}>{e}. </span>)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-3 mt-6">
+                <button 
+                  onClick={() => { 
+                    setShowChatModal(false); 
+                    setChatContent(''); 
+                    setChatFileName(null);
+                    setChatParsed(null);
+                    setChatStats(null);
+                  }} 
+                  className="flex-1 py-2.5 text-sm font-medium border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSaveChat}
+                  disabled={!chatParsed || chatParsed.errors.length > 0 || saving}
+                  className="flex-1 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {saving ? 'Salvando...' : 'Salvar Documentação'}
+                </button>
               </div>
             </div>
           </div>
         )}
-      </div>
-    </PermissionGuard>
-  );
-}
 
-// Componente principal exportado
-export default function ContextosPage() {
-  return (
-    <MainLayout>
-      <ContextosContent />
-    </MainLayout>
+        {/* Modal DAX */}
+        {showDaxModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-auto shadow-xl">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-semibold text-gray-900">Importar Base de DAX</h3>
+                <button 
+                  onClick={() => { 
+                    setShowDaxModal(false); 
+                    setDaxContent(''); 
+                    setDaxFileName(null);
+                    setDaxParsed(null);
+                  }} 
+                  className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X size={20} className="text-gray-500" />
+                </button>
+              </div>
+              
+              {/* Drag & Drop */}
+              {!daxFileName && !daxContent && (
+                <div
+                  onDragEnter={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDragOver={handleDrag}
+                  onDrop={(e) => handleDrop(e, 'dax')}
+                  className={`border-2 border-dashed rounded-lg p-8 text-center mb-4 transition-colors ${
+                    dragActive ? 'border-purple-500 bg-purple-50' : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  <input
+                    ref={daxFileInputRef}
+                    type="file"
+                    accept=".json"
+                    onChange={(e) => e.target.files?.[0] && handleFileImport(e.target.files[0], 'dax')}
+                    className="hidden"
+                  />
+                  <div className="mx-auto mb-4 w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center">
+                    <Upload size={24} className="text-gray-400" />
+                  </div>
+                  <p className="font-medium text-gray-900 mb-1">Arraste um arquivo .json aqui</p>
+                  <p className="text-sm text-gray-500 mb-4">ou</p>
+                  <button
+                    onClick={() => daxFileInputRef.current?.click()}
+                    className="px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                  >
+                    Selecionar arquivo
+                  </button>
+                  
+                  <div className="relative my-4">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-gray-300"></div>
+                    </div>
+                    <div className="relative flex justify-center">
+                      <span className="bg-white px-3 text-sm text-gray-500">ou cole o JSON abaixo</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {daxFileName && (
+                <div className="flex items-center gap-3 p-4 bg-purple-50 border border-purple-200 rounded-lg mb-4">
+                  <span className="flex-1 font-medium text-purple-900">{daxFileName}</span>
+                  <button 
+                    onClick={() => { 
+                      setDaxFileName(null); 
+                      setDaxContent(''); 
+                    }} 
+                    className="px-2 py-1 text-sm text-purple-700 hover:bg-purple-100 rounded transition-colors"
+                  >
+                    Remover
+                  </button>
+                </div>
+              )}
+
+              <textarea
+                value={daxContent}
+                onChange={(e) => { 
+                  setDaxContent(e.target.value); 
+                  setDaxFileName(null); 
+                }}
+                placeholder='Cole o JSON aqui... {"modelo": "...", "medidas": [...], "colunas": [...]}'
+                className="w-full h-48 p-4 border border-gray-300 rounded-lg font-mono text-sm resize-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              />
+
+              {daxParsed && (
+                <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div className="p-3 bg-green-100 rounded">
+                      <div className="text-xs text-gray-600">MODELO</div>
+                      <div className="font-semibold truncate">{daxParsed.modelo || '✅'}</div>
+                    </div>
+                    <div className="p-3 bg-blue-100 rounded">
+                      <div className="text-xs text-gray-600">MEDIDAS</div>
+                      <div className="font-semibold">{daxParsed.medidas?.length || 0}</div>
+                    </div>
+                    <div className="p-3 bg-green-100 rounded">
+                      <div className="text-xs text-gray-600">COLUNAS</div>
+                      <div className="font-semibold">{daxParsed.colunas?.length || 0}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {daxContent && !daxParsed && (
+                <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm font-medium">
+                  JSON inválido. Verifique o formato.
+                </div>
+              )}
+
+              <div className="flex gap-3 mt-6">
+                <button 
+                  onClick={() => { 
+                    setShowDaxModal(false); 
+                    setDaxContent(''); 
+                    setDaxFileName(null);
+                    setDaxParsed(null);
+                  }} 
+                  className="flex-1 py-2.5 text-sm font-medium border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSaveDax}
+                  disabled={!daxParsed || saving}
+                  className="flex-1 py-2.5 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {saving ? 'Salvando...' : 'Salvar Base de DAX'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </MainLayout>
+    </PermissionGuard>
   );
 }

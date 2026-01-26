@@ -42,54 +42,157 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Buscar reports através das connections para filtrar por grupo
-    let reportsQuery = supabase
-      .from('powerbi_reports')
+    // Buscar dataflows através das connections para filtrar por grupo
+    // Primeiro buscar conexões do grupo se necessário
+    let validConnectionIds: string[] = [];
+    if (groupId) {
+      const { data: groupConnections } = await supabase
+        .from('powerbi_connections')
+        .select('id')
+        .eq('company_group_id', groupId);
+      validConnectionIds = groupConnections?.map(c => c.id) || [];
+    } else if (!user.is_master && userGroupIds.length > 0) {
+      const { data: userConnections } = await supabase
+        .from('powerbi_connections')
+        .select('id')
+        .in('company_group_id', userGroupIds);
+      validConnectionIds = userConnections?.map(c => c.id) || [];
+    }
+
+    let dataflowsQuery = supabase
+      .from('powerbi_dataflows')
       .select(`
         id, 
         name, 
         is_active, 
         last_refresh_date, 
         refresh_status,
-        connection:powerbi_connections(company_group_id)
+        dataflow_id,
+        connection_id,
+        connection:powerbi_connections(
+          id,
+          company_group_id,
+          workspace_id,
+          tenant_id,
+          client_id,
+          client_secret
+        )
       `)
       .eq('is_active', true);
 
-    const { data: reportsData } = await reportsQuery;
+    // Filtrar por conexões do grupo se necessário
+    if (validConnectionIds.length > 0) {
+      dataflowsQuery = dataflowsQuery.in('connection_id', validConnectionIds);
+    }
 
-    // Filtrar por grupo se necessário
-    let reports = (reportsData || []).filter((r: any) => {
-      const reportGroupId = r.connection?.company_group_id;
-      
-      if (groupId) {
-        if (!user.is_master && !userGroupIds.includes(groupId)) {
-          return false;
-        }
-        return reportGroupId === groupId;
-      } else if (!user.is_master && userGroupIds.length > 0) {
-        return reportGroupId && userGroupIds.includes(reportGroupId);
-      }
-      
-      return true;
+    const { data: dataflowsData, error: dataflowsError } = await dataflowsQuery;
+    
+    console.log('[DEBUG /api/powerbi/dataflows/status] Dataflows encontrados:', {
+      total: dataflowsData?.length || 0,
+      groupId,
+      error: dataflowsError,
+      dataflows: dataflowsData?.map((df: any) => ({
+        id: df.id,
+        name: df.name,
+        groupId: df.connection?.company_group_id
+      }))
+    });
+
+    // Os dataflows já foram filtrados pela query acima
+    const dataflows = dataflowsData || [];
+    
+    console.log('[DEBUG /api/powerbi/dataflows/status] Dataflows filtrados:', {
+      total: dataflows.length,
+      groupId,
+      validConnectionIds: validConnectionIds.length,
+      dataflows: dataflows.map((df: any) => ({
+        id: df.id,
+        name: df.name,
+        connectionId: df.connection_id,
+        groupId: df.connection?.company_group_id
+      }))
     });
 
     const now = new Date();
     
-    const flows = reports.map((d: any) => {
-      const lastRefresh = d.last_refresh_date ? new Date(d.last_refresh_date) : null;
-      const hoursAgo = lastRefresh ? Math.floor((now.getTime() - lastRefresh.getTime()) / 3600000) : null;
-      const isStale = !lastRefresh || (hoursAgo !== null && hoursAgo > 24);
+    // Buscar dados atualizados do Power BI para cada dataflow
+    const flowsPromises = dataflows.map(async (df: any) => {
+      const connection = df.connection;
+      const dataflowId = df.dataflow_id;
+      
+      let lastRefreshTime: string | null = df.last_refresh_date;
+      let lastRefreshStatus = df.refresh_status || 'Unknown';
+      let hoursAgo: number | null = null;
+      
+      // Se tem conexão e dataflow_id, buscar dados atualizados do Power BI
+      if (connection && dataflowId && connection.workspace_id && connection.tenant_id && connection.client_id && connection.client_secret) {
+        try {
+          // Obter token do Power BI
+          const tokenUrl = `https://login.microsoftonline.com/${connection.tenant_id}/oauth2/v2.0/token`;
+          const tokenResponse = await fetch(tokenUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              grant_type: 'client_credentials',
+              client_id: connection.client_id,
+              client_secret: connection.client_secret,
+              scope: 'https://analysis.windows.net/powerbi/api/.default',
+            }),
+          });
+
+          if (tokenResponse.ok) {
+            const tokenData = await tokenResponse.json();
+            const accessToken = tokenData.access_token;
+
+            // Buscar última transação do dataflow
+            const transactionsUrl = `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/dataflows/${dataflowId}/transactions?$top=1`;
+            const transactionsResponse = await fetch(transactionsUrl, {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+              },
+            });
+
+            if (transactionsResponse.ok) {
+              const transactionsData = await transactionsResponse.json();
+              const lastTransaction = transactionsData.value?.[0];
+              
+              if (lastTransaction) {
+                // Usar endTime se disponível, senão usar startTime
+                lastRefreshTime = lastTransaction.endTime || lastTransaction.startTime || null;
+                lastRefreshStatus = lastTransaction.status || 'Unknown';
+                
+                // Converter "Success" para "Completed" para padronizar
+                if (lastRefreshStatus === 'Success') {
+                  lastRefreshStatus = 'Completed';
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`[ERROR] Erro ao buscar status do dataflow ${dataflowId}:`, error);
+          // Em caso de erro, usar dados locais
+        }
+      }
+      
+      // Calcular hoursAgo e isStale
+      if (lastRefreshTime) {
+        const lastRefresh = new Date(lastRefreshTime);
+        hoursAgo = Math.floor((now.getTime() - lastRefresh.getTime()) / 3600000);
+      }
+      const isStale = !lastRefreshTime || (hoursAgo !== null && hoursAgo > 24);
 
       return {
-        id: d.id,
-        name: d.name || 'Sem nome',
-        workspaceName: 'Workspace',
-        lastRefreshTime: d.last_refresh_date,
-        lastRefreshStatus: d.refresh_status || 'Unknown',
+        id: df.id,
+        name: df.name || 'Sem nome',
+        workspaceName: connection?.workspace_id || 'Workspace',
+        lastRefreshTime,
+        lastRefreshStatus,
         isStale,
         hoursAgo
       };
     });
+    
+    const flows = await Promise.all(flowsPromises);
 
     const total = flows.length;
     const updated = flows.filter(d => !d.isStale && (d.lastRefreshStatus === 'Success' || d.lastRefreshStatus === 'Completed')).length;

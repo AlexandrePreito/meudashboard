@@ -44,7 +44,25 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('powerbi_dashboard_screens')
-      .select('id, title, is_active, last_refresh_date, refresh_status, company_group_id')
+      .select(`
+        id, 
+        title, 
+        is_active, 
+        last_refresh_date, 
+        refresh_status, 
+        company_group_id,
+        report:powerbi_reports(
+          id,
+          dataset_id,
+          connection:powerbi_connections(
+            id,
+            workspace_id,
+            tenant_id,
+            client_id,
+            client_secret
+          )
+        )
+      `)
       .eq('is_active', true);
 
     // Filtrar por grupo se fornecido ou por grupos do usuário
@@ -60,21 +78,85 @@ export async function GET(request: NextRequest) {
     const { data: screens } = await query;
     const now = new Date();
     
-    const datasets = (screens || []).map(s => {
-      const lastRefresh = s.last_refresh_date ? new Date(s.last_refresh_date) : null;
-      const hoursAgo = lastRefresh ? Math.floor((now.getTime() - lastRefresh.getTime()) / 3600000) : null;
-      const isStale = !lastRefresh || (hoursAgo !== null && hoursAgo > 24);
+    // Buscar dados atualizados do Power BI para cada tela
+    const datasetsPromises = (screens || []).map(async (s: any) => {
+      const report = s.report;
+      const connection = report?.connection;
+      const datasetId = report?.dataset_id;
+      
+      let lastRefreshTime: string | null = s.last_refresh_date;
+      let lastRefreshStatus = s.refresh_status || 'Unknown';
+      let hoursAgo: number | null = null;
+      
+      // Se tem conexão e dataset_id, buscar dados atualizados do Power BI
+      if (connection && datasetId && connection.workspace_id && connection.tenant_id && connection.client_id && connection.client_secret) {
+        try {
+          // Obter token do Power BI
+          const tokenUrl = `https://login.microsoftonline.com/${connection.tenant_id}/oauth2/v2.0/token`;
+          const tokenResponse = await fetch(tokenUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              grant_type: 'client_credentials',
+              client_id: connection.client_id,
+              client_secret: connection.client_secret,
+              scope: 'https://analysis.windows.net/powerbi/api/.default',
+            }),
+          });
+
+          if (tokenResponse.ok) {
+            const tokenData = await tokenResponse.json();
+            const accessToken = tokenData.access_token;
+
+            // Buscar última atualização do dataset
+            const refreshUrl = `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/datasets/${datasetId}/refreshes?$top=1`;
+            const refreshResponse = await fetch(refreshUrl, {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+              },
+            });
+
+            if (refreshResponse.ok) {
+              const refreshData = await refreshResponse.json();
+              const lastRefresh = refreshData.value?.[0];
+              
+              if (lastRefresh) {
+                // Usar endTime se disponível, senão usar startTime
+                lastRefreshTime = lastRefresh.endTime || lastRefresh.startTime || null;
+                lastRefreshStatus = lastRefresh.status || 'Unknown';
+                
+                // Converter "Unknown" para "InProgress" se não tem endTime
+                if (lastRefreshStatus === 'Unknown' && !lastRefresh.endTime) {
+                  lastRefreshStatus = 'InProgress';
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`[ERROR] Erro ao buscar status do dataset ${datasetId}:`, error);
+          // Em caso de erro, usar dados locais
+        }
+      }
+      
+      // Calcular hoursAgo e isStale
+      if (lastRefreshTime) {
+        const lastRefresh = new Date(lastRefreshTime);
+        hoursAgo = Math.floor((now.getTime() - lastRefresh.getTime()) / 3600000);
+      }
+      const isStale = !lastRefreshTime || (hoursAgo !== null && hoursAgo > 24);
 
       return {
         id: s.id,
         name: s.title || 'Sem nome',
-        workspaceName: 'Workspace',
-        lastRefreshTime: s.last_refresh_date,
-        lastRefreshStatus: s.refresh_status || 'Unknown',
+        workspaceName: connection?.workspace_id || 'Workspace',
+        lastRefreshTime,
+        lastRefreshStatus,
         isStale,
         hoursAgo
       };
     });
+    
+    const datasets = await Promise.all(datasetsPromises);
 
     const total = datasets.length;
     const updated = datasets.filter(d => !d.isStale && (d.lastRefreshStatus === 'Success' || d.lastRefreshStatus === 'Completed')).length;

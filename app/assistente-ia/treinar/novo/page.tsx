@@ -19,8 +19,10 @@ import {
   Layers,
   Filter,
   Settings,
-  MessageSquare
+  MessageSquare,
+  Code
 } from 'lucide-react';
+import { TrainingFieldSelector, generateDaxPreview } from '@/components/assistente-ia/TrainingFieldSelector';
 
 interface Measure {
   name: string;
@@ -30,39 +32,6 @@ interface Measure {
   categoryIcon: string;
 }
 
-interface Grouper {
-  table: string;
-  column: string;
-  label: string;
-  icon: string;
-  type: string;
-}
-
-interface FilterOption {
-  table: string;
-  column: string;
-  label: string;
-  icon: string;
-  type: 'select' | 'text' | 'number' | 'date';
-  commonValues?: string[];
-}
-
-interface SelectedFilter {
-  id: string;
-  table: string;
-  column: string;
-  label: string;
-  operator: string;
-  value: string;
-}
-
-interface SelectedGrouper {
-  id: string;
-  table: string;
-  column: string;
-  label: string;
-  icon: string;
-}
 
 interface Dataset {
   id: string;
@@ -126,28 +95,24 @@ function NovoTreinamentoPageContent() {
   const [connectionId, setConnectionId] = useState<string | null>(null);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [measures, setMeasures] = useState<Measure[]>([]);
-  const [groupers, setGroupers] = useState<Grouper[]>([]);
-  const [filterOptions, setFilterOptions] = useState<FilterOption[]>([]);
+  const [suggestedGroupers, setSuggestedGroupers] = useState<any[]>([]);
+  const [suggestedFilters, setSuggestedFilters] = useState<any[]>([]);
   
   // Loading states
   const [loadingDatasets, setLoadingDatasets] = useState(true);
   const [loadingMetadata, setLoadingMetadata] = useState(false);
   const [executing, setExecuting] = useState(false);
   
-  // Selection states
+  // Selection states (novo formato)
   const [selectedDataset, setSelectedDataset] = useState('');
-  const [selectedMeasure, setSelectedMeasure] = useState<Measure | null>(null);
-  const [selectedGroupers, setSelectedGroupers] = useState<SelectedGrouper[]>([]);
-  const [selectedFilters, setSelectedFilters] = useState<SelectedFilter[]>([]);
+  const [selectedMeasures, setSelectedMeasures] = useState<string[]>([]); // Array de nomes de medidas
+  const [selectedGroupers, setSelectedGroupers] = useState<string[]>([]); // Array de "Tabela.Coluna"
+  const [selectedFilters, setSelectedFilters] = useState<Array<{ column: string; value: string }>>([]);
   const [orderBy, setOrderBy] = useState<'DESC' | 'ASC'>('DESC');
   const [limit, setLimit] = useState(0);
   
   // UI states
-  const [showMeasureDropdown, setShowMeasureDropdown] = useState(false);
-  const [showGrouperDropdown, setShowGrouperDropdown] = useState(false);
-  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
-  const [expandedCategories, setExpandedCategories] = useState<string[]>(['Vendas', 'Produtos']);
   
   // Result states
   const [daxResult, setDaxResult] = useState<DaxResult | null>(null);
@@ -196,13 +161,13 @@ function NovoTreinamentoPageContent() {
 
   // Generate DAX quando seleções mudarem
   useEffect(() => {
-    if (selectedMeasure) {
+    if (selectedMeasures.length > 0) {
       const dax = generateDax();
       setGeneratedDax(dax);
     } else {
       setGeneratedDax('');
     }
-  }, [selectedMeasure, selectedGroupers, selectedFilters, orderBy, limit]);
+  }, [selectedMeasures, selectedGroupers, selectedFilters, orderBy, limit]);
 
   async function loadDatasets() {
     console.log('=== loadDatasets chamado ===');
@@ -257,11 +222,11 @@ function NovoTreinamentoPageContent() {
         const data = await res.json();
         console.log('Metadata encontrado:', data);
         console.log('Measures:', data.measures?.length);
-        console.log('Groupers:', data.groupers?.length);
-        console.log('Filters:', data.filters?.length);
+        console.log('Suggested Groupers:', data.suggestedGroupers?.length);
+        console.log('Suggested Filters:', data.suggestedFilters?.length);
         setMeasures(data.measures || []);
-        setGroupers(data.groupers || []);
-        setFilterOptions(data.filters || []);
+        setSuggestedGroupers(data.suggestedGroupers || []);
+        setSuggestedFilters(data.suggestedFilters || []);
       } else {
         console.error('Erro na resposta:', res.status);
       }
@@ -272,20 +237,30 @@ function NovoTreinamentoPageContent() {
     }
   }
 
-  function generateDax(): string {
-    if (!selectedMeasure) return '';
+  // Função auxiliar para converter Tabela.Coluna para DAX
+  function toDAXColumn(tableColumn: string): string {
+    const [table, column] = tableColumn.split('.');
+    if (!table || !column) return tableColumn;
+    return `${table}[${column}]`;
+  }
 
-    const measureRef = `[${selectedMeasure.name}]`;
-    const grouperRefs = selectedGroupers.map(g => `${g.table}[${g.column}]`);
+  function generateDax(): string {
+    if (selectedMeasures.length === 0) return '';
+
+    // Usar a primeira medida selecionada (ou todas, dependendo da lógica)
+    const primaryMeasure = selectedMeasures[0];
+    const measureRef = `[${primaryMeasure}]`;
     
-    // Construir filtros
+    // Converter agrupadores do formato "Tabela.Coluna" para DAX
+    const grouperRefs = selectedGroupers.map(toDAXColumn);
+    
+    // Construir filtros do formato { column: "Tabela.Coluna", value: "valor" }
     const filterExpressions = selectedFilters.map(f => {
+      const [table, column] = f.column.split('.');
+      if (!table || !column) return '';
       const value = isNaN(Number(f.value)) ? `"${f.value}"` : f.value;
-      if (f.operator === 'contains') {
-        return `SEARCH("${f.value}", ${f.table}[${f.column}], 1, 0) > 0`;
-      }
-      return `${f.table}[${f.column}] ${f.operator} ${value}`;
-    });
+      return `${table}[${column}] = ${value}`;
+    }).filter(f => f);
 
     let dax = 'EVALUATE\n';
     
@@ -300,8 +275,9 @@ function NovoTreinamentoPageContent() {
       
       // Adicionar filtros no SUMMARIZECOLUMNS
       if (filterExpressions.length > 0) {
-        selectedFilters.forEach((filter, index) => {
-          dax += `,\n        FILTER(ALL(${filter.table}), ${filterExpressions[index]})`;
+        filterExpressions.forEach((filterExpr, index) => {
+          const [table] = selectedFilters[index].column.split('.');
+          dax += `,\n        FILTER(ALL('${table}'), ${filterExpr})`;
         });
       }
       
@@ -310,10 +286,14 @@ function NovoTreinamentoPageContent() {
       if (limit > 0) {
         dax += `,\n    [Valor], ${orderBy}\n)`;
       }
-        } else {
+    } else {
       // Sem agrupadores - usar ROW com CALCULATE se houver filtros
       if (filterExpressions.length > 0) {
-        dax += `ROW("Valor", CALCULATE(${measureRef}, ${filterExpressions.join(', ')}))`;
+        const filterConditions = filterExpressions.map((filterExpr, index) => {
+          const [table] = selectedFilters[index].column.split('.');
+          return `FILTER(ALL('${table}'), ${filterExpr})`;
+        });
+        dax += `ROW("Valor", CALCULATE(${measureRef}, ${filterConditions.join(', ')}))`;
       } else {
         dax += `ROW("Valor", ${measureRef})`;
       }
@@ -348,68 +328,6 @@ function NovoTreinamentoPageContent() {
     }
   }
 
-  function addGrouper(grouper: Grouper) {
-    const exists = selectedGroupers.find(g => g.table === grouper.table && g.column === grouper.column);
-    if (!exists) {
-      setSelectedGroupers([...selectedGroupers, {
-        id: `${grouper.table}-${grouper.column}-${Date.now()}`,
-        table: grouper.table,
-        column: grouper.column,
-        label: grouper.label,
-        icon: grouper.icon
-      }]);
-    }
-    setShowGrouperDropdown(false);
-  }
-
-  function removeGrouper(id: string) {
-    setSelectedGroupers(selectedGroupers.filter(g => g.id !== id));
-  }
-
-  function addFilter(filter: FilterOption) {
-    setSelectedFilters([...selectedFilters, {
-      id: `${filter.table}-${filter.column}-${Date.now()}`,
-      table: filter.table,
-      column: filter.column,
-      label: filter.label,
-      operator: '=',
-      value: filter.commonValues?.[0] || ''
-    }]);
-    setShowFilterDropdown(false);
-  }
-
-  function updateFilter(id: string, field: 'operator' | 'value', value: string) {
-    setSelectedFilters(selectedFilters.map(f => 
-      f.id === id ? { ...f, [field]: value } : f
-    ));
-  }
-
-  function removeFilter(id: string) {
-    setSelectedFilters(selectedFilters.filter(f => f.id !== id));
-  }
-
-  function toggleCategory(category: string) {
-    setExpandedCategories(prev => 
-      prev.includes(category) 
-        ? prev.filter(c => c !== category)
-        : [...prev, category]
-    );
-  }
-
-  const measuresByCategory = useMemo(() => {
-    const grouped: Record<string, Measure[]> = {};
-    for (const measure of measures) {
-      if (!grouped[measure.category]) {
-        grouped[measure.category] = [];
-      }
-      grouped[measure.category].push(measure);
-    }
-    console.log('=== measuresByCategory ===');
-    console.log('Total measures:', measures.length);
-    console.log('Categories:', Object.keys(grouped));
-    console.log('Grouped:', grouped);
-    return grouped;
-  }, [measures]);
 
   function copyDax() {
     navigator.clipboard.writeText(generatedDax);
@@ -422,7 +340,10 @@ function NovoTreinamentoPageContent() {
     }
     
     // Gera resposta formatada automaticamente baseada na seleção
-    const formattedResponse = `📊 *${selectedMeasure?.label || 'Resultado'}*\n\n{resultado}\n\n_Dados atualizados do Power BI_`;
+    const measureLabel = selectedMeasures.length > 0 
+      ? measures.find(m => m.name === selectedMeasures[0])?.label || selectedMeasures[0]
+      : 'Resultado';
+    const formattedResponse = `📊 *${measureLabel}*\n\n{resultado}\n\n_Dados atualizados do Power BI_`;
     
     try {
       const res = await fetch('/api/assistente-ia/training', {
@@ -496,7 +417,7 @@ function NovoTreinamentoPageContent() {
           value={selectedDataset}
               onChange={(e) => {
                 setSelectedDataset(e.target.value);
-                setSelectedMeasure(null);
+                setSelectedMeasures([]);
                 setSelectedGroupers([]);
                 setSelectedFilters([]);
               }}
@@ -601,302 +522,41 @@ function NovoTreinamentoPageContent() {
           </div>
         </div>
 
-        {/* Cards em grid 2x2 - Mesmo tamanho */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              
-          {/* Card 1: Medida */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col h-full overflow-visible min-h-[250px]">
-            <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-blue-100 border-b border-blue-200">
-              <div className="flex items-center gap-2">
-                <Calculator className="w-4 h-4 text-blue-600" />
-                <span className="font-semibold text-gray-900 text-sm">O que você quer ver?</span>
+        {/* Componente de Seleção de Campos */}
+        {loadingMetadata ? (
+          <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+            <div className="flex items-center gap-2 text-gray-500">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span>Carregando metadados...</span>
             </div>
           </div>
-            <div className="p-4 flex-1 flex flex-col relative">
-              {loadingMetadata ? (
-                <div className="flex items-center gap-2 text-gray-500 py-4">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-sm">Carregando...</span>
+        ) : selectedDataset ? (
+          <>
+            <TrainingFieldSelector
+              measures={measures}
+              suggestedGroupers={suggestedGroupers}
+              suggestedFilters={suggestedFilters}
+              selectedMeasures={selectedMeasures}
+              selectedGroupers={selectedGroupers}
+              selectedFilters={selectedFilters}
+              onMeasuresChange={setSelectedMeasures}
+              onGroupersChange={setSelectedGroupers}
+              onFiltersChange={setSelectedFilters}
+            />
+            
+            {/* Card de Opções - Linha separada */}
+            <div className="grid grid-cols-1 gap-4 mb-6 items-stretch">
+              <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col h-full">
+                <div className="flex items-center gap-2 mb-4">
+                  <Settings className="w-5 h-5 text-orange-600" />
+                  <h3 className="text-lg font-semibold text-gray-900">Opções</h3>
                 </div>
-              ) : (
-                <>
-          <button
-                    onClick={() => {
-                      console.log('=== Botão clicado ===');
-                      console.log('measures.length:', measures.length);
-                      console.log('measuresByCategory:', Object.keys(measuresByCategory).length);
-                      setShowMeasureDropdown(!showMeasureDropdown);
-                    }}
-                    disabled={!selectedDataset || measures.length === 0}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-lg text-left flex items-center justify-between hover:border-blue-300 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors bg-white"
-                  >
-                    {selectedMeasure ? (
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-sm text-gray-900 truncate">{selectedMeasure.label}</div>
-                        <div className="text-xs text-gray-500 truncate">{selectedMeasure.description}</div>
-        </div>
-                    ) : (
-                      <span className="text-gray-400 text-sm">Selecione uma medida...</span>
-                    )}
-                    <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${showMeasureDropdown ? 'rotate-180' : ''}`} />
-                  </button>
-                  
-                  {showMeasureDropdown && (
-                    <>
-                      <div 
-                        className="fixed inset-0 z-[100]" 
-                        onClick={() => setShowMeasureDropdown(false)}
-                      />
-                      <div className="absolute z-[101] w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-80 overflow-hidden">
-                        {Object.keys(measuresByCategory).length === 0 ? (
-                          <div className="px-4 py-3 text-sm text-gray-500 text-center">
-                            Nenhuma medida disponível
-                </div>
-                        ) : (
-                          <div className="overflow-y-auto max-h-80">
-                            {Object.entries(measuresByCategory).map(([category, categoryMeasures]) => (
-                              <div key={category}>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleCategory(category);
-                                  }}
-                                  className="w-full px-4 py-2.5 flex items-center justify-between bg-gray-50 hover:bg-gray-100 border-b border-gray-100 transition-colors"
-                                >
-                                  <div className="flex items-center gap-2.5">
-                                    <span className="font-semibold text-sm text-gray-900">{category}</span>
-                                    <span className="text-xs text-gray-500">({categoryMeasures.length})</span>
-              </div>
-                                  {expandedCategories.includes(category) ? (
-                                    <ChevronDown className="w-4 h-4 text-gray-400" />
-                                  ) : (
-                                    <ChevronRight className="w-4 h-4 text-gray-400" />
-                                  )}
-                                </button>
-                                {expandedCategories.includes(category) && (
-                                  <div className="bg-white">
-                                    {categoryMeasures.map(measure => (
-                                      <button
-                                        key={measure.name}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setSelectedMeasure(measure);
-                                          setShowMeasureDropdown(false);
-                                        }}
-                                        className={`w-full px-4 py-2.5 pl-12 text-left hover:bg-blue-50 flex items-center justify-between transition-colors ${
-                                          selectedMeasure?.name === measure.name ? 'bg-blue-50' : ''
-                                        }`}
-                                      >
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-sm font-medium text-gray-900">{measure.label}</div>
-                                          <div className="text-xs text-gray-500 truncate">{measure.description}</div>
-                </div>
-                                        {selectedMeasure?.name === measure.name && (
-                                          <Check className="w-4 h-4 text-blue-600 flex-shrink-0 ml-2" />
-                                        )}
-                                      </button>
-                                    ))}
-              </div>
-                                )}
-                              </div>
-                            ))}
-            </div>
-          )}
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
-              {!loadingMetadata && measures.length === 0 && selectedDataset && (
-                <p className="text-xs text-gray-500 mt-2">Nenhuma medida encontrada</p>
-              )}
-            </div>
-          </div>
-          
-          {/* Card 2: Agrupadores */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col h-full overflow-visible min-h-[250px]">
-            <div className="px-4 py-3 bg-gradient-to-r from-emerald-50 to-emerald-100 border-b border-emerald-200">
-              <div className="flex items-center gap-2.5">
-                <Layers className="w-4 h-4 text-emerald-600" />
-                <span className="font-semibold text-gray-900 text-sm">Agrupar por</span>
-                <span className="text-xs text-gray-500">(opcional)</span>
-            </div>
-          </div>
-            <div className="p-4 flex-1 flex flex-col">
-              {selectedGroupers.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {selectedGroupers.map(grouper => (
-                        <span
-                          key={grouper.id}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-medium border border-emerald-200"
-                        >
-                          <span>{grouper.label}</span>
-                          <button onClick={() => removeGrouper(grouper.id)} className="ml-0.5 hover:text-emerald-900 hover:bg-emerald-100 rounded p-0.5 transition-colors">
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      ))}
-        </div>
-      )}
-      
-                  <div className="relative">
-        <button
-                      onClick={() => setShowGrouperDropdown(!showGrouperDropdown)}
-                      disabled={!selectedDataset || groupers.length === 0}
-                      className="inline-flex items-center gap-2 px-3 py-2 text-xs text-gray-600 border border-dashed border-gray-300 rounded-lg hover:border-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 transition-colors"
-        >
-                      <Plus className="w-3 h-3" />
-                      Adicionar
-        </button>
-        
-                    {showGrouperDropdown && (
-                      <>
-                        <div 
-                          className="fixed inset-0 z-[100]" 
-                          onClick={() => setShowGrouperDropdown(false)}
-                        />
-                        <div className="absolute z-[101] w-64 mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-80 overflow-hidden">
-                          {groupers.length === 0 ? (
-                            <div className="px-4 py-3 text-sm text-gray-500 text-center">
-                              Nenhum agrupador disponível
-                            </div>
-                          ) : (
-                            <div className="overflow-y-auto max-h-80">
-                              {groupers.map(grouper => {
-                                const isSelected = selectedGroupers.find(g => g.table === grouper.table && g.column === grouper.column);
-                                return (
-          <button
-                                    key={`${grouper.table}-${grouper.column}`}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      addGrouper(grouper);
-                                    }}
-                                    disabled={!!isSelected}
-                                    className="w-full px-4 py-2.5 text-left hover:bg-emerald-50 flex items-center justify-between disabled:opacity-40 text-sm transition-colors"
-                                  >
-                                    <span className="font-medium text-gray-900">{grouper.label}</span>
-                                    {isSelected && <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />}
-          </button>
-                                );
-                              })}
-        </div>
-                          )}
-      </div>
-                      </>
-                    )}
-          </div>
-          </div>
-        </div>
-        
-          {/* Card 3: Filtros */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col h-full overflow-visible min-h-[250px]">
-            <div className="px-4 py-3 bg-gradient-to-r from-purple-50 to-purple-100 border-b border-purple-200">
-              <div className="flex items-center gap-2.5">
-                <Filter className="w-4 h-4 text-purple-600" />
-                <span className="font-semibold text-gray-900 text-sm">Filtrar por</span>
-                <span className="text-xs text-gray-500">(opcional)</span>
-          </div>
-        </div>
-            <div className="p-4 space-y-2 flex-1 flex flex-col">
-              {selectedFilters.map(filter => {
-                    const filterOpt = filterOptions.find(f => f.table === filter.table && f.column === filter.column);
-                    return (
-                      <div key={filter.id} className="flex items-center gap-1 p-2 bg-gray-50 rounded-lg">
-                        <span className="text-xs font-medium text-gray-700 min-w-[80px]">{filter.label}</span>
-                        <select
-                          value={filter.operator}
-                          onChange={(e) => updateFilter(filter.id, 'operator', e.target.value)}
-                          className="px-1 py-1 border border-gray-200 rounded text-xs w-12"
-                        >
-                          {OPERATORS.map(op => (
-                            <option key={op.value} value={op.value}>{op.label}</option>
-                          ))}
-                        </select>
-                        {filterOpt?.commonValues ? (
-                          <select
-                            value={filter.value}
-                            onChange={(e) => updateFilter(filter.id, 'value', e.target.value)}
-                            className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs"
-                          >
-                            <option value="">...</option>
-                            {filterOpt.commonValues.map(v => (
-                              <option key={v} value={v}>{v}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            type="text"
-                            value={filter.value}
-                            onChange={(e) => updateFilter(filter.id, 'value', e.target.value)}
-                            placeholder="Valor"
-                            className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs"
-                          />
-                        )}
-                        <button onClick={() => removeFilter(filter.id)} className="p-1 text-gray-400 hover:text-red-500">
-                          <X className="w-3 h-3" />
-                        </button>
-              </div>
-                    );
-                  })}
-                  
-                  <div className="relative">
-        <button
-                      onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                      disabled={!selectedDataset || filterOptions.length === 0}
-                      className="inline-flex items-center gap-2 px-3 py-2 text-xs text-gray-600 border border-dashed border-gray-300 rounded-lg hover:border-purple-400 hover:text-purple-600 hover:bg-purple-50 disabled:opacity-50 transition-colors"
-        >
-                      <Plus className="w-3 h-3" />
-                      Adicionar
-        </button>
-        
-                    {showFilterDropdown && (
-                      <>
-                        <div 
-                          className="fixed inset-0 z-[100]" 
-                          onClick={() => setShowFilterDropdown(false)}
-                        />
-                        <div className="absolute z-[101] w-64 mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-80 overflow-hidden">
-                          {filterOptions.length === 0 ? (
-                            <div className="px-4 py-3 text-sm text-gray-500 text-center">
-                              Nenhum filtro disponível
-                            </div>
-                          ) : (
-                            <div className="overflow-y-auto max-h-80">
-                              {filterOptions.map(filter => (
-        <button
-                                  key={`${filter.table}-${filter.column}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    addFilter(filter);
-                                  }}
-                                  className="w-full px-4 py-2.5 text-left hover:bg-purple-50 text-sm transition-colors"
-                                >
-                                  <span className="font-medium text-gray-900">{filter.label}</span>
-        </button>
-                              ))}
-      </div>
-                          )}
-    </div>
-                      </>
-                    )}
-        </div>
-                </div>
-      </div>
-      
-          {/* Card 4: Opções */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col h-full overflow-visible min-h-[250px]">
-            <div className="px-4 py-3 bg-gradient-to-r from-orange-50 to-orange-100 border-b border-orange-200">
-              <div className="flex items-center gap-2">
-                <Settings className="w-4 h-4 text-orange-600" />
-                <span className="font-semibold text-gray-900 text-sm">Opções</span>
-        </div>
-        </div>
-            <div className="p-4 space-y-4 flex-1 flex flex-col justify-center">
+                <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-2">Ordenar</label>
                     <div className="flex gap-1">
                       {ORDER_OPTIONS.map(opt => (
-            <button
+                        <button
                           key={opt.value}
                           onClick={() => setOrderBy(opt.value as 'DESC' | 'ASC')}
                           className={`flex-1 px-2 py-1.5 text-xs rounded-lg border transition-colors ${
@@ -906,16 +566,16 @@ function NovoTreinamentoPageContent() {
                           }`}
                         >
                           {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-2">Limite</label>
                     <div className="flex flex-wrap gap-1">
                       {LIMIT_OPTIONS.map(opt => (
-        <button
+                        <button
                           key={opt.value}
                           onClick={() => setLimit(opt.value)}
                           className={`px-2 py-1.5 text-xs rounded-lg border transition-colors ${
@@ -925,14 +585,30 @@ function NovoTreinamentoPageContent() {
                           }`}
                         >
                           {opt.label}
-        </button>
+                        </button>
                       ))}
                     </div>
                   </div>
-                  
                 </div>
               </div>
-        </div>
+            </div>
+            
+            {/* Preview DAX - Fundo Branco (abaixo dos cards) */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Code className="w-5 h-5 text-gray-600" />
+                <h3 className="text-lg font-semibold text-gray-900">Preview do DAX</h3>
+              </div>
+              <pre className="text-sm text-gray-700 font-mono whitespace-pre-wrap break-words bg-gray-50 p-4 rounded-lg border border-gray-200 max-h-64 overflow-y-auto">
+                {generateDaxPreview(selectedMeasures, selectedGroupers, selectedFilters)}
+              </pre>
+            </div>
+          </>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+            <p className="text-gray-500 text-center">Selecione um dataset para começar</p>
+          </div>
+        )}
 
         {/* DAX Gerado e Botões - Abaixo dos cards */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm mb-6">

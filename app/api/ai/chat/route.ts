@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser } from '@/lib/auth';
 import Anthropic from '@anthropic-ai/sdk';
+import { 
+  generateOptimizedContext,
+  ParsedDocumentation 
+} from '@/lib/assistente-ia/documentation-parser';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY || '',
@@ -221,20 +225,56 @@ async function saveQueryResult(
   }
 }
 
-// Função para buscar contexto do modelo
-async function getModelContext(supabase: any, connectionId: string): Promise<string | null> {
+// Função para buscar contexto do modelo (com otimização)
+async function getModelContext(
+  supabase: any, 
+  connectionId: string, 
+  userQuestion?: string
+): Promise<string | null> {
   try {
     const { data: context } = await supabase
       .from('ai_model_contexts')
-      .select('context_content')
+      .select('context_content, section_base, section_medidas, section_tabelas, section_queries, section_exemplos')
       .eq('connection_id', connectionId)
       .eq('is_active', true)
       .limit(1)
       .maybeSingle();
 
-    if (context?.context_content) {
+    if (!context) return null;
+
+    // Se tem seções parseadas e pergunta do usuário, usar contexto otimizado
+    if (context.section_base && context.section_medidas && userQuestion) {
+      const parsed: ParsedDocumentation = {
+        raw: context.context_content || '',
+        base: context.section_base,
+        medidas: context.section_medidas,
+        tabelas: context.section_tabelas,
+        queries: context.section_queries,
+        exemplos: context.section_exemplos,
+        errors: [],
+        metadata: {
+          hasBase: true,
+          hasMedidas: true,
+          hasTabelas: !!context.section_tabelas,
+          hasQueries: !!context.section_queries,
+          hasExemplos: !!context.section_exemplos,
+          totalMedidas: context.section_medidas?.length || 0,
+          totalTabelas: context.section_tabelas?.length || 0,
+          totalQueries: context.section_queries?.length || 0,
+          totalExemplos: context.section_exemplos?.length || 0
+        }
+      };
+      
+      const optimized = generateOptimizedContext(parsed, userQuestion);
+      console.log(`[Chat] Contexto otimizado: ${optimized.length} chars (de ${context.context_content?.length || 0} total)`);
+      return optimized;
+    }
+
+    // Fallback: usar context_content bruto
+    if (context.context_content) {
       return context.context_content.slice(0, 8000);
     }
+    
     return null;
   } catch (error) {
     console.error('Erro ao buscar contexto:', error);
@@ -363,8 +403,8 @@ export async function POST(request: Request) {
       }
     }
 
-    // Buscar contexto do modelo
-    const modelContext = connectionId ? await getModelContext(supabase, connectionId) : null;
+    // Buscar contexto do modelo (com otimização baseada na pergunta)
+    const modelContext = connectionId ? await getModelContext(supabase, connectionId, message) : null;
 
     // Buscar grupo do usuário
     let companyGroupId: string | null = null;

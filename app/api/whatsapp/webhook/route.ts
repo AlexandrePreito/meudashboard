@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
+import { resolveSession, generateFooter } from '@/lib/whatsapp-session';
+import { 
+  parseDocumentation, 
+  generateOptimizedContext,
+  ParsedDocumentation 
+} from '@/lib/assistente-ia/documentation-parser';
+import { generateWhatsAppPrompt } from '@/lib/prompts/system-prompt';
+import { getQueryContext, formatQueryContextForPrompt, saveQueryLearning } from '@/lib/query-learning';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY || '',
@@ -656,27 +664,24 @@ export async function POST(request: Request) {
       }
     }
 
-    // ========== BUSCAR CONTEXTO E INSTÂNCIA EM PARALELO ==========
-    const [allContextsResult, instanceResult] = await Promise.all([
-      supabase
-        .from('ai_model_contexts')
-        .select('id, connection_id, dataset_id, context_content, context_name, dataset_name, company_group_id')
-        .eq('company_group_id', authorizedNumber.company_group_id)
-        .eq('is_active', true),
-      getInstanceForAuthorizedNumber(authorizedNumber, supabase)
-    ]);
+    // ========== BUSCAR INSTÂNCIA ==========
+    instance = await getInstanceForAuthorizedNumber(authorizedNumber, supabase);
+    if (!instance) {
+      console.log('[Webhook] Sem instância conectada');
+      return NextResponse.json({ status: 'error', reason: 'no instance' });
+    }
 
-    const allContexts = allContextsResult.data || [];
-    const aiContext = allContexts[0] || null;
-    instance = instanceResult;
-
-    let connectionId = aiContext?.connection_id || null;
-    let datasetId = aiContext?.dataset_id || null;
+    // ========== BUSCAR INSTÂNCIA ==========
+    instance = await getInstanceForAuthorizedNumber(authorizedNumber, supabase);
+    if (!instance) {
+      console.log('[Webhook] Sem instância conectada');
+      return NextResponse.json({ status: 'error', reason: 'no instance' });
+    }
 
     // ========== SALVAR MENSAGEM INCOMING ==========
-      await supabase.from('whatsapp_messages').insert({
-        company_group_id: authorizedNumber.company_group_id,
-        phone_number: phone,
+    await supabase.from('whatsapp_messages').insert({
+      company_group_id: authorizedNumber.company_group_id,
+      phone_number: phone,
       message_content: messageText,
       direction: 'incoming',
       sender_name: authorizedNumber.name || phone,
@@ -685,55 +690,18 @@ export async function POST(request: Request) {
       authorized_number_id: authorizedNumber.id
     });
 
-    if (!instance) {
-      console.log('[Webhook] Sem instância conectada');
-      return NextResponse.json({ status: 'error', reason: 'no instance' });
-    }
-
-    console.log('[Webhook] Instância:', instance.instance_name, '| Dataset:', datasetId || 'N/A');
-
-    // ========== FALLBACK DE CONTEXTO ==========
-    let modelContext = aiContext?.context_content || '';
-
-    // Fallback: buscar por connection_id se não encontrou
-    if (!modelContext && connectionId) {
-      const { data: fallbackContext } = await supabase
-      .from('ai_model_contexts')
-        .select('context_content, connection_id, dataset_id')
-        .eq('connection_id', connectionId)
-        .eq('is_active', true)
-      .limit(1)
-      .maybeSingle();
-
-      if (fallbackContext?.context_content) {
-        modelContext = fallbackContext.context_content;
-        if (!connectionId) connectionId = fallbackContext.connection_id || null;
-        if (!datasetId) datasetId = fallbackContext.dataset_id || null;
-      }
-    }
-
-    console.log('[Webhook] Contexto carregado:', modelContext ? modelContext.length + ' chars' : 'NENHUM');
-
     // ========== VERIFICAR ÁUDIO ==========
     const isAudioMessage = !!messageContent.audioMessage || !!messageData.audioMessage || body.data?.audioMessage;
     let respondWithAudio = false;
     
-    console.log('[Webhook] Verificando áudio:', {
-      messageContent_audioMessage: !!messageContent.audioMessage,
-      messageData_audioMessage: !!messageData.audioMessage,
-      body_audioMessage: !!body.data?.audioMessage,
-      isAudioMessage,
-      hasMessageText: !!messageText.trim()
-    });
-    
     if (isAudioMessage && !messageText.trim()) {
       const audioMsg = `Desculpe ${authorizedNumber?.name || ''}, não consigo processar áudios ainda. 🎤\n\nEnvie sua pergunta como *texto*!`;
       await sendWhatsAppMessage(instance, phone, audioMsg);
-          await supabase.from('whatsapp_messages').insert({
-            company_group_id: authorizedNumber.company_group_id,
-            phone_number: phone,
+      await supabase.from('whatsapp_messages').insert({
+        company_group_id: authorizedNumber.company_group_id,
+        phone_number: phone,
         message_content: audioMsg,
-            direction: 'outgoing',
+        direction: 'outgoing',
         sender_name: 'Assistente IA',
         instance_id: instance.id
       });
@@ -750,16 +718,20 @@ export async function POST(request: Request) {
     const isGreeting = greetings.some(g => messageText.toLowerCase().trim() === g || messageText.toLowerCase().trim().startsWith(g + ' '));
     
     if (isGreeting) {
-      const welcomeMessage = connectionId && datasetId
-        ? `Olá ${authorizedNumber.name?.split(' ')[0] || ''}! 👋\n\nSou seu assistente de dados. Pergunte sobre faturamento, vendas, produtos, etc.`
-        : `Olá ${authorizedNumber.name?.split(' ')[0] || ''}! 👋\n\nAinda não tenho acesso aos seus dados. Contate o suporte.`;
+      // Resolver sessão para saber qual dataset está ativo
+      const sessionResult = await resolveSession(supabase, phone, messageText, authorizedNumber);
+      const datasetName = sessionResult.session?.dataset_name || 'sistema';
+      
+      const welcomeMessage = sessionResult.session
+        ? `Olá ${authorizedNumber.name?.split(' ')[0] || ''}! 👋\n\nSou seu assistente de dados do *${datasetName}*. Pergunte sobre faturamento, vendas, produtos, etc.\n\n💡 Digite *trocar* para mudar de sistema.`
+        : `Olá ${authorizedNumber.name?.split(' ')[0] || ''}! 👋\n\nSou seu assistente de dados. Pergunte sobre faturamento, vendas, produtos, etc.`;
 
       await sendWhatsAppMessage(instance, phone, welcomeMessage);
-        await supabase.from('whatsapp_messages').insert({
-          company_group_id: authorizedNumber.company_group_id,
-          phone_number: phone,
-          message_content: welcomeMessage,
-          direction: 'outgoing',
+      await supabase.from('whatsapp_messages').insert({
+        company_group_id: authorizedNumber.company_group_id,
+        phone_number: phone,
+        message_content: welcomeMessage,
+        direction: 'outgoing',
         sender_name: 'Assistente IA',
         instance_id: instance.id
       });
@@ -770,18 +742,18 @@ export async function POST(request: Request) {
     const userCommand = messageText.toLowerCase().trim();
 
     if (userCommand === '/ajuda' || userCommand === 'ajuda') {
-      const helpMsg = `🤖 *Comandos:*\n/ajuda - Esta mensagem\n/limpar - Limpar histórico\n/status - Ver status\n\n*Exemplos:*\n- Faturamento do mês\n- Top 5 produtos\n- Vendas por filial`;
+      const helpMsg = `🤖 *Comandos:*\n/ajuda - Esta mensagem\n/limpar - Limpar histórico\n/status - Ver status\n/trocar - Trocar de sistema\n\n*Exemplos:*\n- Faturamento do mês\n- Top 5 produtos\n- Vendas por filial`;
       await sendWhatsAppMessage(instance, phone, helpMsg);
-        await supabase.from('whatsapp_messages').insert({
-          company_group_id: authorizedNumber.company_group_id,
-          phone_number: phone,
+      await supabase.from('whatsapp_messages').insert({
+        company_group_id: authorizedNumber.company_group_id,
+        phone_number: phone,
         message_content: helpMsg,
-          direction: 'outgoing',
+        direction: 'outgoing',
         sender_name: 'Assistente IA',
         instance_id: instance.id
-        });
+      });
       return NextResponse.json({ status: 'success', reason: 'help' });
-      }
+    }
 
     if (userCommand === '/limpar' || userCommand === 'limpar') {
       await supabase
@@ -792,55 +764,98 @@ export async function POST(request: Request) {
 
       const clearMsg = `🗑️ Histórico limpo! Como posso ajudar?`;
       await sendWhatsAppMessage(instance, phone, clearMsg);
-        await supabase.from('whatsapp_messages').insert({
-          company_group_id: authorizedNumber.company_group_id,
-          phone_number: phone,
+      await supabase.from('whatsapp_messages').insert({
+        company_group_id: authorizedNumber.company_group_id,
+        phone_number: phone,
         message_content: clearMsg,
-          direction: 'outgoing',
-          sender_name: 'Assistente IA',
+        direction: 'outgoing',
+        sender_name: 'Assistente IA',
         instance_id: instance.id
-        });
+      });
       return NextResponse.json({ status: 'success', reason: 'cleared' });
-      }
+    }
 
     if (userCommand === '/status' || userCommand === 'status') {
-      const statusMsg = `📊 *Status*\n*Usuário:* ${authorizedNumber.name || phone}\n*Dataset:* ${datasetId ? '✅' : '❌'}\n*Conexão:* ${connectionId ? '✅' : '❌'}`;
+      const sessionResult = await resolveSession(supabase, phone, messageText, authorizedNumber);
+      const datasetName = sessionResult.session?.dataset_name || 'Nenhum';
+      const statusMsg = `📊 *Status*\n*Usuário:* ${authorizedNumber.name || phone}\n*Dataset Ativo:* ${datasetName}\n*Sessão:* ${sessionResult.hasSession ? '✅ Ativa' : '❌ Nenhuma'}`;
       await sendWhatsAppMessage(instance, phone, statusMsg);
-        await supabase.from('whatsapp_messages').insert({
-          company_group_id: authorizedNumber.company_group_id,
-          phone_number: phone,
+      await supabase.from('whatsapp_messages').insert({
+        company_group_id: authorizedNumber.company_group_id,
+        phone_number: phone,
         message_content: statusMsg,
-          direction: 'outgoing',
+        direction: 'outgoing',
         sender_name: 'Assistente IA',
         instance_id: instance.id
       });
       return NextResponse.json({ status: 'success', reason: 'status' });
     }
 
-    // ========== SEM CONEXÃO ==========
-    if (!connectionId || !datasetId) {
-      const noDataMsg = `Desculpe ${authorizedNumber.name?.split(' ')[0] || ''}, ainda não tenho acesso aos seus dados. Contate o suporte.`;
-      await sendWhatsAppMessage(instance, phone, noDataMsg);
-        await supabase.from('whatsapp_messages').insert({
-          company_group_id: authorizedNumber.company_group_id,
-          phone_number: phone,
-        message_content: noDataMsg,
-          direction: 'outgoing',
+    // =============================================
+    // RESOLVER SESSÃO E DATASET
+    // =============================================
+    const sessionResult = await resolveSession(
+      supabase,
+      phone,
+      messageText,
+      authorizedNumber
+    );
+
+    // Se precisa mostrar menu ou confirmação
+    if (sessionResult.menuMessage && !sessionResult.hasSession) {
+      await sendWhatsAppMessage(instance, phone, sessionResult.menuMessage);
+      
+      await supabase.from('whatsapp_messages').insert({
+        company_group_id: authorizedNumber.company_group_id,
+        phone_number: phone,
+        message_content: sessionResult.menuMessage,
+        direction: 'outgoing',
         sender_name: 'Assistente IA',
         instance_id: instance.id
       });
-      return NextResponse.json({ status: 'success', reason: 'no_connection' });
+
+      return NextResponse.json({ 
+        status: 'success', 
+        action: sessionResult.needsSelection ? 'selection_menu' : 'selection_confirmed'
+      });
     }
 
-    // ========== BUSCAR HISTÓRICO (LIMITADO) ==========
-    const { data: recentMessages } = await supabase
-      .from('whatsapp_messages')
-      .select('message_content, direction, created_at')
-      .eq('phone_number', phone)
-      .eq('company_group_id', authorizedNumber.company_group_id)
-      .eq('archived', false)
-      .order('created_at', { ascending: false })
-      .limit(10);  // ← ALTERADO DE 4 PARA 10
+    // Se não tem sessão válida
+    if (!sessionResult.session) {
+      return NextResponse.json({ status: 'error', reason: 'no_session' });
+    }
+
+    // =============================================
+    // USAR DADOS DA SESSÃO
+    // =============================================
+    const connectionId = sessionResult.session.connection_id;
+    const datasetId = sessionResult.session.dataset_id;
+    const datasetName = sessionResult.session.dataset_name;
+
+    console.log('[Webhook] Sessão ativa:', {
+      dataset: datasetName,
+      connectionId,
+      datasetId
+    });
+
+    // Buscar contexto específico
+    let aiContext = null;
+    if (sessionResult.session.context_id) {
+      const { data: ctx } = await supabase
+        .from('ai_model_contexts')
+        .select('*')
+        .eq('id', sessionResult.session.context_id)
+        .maybeSingle();
+      aiContext = ctx;
+    } else {
+      const { data: ctx } = await supabase
+        .from('ai_model_contexts')
+        .select('*')
+        .eq('connection_id', connectionId)
+        .eq('is_active', true)
+        .maybeSingle();
+      aiContext = ctx;
+    }
 
     // ========== INTERPRETAR ESCOLHA DE OPÇÕES 1, 2, 3 ==========
     const userInput = messageText.trim();
@@ -849,11 +864,11 @@ export async function POST(request: Request) {
     if (['1', '2', '3'].includes(userInput)) {
       // Buscar última mensagem do assistente para extrair a sugestão
       const { data: lastAssistantMsg } = await supabase
-      .from('whatsapp_messages')
+        .from('whatsapp_messages')
         .select('message_content')
         .eq('phone_number', phone)
-      .eq('company_group_id', authorizedNumber.company_group_id)
-      .eq('direction', 'outgoing')
+        .eq('company_group_id', authorizedNumber.company_group_id)
+        .eq('direction', 'outgoing')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -878,74 +893,176 @@ export async function POST(request: Request) {
       }
     }
 
-    // ========== BUSCAR QUERIES QUE FUNCIONARAM (APRENDIZADO) ==========
-    const questionIntent = identifyQuestionIntent(processedMessage);
-    const workingQueries = await getWorkingQueries(supabase, datasetId, questionIntent);
+    // ========== GERAR CONTEXTO OTIMIZADO ==========
+    let modelContext = '';
 
-    let learningContext = '';
-    if (workingQueries.length > 0) {
-      learningContext = `
-
-# QUERIES QUE FUNCIONARAM PARA PERGUNTAS SIMILARES
-Use estas queries como referência (já testadas e funcionam neste dataset):
-${workingQueries.map((q, i) => `${i + 1}. ${q}`).join('\n')}
-
-Prefira usar/adaptar estas queries em vez de criar do zero.
-`;
-      console.log('[Learning] Encontradas', workingQueries.length, 'queries para intent:', questionIntent);
-    }
-
-    // ========== BUSCAR EXEMPLOS DE TREINAMENTO ==========
-    let trainingExamplesContext = '';
-    try {
-      const { data: trainingExamples } = await supabase
-        .from('ai_training_examples')
-        .select('id, user_question, dax_query, formatted_response, validation_count')
-        .eq('company_group_id', authorizedNumber.company_group_id)
-        .eq('is_validated', true)
-        .order('validation_count', { ascending: false })
-        .order('last_used_at', { ascending: false, nullsFirst: false })
-        .limit(10);
-
-      if (trainingExamples && trainingExamples.length > 0) {
-        // Atualizar last_used_at dos exemplos usados
-        const exampleIds = trainingExamples.map(e => e.id);
-        await supabase
-          .from('ai_training_examples')
-          .update({ last_used_at: new Date().toISOString() })
-          .in('id', exampleIds);
-
-        trainingExamplesContext = `
-# EXEMPLOS VALIDADOS DE TREINAMENTO
-Use estes exemplos como REFERÊNCIA OBRIGATÓRIA. Adapte conforme a pergunta.
-
-${trainingExamples.map((ex, i) => `
-## Exemplo ${i + 1} (validado ${ex.validation_count}x)
-Pergunta: "${ex.user_question}"
-Query DAX:
-${ex.dax_query}
-Resposta esperada:
-${ex.formatted_response}
-`).join('\n---\n')}
-
-**INSTRUÇÕES:**
-- Encontre o exemplo mais similar à pergunta atual
-- Adapte a query DAX do exemplo
-- Mantenha a estrutura e padrões
-`;
-        console.log('[Training] Encontrados', trainingExamples.length, 'exemplos de treinamento');
+    if (aiContext) {
+      // Se tem seções parseadas, usar contexto inteligente
+      if (aiContext.section_base && aiContext.section_medidas) {
+        const parsed: ParsedDocumentation = {
+          raw: aiContext.context_content || '',
+          base: aiContext.section_base,
+          medidas: aiContext.section_medidas,
+          tabelas: aiContext.section_tabelas,
+          queries: aiContext.section_queries,
+          exemplos: aiContext.section_exemplos,
+          errors: [],
+          metadata: {
+            hasBase: true,
+            hasMedidas: true,
+            hasTabelas: !!aiContext.section_tabelas,
+            hasQueries: !!aiContext.section_queries,
+            hasExemplos: !!aiContext.section_exemplos,
+            totalMedidas: aiContext.section_medidas?.length || 0,
+            totalTabelas: aiContext.section_tabelas?.length || 0,
+            totalQueries: aiContext.section_queries?.length || 0,
+            totalExemplos: aiContext.section_exemplos?.length || 0
+          }
+        };
+        
+        // Gera contexto com apenas medidas/queries relevantes para a pergunta
+        modelContext = generateOptimizedContext(parsed, processedMessage);
+        console.log(`[Webhook] Contexto otimizado: ${modelContext.length} chars (de ${aiContext.context_content?.length || 0} total)`);
+      } else {
+        // Fallback: usar context_content bruto
+        modelContext = aiContext.context_content || '';
+        console.log(`[Webhook] Contexto bruto: ${modelContext.length} chars`);
       }
-    } catch (e) {
-      console.error('[Training] Erro ao buscar exemplos:', e);
     }
 
-    // ========== SYSTEM PROMPT (REGRAS WhatsApp + CONTEXTO DO BANCO) ==========
+    // Fallback: buscar por connection_id se não encontrou
+    if (!modelContext && connectionId) {
+      const { data: fallbackContext } = await supabase
+        .from('ai_model_contexts')
+        .select('context_content, section_base, section_medidas, connection_id, dataset_id')
+        .eq('connection_id', connectionId)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+
+      if (fallbackContext) {
+        if (fallbackContext.section_base && fallbackContext.section_medidas) {
+          // Tentar usar contexto otimizado do fallback
+          const parsed: ParsedDocumentation = {
+            raw: fallbackContext.context_content || '',
+            base: fallbackContext.section_base,
+            medidas: fallbackContext.section_medidas,
+            tabelas: null,
+            queries: null,
+            exemplos: null,
+            errors: [],
+            metadata: {
+              hasBase: true,
+              hasMedidas: true,
+              hasTabelas: false,
+              hasQueries: false,
+              hasExemplos: false,
+              totalMedidas: fallbackContext.section_medidas?.length || 0,
+              totalTabelas: 0,
+              totalQueries: 0,
+              totalExemplos: 0
+            }
+          };
+          modelContext = generateOptimizedContext(parsed, processedMessage);
+          console.log(`[Webhook] Contexto otimizado (fallback): ${modelContext.length} chars`);
+        } else {
+          modelContext = fallbackContext.context_content || '';
+          console.log(`[Webhook] Contexto bruto (fallback): ${modelContext.length} chars`);
+        }
+      }
+    }
+
+    console.log('[Webhook] Contexto final:', modelContext ? modelContext.length + ' chars' : 'NENHUM');
+
+    // ========== SEM CONEXÃO ==========
+    if (!connectionId || !datasetId) {
+      const noDataMsg = `Desculpe ${authorizedNumber.name?.split(' ')[0] || ''}, ainda não tenho acesso aos seus dados. Contate o suporte.`;
+      await sendWhatsAppMessage(instance, phone, noDataMsg);
+      await supabase.from('whatsapp_messages').insert({
+        company_group_id: authorizedNumber.company_group_id,
+        phone_number: phone,
+        message_content: noDataMsg,
+        direction: 'outgoing',
+        sender_name: 'Assistente IA',
+        instance_id: instance.id
+      });
+      return NextResponse.json({ status: 'success', reason: 'no_connection' });
+    }
+
+    // ========== BUSCAR HISTÓRICO (LIMITADO) ==========
+    const { data: recentMessages } = await supabase
+      .from('whatsapp_messages')
+      .select('message_content, direction, created_at')
+      .eq('phone_number', phone)
+      .eq('company_group_id', authorizedNumber.company_group_id)
+      .eq('archived', false)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    // ========== INTERPRETAR ESCOLHA DE OPÇÕES 1, 2, 3 ==========
+    const userInput = messageText.trim();
+    let processedMessage = messageText;
+
+    if (['1', '2', '3'].includes(userInput)) {
+      // Buscar última mensagem do assistente para extrair a sugestão
+      const { data: lastAssistantMsg } = await supabase
+        .from('whatsapp_messages')
+        .select('message_content')
+        .eq('phone_number', phone)
+        .eq('company_group_id', authorizedNumber.company_group_id)
+        .eq('direction', 'outgoing')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (lastAssistantMsg?.message_content) {
+        const content = lastAssistantMsg.message_content;
+        
+        // Extrair as sugestões numeradas (1️⃣, 2️⃣, 3️⃣ ou 1., 2., 3.)
+        const suggestionPatterns = [
+          /1️⃣\s*([^\n]+)/,
+          /2️⃣\s*([^\n]+)/,
+          /3️⃣\s*([^\n]+)/,
+        ];
+        
+        const choiceIndex = parseInt(userInput) - 1;
+        const match = content.match(suggestionPatterns[choiceIndex]);
+        
+        if (match && match[1]) {
+          processedMessage = match[1].trim();
+          console.log(`[Webhook] Usuário escolheu opção ${userInput}: "${processedMessage}"`);
+        }
+      }
+    }
+
+
+    // ========== BUSCAR QUERIES SIMILARES E EXEMPLOS DE TREINAMENTO ==========
+    const queryContext = await getQueryContext(
+      supabase,
+      processedMessage,
+      connectionId,
+      datasetId,
+      5
+    );
+    const queryContextStr = formatQueryContextForPrompt(queryContext);
+
+    // ========== GERAR SYSTEM PROMPT OTIMIZADO ==========
     const currentMonth = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
     const currentDate = new Date().toLocaleDateString('pt-BR');
     const currentYear = new Date().getFullYear();
     const currentMonthNumber = new Date().getMonth() + 1;
 
-    const systemPrompt = `Você é um assistente de análise de dados empresariais via WhatsApp.
+    // Gerar system prompt usando função otimizada
+    const systemPromptBase = generateWhatsAppPrompt({
+      modelName: datasetName || aiContext?.context_name || 'Power BI',
+      modelContext: modelContext, // Contexto otimizado do parser
+      queryContext: queryContextStr, // Queries similares
+      userName: authorizedNumber?.name,
+      datasetName: datasetName
+    });
+
+    // Adicionar regras específicas do WhatsApp (período, formato, etc)
+    const systemPrompt = `${systemPromptBase}
 
 # ⚠️ REGRA CRÍTICA - FILTRO DE DATA OBRIGATÓRIO EM TODA QUERY
 **NUNCA execute uma query DAX sem filtro de período.**
@@ -1029,10 +1146,57 @@ R$ X.XXX.XXX,XX
 2️⃣ [Sugestão 2]
 3️⃣ [Sugestão 3]
 
+
+**SEMPRE inicie a resposta informando o período:**
+📅 *${currentMonth}*
+
+# REGRA DE SUGESTÕES (OBRIGATÓRIO)
+**SEMPRE termine TODA resposta com exatamente 3 sugestões de aprofundamento relacionadas ao tema.**
+
+Formato:
+━━━━━━━━━━━━━━━━━
+📊 *Posso detalhar:*
+1️⃣ [Análise relacionada 1]
+2️⃣ [Análise relacionada 2]
+3️⃣ [Análise relacionada 3]
+
+Exemplos de sugestões por tema:
+- Faturamento → Por filial, Por vendedor/garçom, Por produto
+- Vendas → Por período, Por cliente, Por categoria
+- Produtos → Mais vendidos, Margem de lucro, Por filial
+- Clientes → Top clientes, Inadimplentes, Novos vs recorrentes
+
+# INTERPRETAÇÃO DE NÚMEROS
+Se o usuário responder apenas "1", "2" ou "3", ele está escolhendo uma das sugestões anteriores.
+Consulte o histórico e execute a análise correspondente.
+
+# QUANDO USUÁRIO ESCOLHE OPÇÃO
+Se a mensagem do usuário for uma das sugestões anteriores (ex: "Faturamento por filial"), 
+execute a consulta DAX correspondente usando o mesmo período da resposta anterior.
+
+# FORMATAÇÃO WHATSAPP
+- Use *negrito* para destaques
+- Valores monetários COMPLETOS: R$ 1.234.567,89 (NUNCA abrevie)
+- Máximo 800 caracteres por resposta
+- Emojis com moderação (máx 5 por mensagem)
+- Sem asteriscos duplos, use simples: *texto*
+
+# FORMATO PADRÃO DE RESPOSTA
+📅 *${currentMonth}*
+
+💰 *[Métrica Principal]*
+R$ X.XXX.XXX,XX
+
+[Detalhes relevantes se houver]
+
+━━━━━━━━━━━━━━━━━
+📊 *Posso detalhar:*
+1️⃣ [Sugestão 1]
+2️⃣ [Sugestão 2]
+3️⃣ [Sugestão 3]
+
 # CONTEXTO DO MODELO DE DADOS
 ${modelContext.slice(0, 10000)}
-${learningContext}
-${trainingExamplesContext}
 
 # INSTRUÇÕES DAX
 - Use a ferramenta execute_dax para buscar dados
@@ -1190,19 +1354,19 @@ Ano: ${currentYear}`;
           const daxResult = await executeDaxQuery(connectionId, datasetId, toolInput.query, supabase);
           console.log('[Webhook] DAX resultado:', daxResult.success ? `✅ ${daxResult.results?.length || 0} linhas` : `❌ ${daxResult.error}`);
 
-          // Salvar resultado para aprendizado
-          await saveQueryResult(
-            supabase,
-            datasetId,
-            authorizedNumber.company_group_id,
-            processedMessage,
-            questionIntent,
-            toolInput.query,
-            daxResult.success,
-            daxResult.error,
-            undefined, // executionTimeMs - pode adicionar depois se quiser
-            daxResult.results?.length
-          );
+          // Salvar resultado para aprendizado (usando novo sistema)
+          if (toolInput.query) {
+            await saveQueryLearning(supabase, {
+              company_group_id: authorizedNumber.company_group_id,
+              connection_id: connectionId || undefined,
+              dataset_id: datasetId,
+              user_question: processedMessage,
+              dax_query: toolInput.query,
+              was_successful: daxResult.success,
+              source: 'whatsapp',
+              created_by: authorizedNumber.user_id || undefined
+            });
+          }
 
           if (daxResult.success) {
           toolResults.push({
@@ -1356,6 +1520,14 @@ Ano: ${currentYear}`;
 
     console.log('[Webhook] Resposta:', assistantMessage.length, 'chars | Total:', Date.now() - startTime, 'ms');
 
+    // ========== MARCAR EXEMPLOS DE TREINAMENTO COMO USADOS ==========
+    if (queryContext.trainingExamples && queryContext.trainingExamples.length > 0) {
+      // Marcar o exemplo mais relevante como usado
+      const mostRelevant = queryContext.trainingExamples[0];
+      await markTrainingExampleUsed(supabase, mostRelevant.id);
+      console.log(`[Webhook] Exemplo de treinamento marcado como usado: ${mostRelevant.id}`);
+    }
+
     // ========== DETECTAR E SALVAR PERGUNTAS NÃO RESPONDIDAS ==========
     const evasivePatterns = [
       'não encontrei',
@@ -1444,7 +1616,10 @@ Ano: ${currentYear}`;
     // ========== ENVIAR RESPOSTA ==========
     let sent = false;
     
-    console.log('[Webhook] Enviando resposta - respondWithAudio:', respondWithAudio, '| Mensagem length:', assistantMessage.length);
+    // Adicionar rodapé com nome do dataset
+    const messageWithFooter = assistantMessage + generateFooter(datasetName);
+    
+    console.log('[Webhook] Enviando resposta - respondWithAudio:', respondWithAudio, '| Mensagem length:', messageWithFooter.length);
     
     if (respondWithAudio) {
       console.log('[Webhook] 🎤 Gerando áudio com OpenAI TTS...');
@@ -1456,19 +1631,22 @@ Ano: ${currentYear}`;
           console.log('[Webhook] Áudio enviado?', sent);
           if (!sent) {
             console.log('[Webhook] ⚠️ Falha ao enviar áudio, enviando como texto...');
-            sent = await sendWhatsAppMessage(instance, phone, assistantMessage);
+            sent = await sendWhatsAppMessage(instance, phone, messageWithFooter);
+          } else {
+            // Se áudio foi enviado, enviar rodapé como texto separado
+            await sendWhatsAppMessage(instance, phone, generateFooter(datasetName));
           }
         } else {
           console.log('[Webhook] ❌ Falha ao gerar áudio (retornou null), enviando texto');
-          sent = await sendWhatsAppMessage(instance, phone, assistantMessage);
+          sent = await sendWhatsAppMessage(instance, phone, messageWithFooter);
         }
       } catch (audioError: any) {
         console.error('[Webhook] ❌ Erro ao gerar/enviar áudio:', audioError.message);
-        sent = await sendWhatsAppMessage(instance, phone, assistantMessage);
+        sent = await sendWhatsAppMessage(instance, phone, messageWithFooter);
       }
     } else {
       console.log('[Webhook] 📝 Enviando como texto');
-      sent = await sendWhatsAppMessage(instance, phone, assistantMessage);
+      sent = await sendWhatsAppMessage(instance, phone, messageWithFooter);
     }
 
     // ========== SALVAR RESPOSTA ==========
@@ -1476,7 +1654,7 @@ Ano: ${currentYear}`;
       await supabase.from('whatsapp_messages').insert({
         company_group_id: authorizedNumber.company_group_id,
         phone_number: phone,
-        message_content: respondWithAudio ? `🔊 ${assistantMessage}` : assistantMessage,
+        message_content: respondWithAudio ? `🔊 ${assistantMessage}` : messageWithFooter,
         direction: 'outgoing',
         sender_name: 'Assistente IA',
         instance_id: instance.id
