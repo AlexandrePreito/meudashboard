@@ -1,12 +1,24 @@
 ﻿// Parser de documentação estruturada
 
 export interface ParsedDocumentation {
+  raw?: string;  // Conteúdo original (opcional)
   base: string | null;
   medidas: MedidaInfo[] | null;
   tabelas: TabelaInfo[] | null;
   queries: QueryInfo[] | null;
   exemplos: ExemploInfo[] | null;
   errors: string[];
+  metadata?: {
+    hasBase: boolean;
+    hasMedidas: boolean;
+    hasTabelas: boolean;
+    hasQueries: boolean;
+    hasExemplos: boolean;
+    totalMedidas: number;
+    totalTabelas: number;
+    totalQueries: number;
+    totalExemplos: number;
+  };
 }
 
 export interface MedidaInfo {
@@ -181,4 +193,129 @@ export function getDocumentationStats(parsed: ParsedDocumentation) {
     exemplosCount: parsed.exemplos?.length || 0,
     errors: parsed.errors
   };
+}
+
+// Função para gerar contexto otimizado baseado na pergunta
+export function generateOptimizedContext(
+  parsed: ParsedDocumentation,
+  question: string
+): string {
+  if (!parsed.base) {
+    return '';
+  }
+
+  const questionLower = question.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  
+  // Extrair palavras-chave da pergunta
+  const keywords: string[] = [];
+  
+  // Palavras relacionadas a medidas
+  const medidaKeywords = ['faturamento', 'venda', 'receita', 'ticket', 'margem', 'lucro', 'custo', 'cmv', 'quantidade', 'total', 'soma'];
+  medidaKeywords.forEach(kw => {
+    if (questionLower.includes(kw)) keywords.push(kw);
+  });
+  
+  // Palavras relacionadas a dimensões
+  const dimensaoKeywords = ['filial', 'loja', 'vendedor', 'garcom', 'funcionario', 'produto', 'cliente', 'fornecedor', 'categoria', 'grupo'];
+  dimensaoKeywords.forEach(kw => {
+    if (questionLower.includes(kw)) keywords.push(kw);
+  });
+  
+  // Palavras relacionadas a tempo
+  const tempoKeywords = ['mes', 'ano', 'dia', 'semana', 'periodo', 'data'];
+  tempoKeywords.forEach(kw => {
+    if (questionLower.includes(kw)) keywords.push(kw);
+  });
+
+  // Filtrar medidas relevantes
+  const relevantMeasures: MedidaInfo[] = [];
+  if (parsed.medidas) {
+    parsed.medidas.forEach(medida => {
+      const medidaText = `${medida.name} ${medida.description} ${medida.whenToUse} ${medida.area}`.toLowerCase();
+      const isRelevant = keywords.some(kw => medidaText.includes(kw)) || 
+                       keywords.length === 0; // Se não tem keywords, incluir todas
+      
+      if (isRelevant) {
+        relevantMeasures.push(medida);
+      }
+    });
+  }
+
+  // Se não encontrou medidas relevantes, usar top 10 mais comuns
+  const measuresToInclude = relevantMeasures.length > 0 
+    ? relevantMeasures.slice(0, 15)  // Limitar a 15 medidas
+    : (parsed.medidas || []).slice(0, 10);
+
+  // Filtrar queries relevantes
+  const relevantQueries: QueryInfo[] = [];
+  if (parsed.queries) {
+    parsed.queries.forEach(query => {
+      const queryText = `${query.question} ${query.measures.join(' ')} ${query.groupers.join(' ')} ${query.filters.join(' ')}`.toLowerCase();
+      const isRelevant = keywords.some(kw => queryText.includes(kw)) || 
+                       keywords.length === 0;
+      if (isRelevant) {
+        relevantQueries.push(query);
+      }
+    });
+  }
+  const queriesToInclude = relevantQueries.slice(0, 5); // Limitar a 5 queries
+
+  // Filtrar exemplos relevantes
+  const relevantExemplos: ExemploInfo[] = [];
+  if (parsed.exemplos) {
+    parsed.exemplos.forEach(exemplo => {
+      const exemploText = `${exemplo.question} ${exemplo.measures.join(' ')} ${exemplo.groupers.join(' ')} ${exemplo.filters.join(' ')}`.toLowerCase();
+      const isRelevant = keywords.some(kw => exemploText.includes(kw)) || 
+                       keywords.length === 0;
+      if (isRelevant) {
+        relevantExemplos.push(exemplo);
+      }
+    });
+  }
+  const exemplosToInclude = relevantExemplos.slice(0, 3); // Limitar a 3 exemplos
+
+  // Construir o contexto otimizado
+  let optimizedContext = parsed.base;
+
+  if (measuresToInclude.length > 0) {
+    optimizedContext += '\n\n## Medidas Disponíveis\n';
+    measuresToInclude.forEach(m => {
+      optimizedContext += `### ${m.name}\n`;
+      if (m.description) optimizedContext += `**Descrição:** ${m.description}\n`;
+      if (m.whenToUse) optimizedContext += `**Quando usar:** ${m.whenToUse}\n`;
+      if (m.area) optimizedContext += `**Área:** ${m.area}\n`;
+      if (m.formula) optimizedContext += `**Fórmula:** \`${m.formula}\`\n`;
+    });
+  }
+
+  if (parsed.tabelas && parsed.tabelas.length > 0) {
+    optimizedContext += '\n\n## Tabelas e Colunas Principais\n';
+    parsed.tabelas.slice(0, 5).forEach(tabela => { // Limitar a 5 tabelas
+      optimizedContext += `### Tabela: ${tabela.table}\n`;
+      tabela.columns.slice(0, 5).forEach(coluna => { // Limitar a 5 colunas por tabela
+        optimizedContext += `- ${coluna.name} (Tipo: ${coluna.type}, Uso: ${coluna.usage.join('/')})\n`;
+      });
+    });
+  }
+
+  if (queriesToInclude.length > 0) {
+    optimizedContext += '\n\n## Queries Pré-configuradas\n';
+    queriesToInclude.forEach(q => {
+      optimizedContext += `### Pergunta: ${q.question}\n`;
+      if (q.measures.length > 0) optimizedContext += `**Medidas:** ${q.measures.join(', ')}\n`;
+      if (q.groupers.length > 0) optimizedContext += `**Agrupadores:** ${q.groupers.join(', ')}\n`;
+      if (q.filters.length > 0) optimizedContext += `**Filtros:** ${q.filters.join(', ')}\n`;
+    });
+  }
+
+  if (exemplosToInclude.length > 0) {
+    optimizedContext += '\n\n## Exemplos de Perguntas e Respostas\n';
+    exemplosToInclude.forEach(ex => {
+      optimizedContext += `### Pergunta: ${ex.question}\n`;
+      if (ex.measures.length > 0) optimizedContext += `**Medidas:** ${ex.measures.join(', ')}\n`;
+      if (ex.response) optimizedContext += `**Resposta esperada:** ${ex.response}\n`;
+    });
+  }
+
+  return optimizedContext;
 }
