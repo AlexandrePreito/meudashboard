@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
 
 // GET - Listar relatórios
 export async function GET(request: Request) {
@@ -91,8 +91,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
+    const supabase = createAdminClient();
+
+    // Verificar permissão e obter developerId se necessário
+    let developerId: string | null = null;
     if (!user.is_master) {
-      return NextResponse.json({ error: 'Apenas master pode criar relatórios' }, { status: 403 });
+      developerId = await getUserDeveloperId(user.id);
+      
+      if (!developerId) {
+        return NextResponse.json({ error: 'Sem permissão para criar relatórios' }, { status: 403 });
+      }
     }
 
     const body = await request.json();
@@ -102,7 +110,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Campos obrigatórios: connection_id, name, report_id, dataset_id' }, { status: 400 });
     }
 
-    const supabase = createAdminClient();
+    // Se for developer, verificar se a conexão pertence a um grupo dele
+    if (!user.is_master && developerId) {
+      // Buscar a conexão para verificar o grupo
+      const { data: connection } = await supabase
+        .from('powerbi_connections')
+        .select('company_group_id')
+        .eq('id', connection_id)
+        .single();
+
+      if (!connection) {
+        return NextResponse.json({ error: 'Conexão não encontrada' }, { status: 404 });
+      }
+
+      // Verificar se o grupo pertence ao developer
+      const { data: group } = await supabase
+        .from('company_groups')
+        .select('id')
+        .eq('id', connection.company_group_id)
+        .eq('developer_id', developerId)
+        .single();
+
+      if (!group) {
+        return NextResponse.json({ error: 'Sem permissão para criar relatórios nesta conexão' }, { status: 403 });
+      }
+    }
 
     const { data, error } = await supabase
       .from('powerbi_reports')

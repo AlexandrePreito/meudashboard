@@ -6,6 +6,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import PermissionGuard from '@/components/assistente-ia/PermissionGuard';
 import { parseDocumentation, getDocumentationStats, ParsedDocumentation } from '@/lib/assistente-ia/documentation-parser';
 import { useToast } from '@/contexts/ToastContext';
+import { useMenu } from '@/contexts/MenuContext';
 
 interface Dataset {
   id: string;
@@ -25,8 +26,10 @@ interface ContextInfo {
   updated_at: string;
 }
 
-export default function ContextosPage() {
+// Componente interno que usa o contexto
+function ContextosContent() {
   const toast = useToast();
+  const { activeGroup } = useMenu();
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [selectedDataset, setSelectedDataset] = useState<string>('');
   const [contexts, setContexts] = useState<ContextInfo[]>([]);
@@ -55,7 +58,7 @@ export default function ContextosPage() {
 
   useEffect(() => {
     loadDatasets();
-  }, []);
+  }, [activeGroup?.id]);
 
   useEffect(() => {
     if (selectedDataset) {
@@ -89,15 +92,30 @@ export default function ContextosPage() {
 
   const loadDatasets = async () => {
     try {
-      const res = await fetch('/api/assistente-ia/datasets');
+      setLoading(true);
+      // Montar URL com group_id se houver grupo ativo
+      const url = activeGroup
+        ? `/api/assistente-ia/datasets?group_id=${activeGroup.id}`
+        : '/api/assistente-ia/datasets';
+      
+      const res = await fetch(url);
       const data = await res.json();
       const datasetsList = data.data || data.datasets || data || [];
       setDatasets(datasetsList);
-      if (datasetsList.length > 0) {
+      
+      // Se o dataset selecionado não está mais na lista, limpar seleção
+      if (selectedDataset && !datasetsList.find((ds: Dataset) => (ds.dataset_id || ds.id) === selectedDataset)) {
+        setSelectedDataset('');
+        setContexts([]);
+      }
+      
+      // Se não tem dataset selecionado e há datasets disponíveis, selecionar o primeiro
+      if (!selectedDataset && datasetsList.length > 0) {
         setSelectedDataset(datasetsList[0].dataset_id || datasetsList[0].id);
       }
     } catch (error) {
       console.error('Erro ao carregar datasets:', error);
+      toast.error('Erro ao carregar datasets');
     } finally {
       setLoading(false);
     }
@@ -262,20 +280,15 @@ export default function ContextosPage() {
 
   if (loading) {
     return (
-      <PermissionGuard>
-        <MainLayout>
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          </div>
-        </MainLayout>
-      </PermissionGuard>
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
     );
   }
 
   return (
-    <PermissionGuard>
-      <MainLayout>
-        <div className="space-y-6">
+    <>
+      <div className="space-y-6">
           
           {/* Header */}
           <div className="flex justify-between items-center">
@@ -288,7 +301,7 @@ export default function ContextosPage() {
               <div className="relative group">
                 <button
                   onClick={() => handleDownload('prompt-documentacao-chat.md')}
-                  className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  className="p-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-colors"
                   title="Baixar prompt de Documentação Chat"
                 >
                   <Download size={20} />
@@ -301,7 +314,7 @@ export default function ContextosPage() {
               <div className="relative group">
                 <button
                   onClick={() => handleDownload('prompt-extrair-dax.md')}
-                  className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                  className="p-2 bg-purple-600 text-white hover:bg-purple-700 rounded-lg transition-colors"
                   title="Baixar prompt de Extrair DAX"
                 >
                   <Download size={20} />
@@ -462,9 +475,9 @@ export default function ContextosPage() {
               </div>
             </>
           )}
-        </div>
+      </div>
 
-        {/* Modal de Ajuda */}
+      {/* Modal de Ajuda */}
         {showHelp && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-2xl w-full shadow-xl">
@@ -780,6 +793,16 @@ export default function ContextosPage() {
             </div>
           </div>
         )}
+      </>
+  );
+}
+
+// Componente principal exportado
+export default function ContextosPage() {
+  return (
+    <PermissionGuard>
+      <MainLayout>
+        <ContextosContent />
       </MainLayout>
     </PermissionGuard>
   );

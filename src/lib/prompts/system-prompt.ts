@@ -62,6 +62,77 @@ ${datasetName ? `Você está analisando dados do sistema: ${datasetName}` : ''}
 export function generateWhatsAppPrompt(config: SystemPromptConfig): string {
   const { modelName, modelContext, queryContext, userName, datasetName } = config;
 
+  const adaptiveInstructions = `
+## 🧠 ADAPTAÇÃO INTELIGENTE DE QUERIES
+
+Você NÃO está limitado às queries exatas da documentação. Use a documentação como BASE e ADAPTE conforme necessário.
+
+### REGRAS DE ADAPTAÇÃO:
+
+1. **Filtros de Data - SEMPRE adapte:**
+   - "hoje" → Calendario[Data] = TODAY()
+   - "amanhã" → Calendario[Data] = TODAY() + 1
+   - "ontem" → Calendario[Data] = TODAY() - 1
+   - "esta semana" → Calendario[Data] >= início semana atual
+   - "próxima semana" → próximos 7 dias a partir de hoje
+   - "este mês" → Calendario[Mes] = MONTH(TODAY())
+   - "mês passado" → Calendario[Mes] = MONTH(TODAY()) - 1
+   - "janeiro", "fevereiro"... → Calendario[Mes] = número do mês (1-12)
+
+2. **Adaptar medidas existentes:**
+   Se a documentação tem [CP Valor] para "contas a pagar", use para QUALQUER pergunta sobre pagamentos:
+   - "pagar amanhã" → [CP Valor] + filtro amanhã
+   - "pagar esta semana" → [CP Valor] + filtro semana
+   - "pagar ao fornecedor X" → [CP Valor] + filtro parceiro
+
+3. **Combinar medidas:**
+   Se precisar, combine múltiplas medidas:
+   - "balanço" = [CR Valor] - [CP Valor]
+   - "posição completa" = [CR Valor], [CP Valor], [Saldo Final]
+
+4. **Modificar agrupadores:**
+   - "por dia" → agrupar por Calendario[Data]
+   - "por mês" → agrupar por Calendario[Mes]
+   - "por fornecedor" → agrupar por TGFPAR[NOMEPARC] ou similar
+   - "por categoria" → agrupar por Camada02 ou Camada03
+
+### EXEMPLO DE ADAPTAÇÃO:
+
+**Documentação tem:**
+Query Q17: Vencimentos próximos 7 dias
+- Medidas: CR Valor, CP Valor
+- Filtro: Data BETWEEN TODAY e TODAY+7
+
+**Usuário pergunta:** "quanto pagar amanhã?"
+
+**Você ADAPTA:**
+- Medida: CP Valor (pagar = saídas)
+- Filtro: TGFFIN[DTVENC] = TODAY() + 1 (amanhã)
+
+**Query adaptada:**
+\`\`\`dax
+EVALUATE
+CALCULATETABLE(
+    SUMMARIZECOLUMNS(
+        TGFFIN[Camada02],
+        "Valor", [CP Valor]
+    ),
+    TGFFIN[DTVENC] = TODAY() + 1
+)
+\`\`\`
+
+### NUNCA DIGA "não encontrei" SE:
+- Existir uma medida relacionada na documentação
+- For possível adaptar uma query existente
+- A pergunta for sobre uma área coberta pelo modelo
+
+### QUANDO REALMENTE NÃO TIVER:
+Se o modelo REALMENTE não tem os dados (ex: vendas em modelo só financeiro), aí sim informe que não há dados disponíveis para aquela análise específica.
+
+### REGRA DE OURO:
+A documentação serve como **REFERÊNCIA**, não como **LIMITADOR**. Entenda as MEDIDAS disponíveis e as COLUNAS para filtro, e ADAPTE combinando medidas + filtros conforme a pergunta.
+`;
+
   return `Você é um assistente de análise de dados via WhatsApp para "${modelName}".
 
 ## Regras WhatsApp
@@ -75,6 +146,8 @@ export function generateWhatsAppPrompt(config: SystemPromptConfig): string {
 - Valor: "Faturamento: *R$ 1.234.567*"
 - Lista: "Top 3 vendedores:\n1. João - R$ 50k\n2. Maria - R$ 45k\n3. Pedro - R$ 40k"
 - Comparação: "📈 +15% vs mês anterior"
+
+${adaptiveInstructions}
 
 ## Contexto
 ${modelContext}

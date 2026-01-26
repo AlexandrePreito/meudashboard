@@ -89,11 +89,14 @@ function RelatoriosContent() {
       const data = await res.json();
       
       if (data.user) {
-        if (data.user.is_master) {
+        // A API retorna role no objeto data (não em data.user)
+        const role = data.role || (data.user.role);
+        
+        if (role === 'master' || data.user.is_master) {
           setUserRole('master');
-        } else if (data.user.is_developer) {
+        } else if (role === 'developer' || data.user.is_developer) {
           setUserRole('developer');
-        } else if (data.user.role === 'admin') {
+        } else if (role === 'admin') {
           setUserRole('admin');
         } else {
           setUserRole('user');
@@ -440,33 +443,21 @@ function RelatoriosContent() {
                     <td className="px-6 py-4 text-right">
                       <button
                         onClick={() => openModal(report)}
-                        className={`p-2 rounded-lg mr-1 ${
-                          userRole === 'developer'
-                            ? 'text-gray-400 hover:bg-gray-100'
-                            : 'text-gray-600 hover:bg-gray-100'
-                        }`}
+                        className="p-2 rounded-lg mr-1 text-gray-600 hover:bg-gray-100"
                         title="Editar"
                       >
                         <Pencil size={16} />
                       </button>
                       <button
                         onClick={() => handleCopy(report)}
-                        className={`p-2 rounded-lg mr-1 ${
-                          userRole === 'developer'
-                            ? 'text-gray-400 hover:bg-gray-100'
-                            : 'text-blue-600 hover:bg-blue-50'
-                        }`}
+                        className="p-2 rounded-lg mr-1 text-blue-600 hover:bg-blue-50"
                         title="Copiar"
                       >
                         <Copy size={16} />
                       </button>
                       <button
                         onClick={() => handleDelete(report.id)}
-                        className={`p-2 rounded-lg ${
-                          userRole === 'developer'
-                            ? 'text-gray-400 hover:bg-gray-100'
-                            : 'text-red-600 hover:bg-red-50'
-                        }`}
+                        className="p-2 rounded-lg text-red-600 hover:bg-red-50"
                         title="Excluir"
                       >
                         <Trash2 size={16} />

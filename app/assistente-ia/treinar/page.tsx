@@ -6,6 +6,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import PermissionGuard from '@/components/assistente-ia/PermissionGuard';
 import { TrainingExample } from '@/types/assistente-ia';
 import { Plus, Pencil, Trash2, Sparkles, Search } from 'lucide-react';
+import { useMenu } from '@/contexts/MenuContext';
 
 const TAGS_DISPONIVEIS = [
   { value: 'vendas', label: 'Vendas', color: 'bg-blue-100 text-blue-800' },
@@ -37,25 +38,85 @@ const TAGS_DISPONIVEIS = [
 // Componente interno que usa o contexto
 function TreinarIAContent() {
   const router = useRouter();
+  const { activeGroup } = useMenu();
   const [examples, setExamples] = useState<TrainingExample[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>('');
+  const [datasets, setDatasets] = useState<Array<{ id: string; name: string; dataset_id: string }>>([]);
+  const [selectedDataset, setSelectedDataset] = useState<string>('');
 
   useEffect(() => {
-    loadExamples();
-  }, []);
+    loadDatasets();
+  }, [activeGroup?.id]);
+
+  useEffect(() => {
+    // Recarregar exemplos quando o grupo ou dataset mudar
+    if (activeGroup) {
+      loadExamples();
+    } else {
+      setExamples([]);
+      setLoading(false);
+    }
+  }, [selectedDataset, activeGroup?.id]);
+
+  const loadDatasets = async () => {
+    if (!activeGroup) {
+      setDatasets([]);
+      setSelectedDataset('');
+      return;
+    }
+    
+    try {
+      const url = `/api/assistente-ia/datasets?group_id=${activeGroup.id}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const datasetsList = data.data || data.datasets || data || [];
+      setDatasets(datasetsList);
+      
+      // Limpar dataset selecionado quando grupo mudar e selecionar o primeiro do novo grupo
+      if (datasetsList.length > 0) {
+        setSelectedDataset(datasetsList[0].dataset_id || datasetsList[0].id);
+      } else {
+        setSelectedDataset('');
+      }
+    } catch (error) {
+      console.error('Erro ao carregar datasets:', error);
+      setDatasets([]);
+      setSelectedDataset('');
+    }
+  };
 
   const loadExamples = async () => {
+    if (!activeGroup) {
+      setExamples([]);
+      setLoading(false);
+      return;
+    }
+    
     try {
       setLoading(true);
-      const response = await fetch('/api/assistente-ia/training');
+      // Montar URL com filtros
+      const params = new URLSearchParams();
+      if (selectedDataset) {
+        params.append('dataset_id', selectedDataset);
+      }
+      if (activeGroup.id) {
+        params.append('group_id', activeGroup.id);
+      }
+      
+      const url = `/api/assistente-ia/training${params.toString() ? '?' + params.toString() : ''}`;
+      const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
         setExamples(data.data || []);
+      } else {
+        console.error('Erro ao carregar exemplos:', await response.text());
+        setExamples([]);
       }
     } catch (error) {
       console.error('Erro ao carregar exemplos:', error);
+      setExamples([]);
     } finally {
       setLoading(false);
     }
@@ -119,6 +180,18 @@ function TreinarIAContent() {
                 className="w-full px-4 py-2 border border-gray-200 rounded-lg"
               />
             </div>
+            <select
+              value={selectedDataset}
+              onChange={(e) => setSelectedDataset(e.target.value)}
+              className="px-4 py-2 border border-gray-200 rounded-lg min-w-[200px]"
+            >
+              <option value="">Todos os datasets</option>
+              {datasets.map((ds) => (
+                <option key={ds.id} value={ds.dataset_id || ds.id}>
+                  {ds.name}
+                </option>
+              ))}
+            </select>
             <select
               value={selectedTag}
               onChange={(e) => setSelectedTag(e.target.value)}

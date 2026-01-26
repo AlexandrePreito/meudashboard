@@ -261,6 +261,19 @@ export async function POST(request: Request) {
 
     if (numberError) {
       console.error('Erro ao criar número:', numberError);
+      console.error('Código do erro:', numberError.code);
+      console.error('Mensagem completa:', JSON.stringify(numberError, null, 2));
+      
+      // Tratar erro de constraint única de forma mais amigável
+      if (numberError.message?.includes('duplicate key') || 
+          numberError.message?.includes('unique constraint') ||
+          numberError.message?.includes('idx_unique_phone_number') ||
+          numberError.code === '23505') {
+        return NextResponse.json({ 
+          error: `Erro de constraint única: ${numberError.message}. Verifique se todas as constraints foram removidas executando: SELECT conname FROM pg_constraint WHERE conrelid = 'whatsapp_authorized_numbers'::regclass AND contype = 'u';` 
+        }, { status: 409 });
+      }
+      
       return NextResponse.json({ error: numberError.message }, { status: 500 });
     }
 

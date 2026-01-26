@@ -1579,15 +1579,21 @@ Ano: ${currentYear}`;
     // ========== ENVIAR RESPOSTA ==========
     let sent = false;
     
-    // Adicionar rodapé com nome do dataset
-    const messageWithFooter = assistantMessage + generateFooter(datasetName);
+    // Remover rodapé duplicado se já existir na mensagem
+    const footerPattern = /─────────────[\s\S]*?📊.*?\|.*?_trocar_/;
+    const cleanAssistantMessage = assistantMessage.replace(footerPattern, '').trim();
+    
+    // Adicionar rodapé com nome do dataset (apenas uma vez)
+    const footer = generateFooter(datasetName);
+    const messageWithFooter = cleanAssistantMessage + footer;
     
     console.log('[Webhook] Enviando resposta - respondWithAudio:', respondWithAudio, '| Mensagem length:', messageWithFooter.length);
     
     if (respondWithAudio) {
       console.log('[Webhook] 🎤 Gerando áudio com OpenAI TTS...');
       try {
-        const audioBase64 = await generateAudio(assistantMessage);
+        // Áudio sem rodapé (rodapé será enviado separadamente)
+        const audioBase64 = await generateAudio(cleanAssistantMessage);
         if (audioBase64) {
           console.log('[Webhook] ✅ Áudio gerado (', audioBase64.length, 'bytes), enviando via WhatsApp...');
           sent = await sendWhatsAppAudio(instance, phone, audioBase64);
@@ -1596,8 +1602,8 @@ Ano: ${currentYear}`;
             console.log('[Webhook] ⚠️ Falha ao enviar áudio, enviando como texto...');
             sent = await sendWhatsAppMessage(instance, phone, messageWithFooter);
           } else {
-            // Se áudio foi enviado, enviar rodapé como texto separado
-            await sendWhatsAppMessage(instance, phone, generateFooter(datasetName));
+            // Se áudio foi enviado, enviar rodapé como texto separado (apenas uma vez)
+            await sendWhatsAppMessage(instance, phone, footer);
           }
         } else {
           console.log('[Webhook] ❌ Falha ao gerar áudio (retornou null), enviando texto');
@@ -1614,10 +1620,15 @@ Ano: ${currentYear}`;
 
     // ========== SALVAR RESPOSTA ==========
     if (sent) {
+      // Para áudio, salvar mensagem sem rodapé (rodapé foi enviado separadamente)
+      const messageToSave = respondWithAudio 
+        ? `🔊 ${cleanAssistantMessage}\n\n${footer}` 
+        : messageWithFooter;
+      
       await supabase.from('whatsapp_messages').insert({
         company_group_id: authorizedNumber.company_group_id,
         phone_number: phone,
-        message_content: respondWithAudio ? `🔊 ${assistantMessage}` : messageWithFooter,
+        message_content: messageToSave,
         direction: 'outgoing',
         sender_name: 'Assistente IA',
         instance_id: instance.id

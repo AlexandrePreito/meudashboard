@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getUserGroupMembership } from '@/lib/auth';
+import { getUserGroupMembership, getAuthUser, getUserDeveloperId } from '@/lib/auth';
 
 // GET: Listar exemplos de treinamento
 export async function GET(request: NextRequest) {
@@ -56,9 +56,36 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category');
     const connectionId = searchParams.get('connection_id');
     const datasetId = searchParams.get('dataset_id');
+    const groupIdParam = searchParams.get('group_id');
     const validatedOnly = searchParams.get('validated_only') === 'true';
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
+
+    // Determinar qual group_id usar
+    let groupId = groupIdParam || membership.company_group_id;
+    
+    // Se for developer e passou group_id, validar se o grupo pertence a ele
+    if (groupIdParam && membership.role === 'developer') {
+      const user = await getAuthUser();
+      if (user) {
+        const developerId = await getUserDeveloperId(user.id);
+        if (developerId) {
+          const { data: group } = await supabase
+            .from('company_groups')
+            .select('id')
+            .eq('id', groupIdParam)
+            .eq('developer_id', developerId)
+            .single();
+          
+          if (!group) {
+            return NextResponse.json(
+              { success: false, error: 'Grupo não encontrado ou sem permissão' },
+              { status: 403 }
+            );
+          }
+        }
+      }
+    }
 
     let query = supabase
       .from('ai_training_examples')
@@ -66,7 +93,7 @@ export async function GET(request: NextRequest) {
         *,
         company_group:company_groups(id, name)
       `, { count: 'exact' })
-      .eq('company_group_id', membership.company_group_id)
+      .eq('company_group_id', groupId)
       .order('validation_count', { ascending: false })
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);

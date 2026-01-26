@@ -202,7 +202,6 @@ export default function Sidebar() {
     { href: '/powerbi/conexoes', icon: LinkIcon, label: 'Conexões', hideForAdmin: true },
     { href: '/powerbi/relatorios', icon: FileText, label: 'Relatórios', hideForAdmin: true },
     { href: '/powerbi/telas', icon: Monitor, label: 'Telas' },
-    { href: '/powerbi/contextos', icon: Brain, label: 'Contextos IA', requiresPermission: 'ai', hideForAdmin: true },
     { href: '/powerbi/ordem-atualizacao', icon: ArrowUpDown, label: 'Ordem Atualização', hideForAdmin: true },
   ];
 
