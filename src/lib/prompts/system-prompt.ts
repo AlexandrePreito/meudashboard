@@ -1,4 +1,4 @@
-// lib/prompts/system-prompt.ts
+// src/lib/prompts/system-prompt.ts
 // System prompts otimizados para assistente IA
 
 export interface SystemPromptConfig {

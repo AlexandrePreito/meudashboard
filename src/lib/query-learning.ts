@@ -1,4 +1,4 @@
-// lib/query-learning.ts
+// src/lib/query-learning.ts
 // Sistema de aprendizado de queries DAX
 
 import { SupabaseClient } from '@supabase/supabase-js';

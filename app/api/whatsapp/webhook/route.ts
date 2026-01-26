@@ -999,43 +999,6 @@ export async function POST(request: Request) {
       .order('created_at', { ascending: false })
       .limit(10);
 
-    // ========== INTERPRETAR ESCOLHA DE OPÇÕES 1, 2, 3 ==========
-    const userInput = messageText.trim();
-    let processedMessage = messageText;
-
-    if (['1', '2', '3'].includes(userInput)) {
-      // Buscar última mensagem do assistente para extrair a sugestão
-      const { data: lastAssistantMsg } = await supabase
-        .from('whatsapp_messages')
-        .select('message_content')
-        .eq('phone_number', phone)
-        .eq('company_group_id', authorizedNumber.company_group_id)
-        .eq('direction', 'outgoing')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (lastAssistantMsg?.message_content) {
-        const content = lastAssistantMsg.message_content;
-        
-        // Extrair as sugestões numeradas (1️⃣, 2️⃣, 3️⃣ ou 1., 2., 3.)
-        const suggestionPatterns = [
-          /1️⃣\s*([^\n]+)/,
-          /2️⃣\s*([^\n]+)/,
-          /3️⃣\s*([^\n]+)/,
-        ];
-        
-        const choiceIndex = parseInt(userInput) - 1;
-        const match = content.match(suggestionPatterns[choiceIndex]);
-        
-        if (match && match[1]) {
-          processedMessage = match[1].trim();
-          console.log(`[Webhook] Usuário escolheu opção ${userInput}: "${processedMessage}"`);
-        }
-      }
-    }
-
-
     // ========== BUSCAR QUERIES SIMILARES E EXEMPLOS DE TREINAMENTO ==========
     const queryContext = await getQueryContext(
       supabase,

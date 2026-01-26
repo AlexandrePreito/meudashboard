@@ -1,4 +1,4 @@
-// lib/whatsapp-session.ts
+// src/lib/whatsapp-session.ts
 import { SupabaseClient } from '@supabase/supabase-js';
 
 // TIPOS
