@@ -172,7 +172,7 @@ export async function findTrainingExamples(
     
     const { data, error } = await supabase
       .from('ai_training_examples')
-      .select('id, user_question, dax_query, formatted_response, category, tags, measures_used')
+      .select('id, user_question, dax_query, formatted_response, category, tags')
       .eq('dataset_id', datasetId)
       .eq('is_validated', true)
       .limit(50);

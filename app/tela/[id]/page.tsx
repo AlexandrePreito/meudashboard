@@ -162,6 +162,35 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
       try {
         fetchUserPermissions();
         
+        // Primeiro, buscar informações da tela para pegar o group_id
+        const screenRes = await fetch(`/api/powerbi/screens/${id}`);
+        if (!screenRes.ok) {
+          const screenData = await screenRes.json();
+          throw new Error(screenData.error || 'Tela não encontrada');
+        }
+
+        const screenData = await screenRes.json();
+        const groupId = screenData.screen?.company_group_id;
+
+        if (groupId) {
+          // Verificar se o usuário tem ordem personalizada e qual é a primeira tela
+          const firstScreenRes = await fetch(`/api/user/first-screen?group_id=${groupId}`);
+          if (firstScreenRes.ok) {
+            const firstScreenData = await firstScreenRes.json();
+            
+            // Se tem ordem personalizada e a tela acessada não é a primeira, redirecionar
+            if (firstScreenData.firstScreen && firstScreenData.firstScreen.id !== id) {
+              console.log('[REDIRECT] Redirecionando para primeira tela da ordem personalizada:', {
+                acessada: id,
+                primeira: firstScreenData.firstScreen.id
+              });
+              router.replace(`/tela/${firstScreenData.firstScreen.id}`);
+              return;
+            }
+          }
+        }
+        
+        // Se chegou aqui, pode carregar a tela normalmente
         const res = await fetch('/api/powerbi/embed', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -170,6 +199,28 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
 
         if (!res.ok) {
           const data = await res.json();
+          
+          // Se for erro de permissão, tentar redirecionar para a primeira tela correta
+          if (res.status === 403 && groupId) {
+            console.warn('[TELA] Erro de permissão, buscando primeira tela correta...');
+            try {
+              const firstScreenRes = await fetch(`/api/user/first-screen?group_id=${groupId}`, {
+                credentials: 'include'
+              });
+              
+              if (firstScreenRes.ok) {
+                const firstScreenData = await firstScreenRes.json();
+                if (firstScreenData.firstScreen?.id && firstScreenData.firstScreen.id !== id) {
+                  console.log('[TELA] Redirecionando para primeira tela correta:', firstScreenData.firstScreen.id);
+                  router.replace(`/tela/${firstScreenData.firstScreen.id}`);
+                  return;
+                }
+              }
+            } catch (redirectError) {
+              console.error('[TELA] Erro ao buscar primeira tela:', redirectError);
+            }
+          }
+          
           throw new Error(data.error || 'Erro ao carregar relatório');
         }
 

@@ -140,6 +140,138 @@ function formatTextForSpeech(text: string): string {
 }
 
 // ============================================
+// FUNÇÃO PARA BAIXAR ÁUDIO DO WHATSAPP
+// ============================================
+async function downloadWhatsAppAudio(instance: any, messageData: any, maxRetries: number = 2): Promise<Buffer | null> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[downloadAudio] Tentativa ${attempt}/${maxRetries}`);
+      
+      const audioMessage = messageData.message?.audioMessage;
+      if (!audioMessage) return null;
+
+      // Tentar pegar o mediaUrl ou base64 direto do webhook
+      const mediaUrl = audioMessage.url || messageData.mediaUrl;
+      const base64Audio = audioMessage.base64 || messageData.base64;
+
+      if (base64Audio) {
+        console.log('[downloadAudio] Usando base64 do webhook');
+        return Buffer.from(base64Audio, 'base64');
+      }
+
+      if (mediaUrl) {
+        console.log('[downloadAudio] Baixando de URL:', mediaUrl.substring(0, 50));
+        const response = await fetch(mediaUrl);
+        if (!response.ok) throw new Error('Falha ao baixar mídia');
+        const arrayBuffer = await response.arrayBuffer();
+        return Buffer.from(arrayBuffer);
+      }
+
+      // Tentar via Evolution API - getBase64FromMediaMessage
+      const messageId = messageData.key?.id;
+      if (!messageId) return null;
+
+      const apiUrl = instance.api_url?.replace(/\/$/, '');
+      const url = `${apiUrl}/chat/getBase64FromMediaMessage/${instance.instance_name}`;
+      
+      console.log('[downloadAudio] Buscando via Evolution API:', url);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': instance.api_key,
+        },
+        body: JSON.stringify({
+          message: {
+            key: messageData.key,
+            message: messageData.message
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Evolution API erro: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.base64) {
+        console.log('[downloadAudio] ✅ Base64 obtido via Evolution API');
+        return Buffer.from(data.base64, 'base64');
+      }
+
+      throw new Error('Nenhum base64 retornado');
+    } catch (error: any) {
+      console.error(`[downloadAudio] Tentativa ${attempt} falhou:`, error.message);
+      
+      if (attempt < maxRetries) {
+        console.log('[downloadAudio] Aguardando 1s antes de retry...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+  }
+  
+  console.error('[downloadAudio] Todas as tentativas falharam');
+  return null;
+}
+
+// ============================================
+// FUNÇÃO PARA ENVIAR INDICADOR "DIGITANDO..."
+// ============================================
+async function sendTypingIndicator(instance: any, phone: string): Promise<void> {
+  try {
+    const apiUrl = instance.api_url?.replace(/\/$/, '');
+    const url = `${apiUrl}/chat/presence/${instance.instance_name}`;
+    
+    await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': instance.api_key,
+      },
+      body: JSON.stringify({
+        number: phone.replace(/\D/g, ''),
+        presence: 'composing' // 'composing' = digitando, 'recording' = gravando áudio
+      }),
+    });
+  } catch (error) {
+    // Silencioso - não é crítico
+    console.log('[Webhook] Aviso: Não foi possível enviar indicador de digitação');
+  }
+}
+
+// ============================================
+// FUNÇÃO PARA TRANSCREVER ÁUDIO COM WHISPER
+// ============================================
+async function transcribeAudio(audioBuffer: Buffer): Promise<string | null> {
+  try {
+    console.log('[transcribeAudio] Iniciando transcrição, buffer size:', audioBuffer.length);
+    
+    if (!process.env.OPENAI_API_KEY) {
+      console.error('[transcribeAudio] OPENAI_API_KEY não configurada');
+      return null;
+    }
+
+    // Usar toFile da OpenAI SDK (compatível com Node.js)
+    const { toFile } = await import('openai/uploads');
+    const file = await toFile(audioBuffer, 'audio.ogg', { type: 'audio/ogg' });
+    
+    const transcription = await openai.audio.transcriptions.create({
+      file: file,
+      model: 'whisper-1',
+      language: 'pt',
+    });
+
+    console.log('[transcribeAudio] ✅ Transcrição:', transcription.text?.substring(0, 100));
+    return transcription.text || null;
+  } catch (error: any) {
+    console.error('[transcribeAudio] Erro:', error.message);
+    console.error('[transcribeAudio] Stack:', error.stack);
+    return null;
+  }
+}
+
+// ============================================
 // FUNÇÃO PARA CLASSIFICAR ERROS
 // ============================================
 function classifyError(error: any): {
@@ -264,7 +396,7 @@ export async function generateAudio(text: string): Promise<string | null> {
     }
     
     const response = await openai.audio.speech.create({
-      model: 'tts-1',  // ← Usar tts-1 (mais rápido) em vez de tts-1-hd
+      model: 'tts-1-hd',  // ← Usar tts-1-hd (mais natural)
       voice: 'shimmer',
       input: limitedText,
       response_format: 'mp3',
@@ -628,8 +760,13 @@ export async function POST(request: Request) {
                         messageData.body ||
                         '';
 
-    if (fromMe || !messageText.trim()) {
-      return NextResponse.json({ status: 'ignored', reason: 'fromMe or empty' });
+    // Verificar se é mensagem de áudio (para não ignorar por estar vazia)
+    const hasAudioMessage = !!messageContent.audioMessage || !!messageData.message?.audioMessage || !!body.data?.message?.audioMessage;
+
+    // Ignorar mensagens enviadas por mim OU mensagens vazias que NÃO são áudio
+    if (fromMe || (!messageText.trim() && !hasAudioMessage)) {
+      console.log('[Webhook] Ignorando:', { fromMe, emptyText: !messageText.trim(), isAudio: hasAudioMessage });
+      return NextResponse.json({ status: 'ignored', reason: 'fromMe or empty (not audio)' });
     }
 
     phone = remoteJid?.replace('@s.whatsapp.net', '').replace('@g.us', '') || '';
@@ -678,11 +815,70 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: 'error', reason: 'no instance' });
     }
 
+    // ========== VERIFICAR E TRANSCREVER ÁUDIO ==========
+    const isAudioMessage = !!messageContent.audioMessage || !!messageData.audioMessage || body.data?.audioMessage;
+    let respondWithAudio = false;
+    let processedMessageText = messageText;
+    
+    if (isAudioMessage) {
+      console.log('[Webhook] 🎤 Áudio detectado, tentando transcrever...');
+      
+      // Se não veio texto, tentar transcrever
+      if (!messageText.trim()) {
+        const audioBuffer = await downloadWhatsAppAudio(instance, messageData);
+        
+        if (audioBuffer) {
+          const transcription = await transcribeAudio(audioBuffer);
+          
+          if (transcription) {
+            processedMessageText = transcription;
+            respondWithAudio = true;
+            console.log('[Webhook] ✅ Áudio transcrito:', transcription.substring(0, 50));
+          } else {
+            // Falha na transcrição
+            const audioMsg = `Desculpe ${authorizedNumber?.name || ''}, não consegui entender o áudio. 🎤\n\nPode enviar novamente ou digitar sua pergunta?`;
+            await sendWhatsAppMessage(instance, phone, audioMsg);
+            await supabase.from('whatsapp_messages').insert({
+              company_group_id: authorizedNumber.company_group_id,
+              phone_number: phone,
+              message_content: audioMsg,
+              direction: 'outgoing',
+              sender_name: 'Assistente IA',
+              instance_id: instance.id
+            });
+            return NextResponse.json({ status: 'error', reason: 'transcription_failed' });
+          }
+        } else {
+          // Não conseguiu baixar áudio
+          const audioMsg = `Desculpe ${authorizedNumber?.name || ''}, não consegui processar o áudio. 🎤\n\nEnvie sua pergunta como *texto*!`;
+          await sendWhatsAppMessage(instance, phone, audioMsg);
+          await supabase.from('whatsapp_messages').insert({
+            company_group_id: authorizedNumber.company_group_id,
+            phone_number: phone,
+            message_content: audioMsg,
+            direction: 'outgoing',
+            sender_name: 'Assistente IA',
+            instance_id: instance.id
+          });
+          return NextResponse.json({ status: 'error', reason: 'audio_download_failed' });
+        }
+      } else {
+        // Áudio já veio com transcrição
+        respondWithAudio = true;
+        console.log('[Webhook] ✅ Áudio com transcrição existente');
+      }
+    }
+
+    // Verificar se tem mensagem para processar
+    if (!processedMessageText.trim()) {
+      return NextResponse.json({ status: 'ignored', reason: 'empty_message' });
+    }
+
     // ========== SALVAR MENSAGEM INCOMING ==========
     await supabase.from('whatsapp_messages').insert({
       company_group_id: authorizedNumber.company_group_id,
       phone_number: phone,
-      message_content: messageText,
+      message_content: processedMessageText, // Usar processedMessageText para incluir transcrição
       direction: 'incoming',
       sender_name: authorizedNumber.name || phone,
       external_id: externalId || null,
@@ -690,36 +886,16 @@ export async function POST(request: Request) {
       authorized_number_id: authorizedNumber.id
     });
 
-    // ========== VERIFICAR ÁUDIO ==========
-    const isAudioMessage = !!messageContent.audioMessage || !!messageData.audioMessage || body.data?.audioMessage;
-    let respondWithAudio = false;
-    
-    if (isAudioMessage && !messageText.trim()) {
-      const audioMsg = `Desculpe ${authorizedNumber?.name || ''}, não consigo processar áudios ainda. 🎤\n\nEnvie sua pergunta como *texto*!`;
-      await sendWhatsAppMessage(instance, phone, audioMsg);
-      await supabase.from('whatsapp_messages').insert({
-        company_group_id: authorizedNumber.company_group_id,
-        phone_number: phone,
-        message_content: audioMsg,
-        direction: 'outgoing',
-        sender_name: 'Assistente IA',
-        instance_id: instance.id
-      });
-      return NextResponse.json({ status: 'ignored', reason: 'audio without transcription' });
-    }
-    
-    if (isAudioMessage && messageText.trim()) {
-      respondWithAudio = true;
-      console.log('[Webhook] ✅ Áudio detectado - responderá com áudio');
-    }
+    // Enviar indicador de "digitando..." para o usuário
+    await sendTypingIndicator(instance, phone);
 
     // ========== SAUDAÇÃO ==========
     const greetings = ['oi', 'olá', 'ola', 'hey', 'hi', 'hello', 'bom dia', 'boa tarde', 'boa noite', 'e aí', 'eai', 'opa', 'fala'];
-    const isGreeting = greetings.some(g => messageText.toLowerCase().trim() === g || messageText.toLowerCase().trim().startsWith(g + ' '));
+    const isGreeting = greetings.some(g => processedMessageText.toLowerCase().trim() === g || processedMessageText.toLowerCase().trim().startsWith(g + ' '));
     
     if (isGreeting) {
       // Resolver sessão para saber qual dataset está ativo
-      const sessionResult = await resolveSession(supabase, phone, messageText, authorizedNumber);
+      const sessionResult = await resolveSession(supabase, phone, processedMessageText, authorizedNumber);
       const datasetName = sessionResult.session?.dataset_name || 'sistema';
       
       const welcomeMessage = sessionResult.session
@@ -739,7 +915,7 @@ export async function POST(request: Request) {
     }
 
     // ========== COMANDOS ==========
-    const userCommand = messageText.toLowerCase().trim();
+    const userCommand = processedMessageText.toLowerCase().trim();
 
     if (userCommand === '/ajuda' || userCommand === 'ajuda') {
       const helpMsg = `🤖 *Comandos:*\n/ajuda - Esta mensagem\n/limpar - Limpar histórico\n/status - Ver status\n/trocar - Trocar de sistema\n\n*Exemplos:*\n- Faturamento do mês\n- Top 5 produtos\n- Vendas por filial`;
@@ -776,7 +952,7 @@ export async function POST(request: Request) {
     }
 
     if (userCommand === '/status' || userCommand === 'status') {
-      const sessionResult = await resolveSession(supabase, phone, messageText, authorizedNumber);
+      const sessionResult = await resolveSession(supabase, phone, processedMessageText, authorizedNumber);
       const datasetName = sessionResult.session?.dataset_name || 'Nenhum';
       const statusMsg = `📊 *Status*\n*Usuário:* ${authorizedNumber.name || phone}\n*Dataset Ativo:* ${datasetName}\n*Sessão:* ${sessionResult.hasSession ? '✅ Ativa' : '❌ Nenhuma'}`;
       await sendWhatsAppMessage(instance, phone, statusMsg);
@@ -797,7 +973,7 @@ export async function POST(request: Request) {
     const sessionResult = await resolveSession(
       supabase,
       phone,
-      messageText,
+      processedMessageText,
       authorizedNumber
     );
 
@@ -851,15 +1027,16 @@ export async function POST(request: Request) {
       const { data: ctx } = await supabase
         .from('ai_model_contexts')
         .select('*')
-        .eq('connection_id', connectionId)
+        .eq('dataset_id', datasetId)
+        .eq('company_group_id', authorizedNumber.company_group_id)
         .eq('is_active', true)
         .maybeSingle();
       aiContext = ctx;
     }
 
     // ========== INTERPRETAR ESCOLHA DE OPÇÕES 1, 2, 3 ==========
-    const userInput = messageText.trim();
-    let processedMessage = messageText;
+    const userInput = processedMessageText.trim();
+    let processedMessage = processedMessageText;
 
     if (['1', '2', '3'].includes(userInput)) {
       // Buscar última mensagem do assistente para extrair a sugestão
@@ -930,12 +1107,13 @@ export async function POST(request: Request) {
       }
     }
 
-    // Fallback: buscar por connection_id se não encontrou
-    if (!modelContext && connectionId) {
+    // Fallback: buscar por dataset_id e company_group_id se não encontrou
+    if (!modelContext && datasetId) {
       const { data: fallbackContext } = await supabase
         .from('ai_model_contexts')
         .select('context_content, section_base, section_medidas, connection_id, dataset_id')
-        .eq('connection_id', connectionId)
+        .eq('dataset_id', datasetId)
+        .eq('company_group_id', authorizedNumber.company_group_id)
         .eq('is_active', true)
         .limit(1)
         .maybeSingle();
@@ -1009,11 +1187,46 @@ export async function POST(request: Request) {
     );
     const queryContextStr = formatQueryContextForPrompt(queryContext);
 
+    // Formatar exemplos treinados de forma mais efetiva
+    let exemplosSection = '';
+    if (queryContext && queryContext.trainingExamples && queryContext.trainingExamples.length > 0) {
+      exemplosSection = `
+
+## EXEMPLOS DE REFERÊNCIA (USE COMO BASE)
+Estes são exemplos já validados e aprovados. Use-os como referência para consultas similares:
+
+${queryContext.trainingExamples.map((ex: any, i: number) => `
+### Exemplo ${i + 1}:
+**Pergunta:** "${ex.user_question}"
+**DAX Correto:**
+\`\`\`dax
+${ex.dax_query}
+\`\`\`
+**Resposta formatada:** ${ex.formatted_response?.substring(0, 200) || 'N/A'}
+`).join('\n')}
+
+IMPORTANTE: Se a pergunta do usuário for similar a algum exemplo acima, USE O MESMO PADRÃO DAX.
+`;
+    }
+
     // ========== GERAR SYSTEM PROMPT OTIMIZADO ==========
     const currentMonth = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
     const currentDate = new Date().toLocaleDateString('pt-BR');
     const currentYear = new Date().getFullYear();
     const currentMonthNumber = new Date().getMonth() + 1;
+
+    // Chain of Thought - Processo de raciocínio
+    const chainOfThought = `
+## PROCESSO DE RACIOCÍNIO (siga sempre)
+Antes de gerar qualquer DAX, pense:
+1. **Entender:** O que exatamente o usuário quer saber?
+2. **Identificar:** Quais medidas e tabelas são necessárias?
+3. **Verificar:** Existe exemplo similar treinado? Se sim, usar como base.
+4. **Construir:** Montar a query DAX passo a passo.
+5. **Validar:** A query faz sentido? Usa as colunas corretas?
+
+Nunca invente nomes de colunas ou medidas. Use SOMENTE o que está na documentação.
+`;
 
     // Gerar system prompt usando função otimizada
     const systemPromptBase = generateWhatsAppPrompt({
@@ -1026,6 +1239,8 @@ export async function POST(request: Request) {
 
     // Adicionar regras específicas do WhatsApp (período, formato, etc)
     const systemPrompt = `${systemPromptBase}
+${chainOfThought}
+${exemplosSection}
 
 # ⚠️ REGRA CRÍTICA - FILTRO DE DATA OBRIGATÓRIO EM TODA QUERY
 **NUNCA execute uma query DAX sem filtro de período.**
@@ -1574,8 +1789,33 @@ Ano: ${currentYear}`;
       console.log('[Webhook] Razão da falha:', failureReason);
       console.log('[Webhook] DEBUG - Resposta:', assistantMessage.substring(0, 100));
       console.log('[Webhook] DEBUG - É evasiva?', isEvasiveResponse);
+      
+      // Buscar company_group_id do dataset ativo (não do authorizedNumber)
+      let companyGroupId = authorizedNumber.company_group_id; // Fallback
+      
+      if (datasetId && phone) {
+        try {
+          const { data: datasetInfo } = await supabase
+            .from('whatsapp_available_datasets')
+            .select('company_group_id')
+            .eq('dataset_id', datasetId)
+            .eq('phone_number', phone)
+            .maybeSingle();
+          
+          if (datasetInfo?.company_group_id) {
+            companyGroupId = datasetInfo.company_group_id;
+            console.log('[Webhook] ✅ company_group_id do dataset:', companyGroupId);
+          } else {
+            console.log('[Webhook] ⚠️ Não encontrou company_group_id no dataset, usando do authorizedNumber:', companyGroupId);
+          }
+        } catch (err: any) {
+          console.error('[Webhook] Erro ao buscar company_group_id do dataset:', err.message);
+        }
+      }
+      
       console.log('[Webhook] DEBUG - Context:', {
-        group: authorizedNumber?.company_group_id,
+        group_authorized: authorizedNumber?.company_group_id,
+        group_dataset: companyGroupId,
         dataset: datasetId,
         connection: connectionId,
         phone: phone,
@@ -1591,7 +1831,7 @@ Ano: ${currentYear}`;
         const { error: pendingError } = await supabase
           .from('ai_pending_questions')
           .insert({
-            company_group_id: authorizedNumber.company_group_id,
+            company_group_id: companyGroupId, // ✅ Usar do dataset ativo!
             connection_id: connectionId || null,
             dataset_id: datasetId || null,
             user_question: processedMessage,
@@ -1617,7 +1857,7 @@ Ano: ${currentYear}`;
         const { data: existingQuestion } = await supabase
           .from('ai_unanswered_questions')
           .select('id, user_count, attempt_count, phone_number')
-          .eq('company_group_id', authorizedNumber.company_group_id)
+          .eq('company_group_id', companyGroupId) // ✅ Usar do dataset ativo!
           .ilike('user_question', `%${processedMessage.substring(0, 50)}%`) // Busca parcial
           .eq('status', 'pending')
           .maybeSingle();

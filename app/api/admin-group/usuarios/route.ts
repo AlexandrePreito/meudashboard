@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser } from '@/lib/auth';
 import { isUserAdminOfGroup } from '@/lib/admin-helpers';
+import bcrypt from 'bcryptjs';
 
 // GET - Listar usuários do grupo
 export async function GET(request: NextRequest) {
@@ -150,7 +151,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Limite de usuários atingido (${group.quota_users})` }, { status: 400 });
     }
 
-    // Verificar se email já existe
+    // Verificar se email já existe na tabela users
     const { data: existingUser } = await supabase
       .from('users')
       .select('id')
@@ -160,21 +161,10 @@ export async function POST(request: NextRequest) {
     let userId: string;
 
     if (existingUser) {
-      // Verificar se já tem membership neste grupo
-      const { data: existingMembership } = await supabase
-        .from('user_group_membership')
-        .select('id')
-        .eq('user_id', existingUser.id)
-        .eq('company_group_id', company_group_id)
-        .maybeSingle();
-
-      if (existingMembership) {
-        return NextResponse.json({ error: 'Usuário já está neste grupo' }, { status: 400 });
-      }
-
+      // Usuário existe na tabela users
       userId = existingUser.id;
     } else {
-      // Criar usuário no Auth
+      // Tentar criar usuário no Auth
       const { data: authData, error: authError } = await supabase.auth.admin.createUser({
         email: email.toLowerCase(),
         password,
@@ -183,19 +173,124 @@ export async function POST(request: NextRequest) {
       });
 
       if (authError) {
-        return NextResponse.json({ error: authError.message }, { status: 400 });
+        // Se o erro for de email já registrado, buscar o usuário existente no Auth
+        if (authError.message.includes('already been registered') || 
+            authError.message.includes('already exists') ||
+            authError.message.includes('User already registered')) {
+          
+          // Buscar usuário no Auth por email (listar e filtrar)
+          let foundAuthUser = null;
+          let page = 0;
+          const pageSize = 1000;
+          
+          while (!foundAuthUser) {
+            const { data: authUsersList, error: listError } = await supabase.auth.admin.listUsers({
+              page,
+              perPage: pageSize
+            });
+            
+            if (listError || !authUsersList?.users) {
+              break;
+            }
+            
+            foundAuthUser = authUsersList.users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+            
+            // Se não encontrou e ainda tem mais páginas, continuar
+            if (!foundAuthUser && authUsersList.users.length === pageSize) {
+              page++;
+            } else {
+              break;
+            }
+          }
+          
+          if (foundAuthUser) {
+            userId = foundAuthUser.id;
+            
+            // Gerar hash da senha (usar senha fornecida ou gerar placeholder)
+            const password_hash = password 
+              ? await bcrypt.hash(password, 10)
+              : await bcrypt.hash('temp_' + Date.now(), 10); // Placeholder se não tiver senha
+            
+            // Criar registro na tabela users
+            const { error: userInsertError } = await supabase.from('users').insert({
+              id: userId,
+              email: email.toLowerCase(),
+              full_name: foundAuthUser.user_metadata?.full_name || full_name,
+              password_hash
+            });
+
+            if (userInsertError) {
+              // Se já existe na tabela (pode ter sido criado entre a verificação e agora)
+              if (userInsertError.code === '23505' || userInsertError.message.includes('duplicate')) {
+                // Buscar o usuário que acabou de ser criado
+                const { data: newlyCreatedUser } = await supabase
+                  .from('users')
+                  .select('id')
+                  .eq('email', email.toLowerCase())
+                  .maybeSingle();
+                
+                if (newlyCreatedUser) {
+                  userId = newlyCreatedUser.id;
+                } else {
+                  return NextResponse.json({ 
+                    error: `Erro ao criar registro do usuário: ${userInsertError.message}` 
+                  }, { status: 500 });
+                }
+              } else {
+                return NextResponse.json({ 
+                  error: `Erro ao criar registro do usuário: ${userInsertError.message}` 
+                }, { status: 500 });
+              }
+            }
+
+            // Atualizar senha se fornecida
+            if (password) {
+              await supabase.auth.admin.updateUserById(userId, { password });
+            }
+          } else {
+            return NextResponse.json({ 
+              error: 'Email já está registrado, mas não foi possível localizar o usuário. Tente novamente.' 
+            }, { status: 400 });
+          }
+        } else {
+          return NextResponse.json({ error: authError.message }, { status: 400 });
+        }
+      } else {
+        // Usuário criado com sucesso no Auth
+        userId = authData.user.id;
+
+        // Gerar hash da senha
+        const password_hash = await bcrypt.hash(password, 10);
+
+        // Criar registro na tabela users
+        const { error: userInsertError } = await supabase.from('users').insert({
+          id: userId,
+          email: email.toLowerCase(),
+          full_name,
+          password_hash
+        });
+
+        if (userInsertError) {
+          console.error('Erro ao criar registro na tabela users:', userInsertError);
+          // Tentar remover o usuário do Auth se falhou
+          await supabase.auth.admin.deleteUser(userId);
+          return NextResponse.json({ 
+            error: `Erro ao criar usuário: ${userInsertError.message}` 
+          }, { status: 500 });
+        }
       }
+    }
 
-      userId = authData.user.id;
+    // Verificar se já tem membership neste grupo
+    const { data: existingMembership } = await supabase
+      .from('user_group_membership')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('company_group_id', company_group_id)
+      .maybeSingle();
 
-      // Criar registro na tabela users
-      await supabase.from('users').insert({
-        id: userId,
-        email: email.toLowerCase(),
-        full_name,
-        role: 'user',
-        is_active: true
-      });
+    if (existingMembership) {
+      return NextResponse.json({ error: 'Usuário já está neste grupo' }, { status: 400 });
     }
 
     // Criar membership

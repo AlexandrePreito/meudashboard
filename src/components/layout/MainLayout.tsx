@@ -8,6 +8,7 @@ import Sidebar from './Sidebar';
 import Header from './Header';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { showToast } from '@/lib/toast';
+import PasswordChangeModal from '@/components/PasswordChangeModal';
 
 interface User {
   id: string;
@@ -16,6 +17,7 @@ interface User {
   is_master?: boolean;
   is_developer?: boolean;
   role?: string;
+  needsPasswordChange?: boolean;
 }
 
 interface MainLayoutProps {
@@ -51,6 +53,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -81,6 +84,10 @@ export default function MainLayout({ children }: MainLayoutProps) {
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);
+        // Mostrar modal se precisar trocar senha
+        if (data.user?.needsPasswordChange) {
+          setShowPasswordModal(true);
+        }
       } else {
         router.push('/login');
       }
@@ -90,6 +97,12 @@ export default function MainLayout({ children }: MainLayoutProps) {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handlePasswordChanged() {
+    setShowPasswordModal(false);
+    // Recarregar dados do usuário
+    checkAuth();
   }
 
   if (loading) {
@@ -114,6 +127,12 @@ export default function MainLayout({ children }: MainLayoutProps) {
           <Header user={user} />
           <Sidebar />
           <MainContent user={user}>{children}</MainContent>
+          {showPasswordModal && (
+            <PasswordChangeModal
+              onClose={() => setShowPasswordModal(false)}
+              onPasswordChanged={handlePasswordChanged}
+            />
+          )}
         </div>
       </MenuProvider>
     </ThemeProvider>

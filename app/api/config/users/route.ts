@@ -238,7 +238,7 @@ export async function POST(request: Request) {
 
     // Se tiver grupo, criar membership
     if (company_group_id) {
-      await supabase
+      const { error: membershipError } = await supabase
         .from('user_group_membership')
         .insert({
           user_id: newUser.id,
@@ -249,6 +249,15 @@ export async function POST(request: Request) {
           invited_at: new Date().toISOString(),
           accepted_at: new Date().toISOString()
         });
+
+      if (membershipError) {
+        console.error('Erro ao criar membership:', membershipError);
+        // Não remover o usuário aqui, pois ele foi criado com sucesso
+        // Apenas retornar erro para que o admin possa corrigir manualmente
+        return NextResponse.json({ 
+          error: `Usuário criado, mas erro ao adicionar ao grupo: ${membershipError.message}` 
+        }, { status: 500 });
+      }
     }
 
     // Registrar log

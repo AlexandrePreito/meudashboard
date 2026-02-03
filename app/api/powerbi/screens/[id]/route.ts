@@ -72,6 +72,27 @@ export async function GET(
           });
           return NextResponse.json({ error: 'Sem permissão para acessar esta tela' }, { status: 403 });
         }
+
+        // Verificar se a tela tem restrição de usuários específicos
+        const { data: screenUsersCheck } = await supabase
+          .from('powerbi_screen_users')
+          .select('user_id')
+          .eq('screen_id', id);
+
+        // Se a tela tem usuários específicos vinculados, verificar se o usuário está na lista
+        if (screenUsersCheck && screenUsersCheck.length > 0) {
+          const hasAccess = screenUsersCheck.some(su => su.user_id === user.id);
+          
+          if (!hasAccess) {
+            console.warn('[SEGURANÇA /api/powerbi/screens/[id]] Acesso negado - usuário não está na lista:', {
+              userId: user.id,
+              screenId: id,
+              allowedUserIds: screenUsersCheck.map(su => su.user_id)
+            });
+            return NextResponse.json({ error: 'Sem permissão para acessar esta tela' }, { status: 403 });
+          }
+        }
+        // Se não tem usuários específicos, a tela é pública para o grupo (já validado acima)
       }
     }
 

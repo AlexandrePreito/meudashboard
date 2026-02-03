@@ -35,6 +35,48 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Tela não encontrada' }, { status: 404 });
     }
 
+    // SEGURANÇA: Validar acesso do usuário à tela
+    if (!user.is_master) {
+      // Verificar acesso ao grupo
+      const { data: membership } = await supabase
+        .from('user_group_membership')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('company_group_id', screen.company_group_id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!membership) {
+        console.warn('[SEGURANÇA /api/powerbi/embed] Acesso negado - sem membership:', {
+          userId: user.id,
+          screenId: screen_id,
+          screenGroupId: screen.company_group_id
+        });
+        return NextResponse.json({ error: 'Sem permissão para acessar esta tela' }, { status: 403 });
+      }
+
+      // Verificar se a tela tem restrição de usuários específicos
+      const { data: screenUsers } = await supabase
+        .from('powerbi_screen_users')
+        .select('user_id')
+        .eq('screen_id', screen_id);
+
+      // Se a tela tem usuários específicos vinculados, verificar se o usuário está na lista
+      if (screenUsers && screenUsers.length > 0) {
+        const hasAccess = screenUsers.some(su => su.user_id === user.id);
+        
+        if (!hasAccess) {
+          console.warn('[SEGURANÇA /api/powerbi/embed] Acesso negado - usuário não está na lista:', {
+            userId: user.id,
+            screenId: screen_id,
+            allowedUserIds: screenUsers.map(su => su.user_id)
+          });
+          return NextResponse.json({ error: 'Sem permissão para acessar esta tela' }, { status: 403 });
+        }
+      }
+      // Se não tem usuários específicos, a tela é pública para o grupo (já validado acima)
+    }
+
     const report = screen.report;
     const connection = report?.connection;
 

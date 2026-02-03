@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
+import bcrypt from 'bcryptjs';
 
 export async function GET() {
   try {
@@ -33,10 +34,9 @@ export async function GET() {
     
     let canUseAi = false;
     let canRefresh = false;
+    const supabase = createAdminClient();
 
     if (!user.is_master && !isDeveloper) {
-      const supabase = createAdminClient();
-      
       // Buscar memberships do usuário
       const { data: memberships } = await supabase
         .from('user_group_membership')
@@ -52,6 +52,18 @@ export async function GET() {
       canRefresh = memberships?.some(m => m.can_refresh) || false;
     }
 
+    // Verificar se está usando senha padrão "123456"
+    const { data: userData } = await supabase
+      .from('users')
+      .select('password_hash')
+      .eq('id', user.id)
+      .single();
+
+    let needsPasswordChange = false;
+    if (userData?.password_hash) {
+      needsPasswordChange = await bcrypt.compare('123456', userData.password_hash);
+    }
+
     // Se tiver usuário, retorna 200 com os dados
     return NextResponse.json({
       user: {
@@ -64,6 +76,7 @@ export async function GET() {
         role: user.is_master ? 'master' : (isDeveloper ? 'developer' : role),
         can_use_ai: user.is_master || isDeveloper || canUseAi,
         can_refresh: user.is_master || isDeveloper || canRefresh,
+        needsPasswordChange: needsPasswordChange,
       },
       role: user.is_master ? 'master' : (isDeveloper ? 'developer' : role),
       groupIds: groupIds

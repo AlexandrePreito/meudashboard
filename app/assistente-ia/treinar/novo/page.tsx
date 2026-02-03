@@ -117,6 +117,7 @@ function NovoTreinamentoPageContent() {
   // Result states
   const [daxResult, setDaxResult] = useState<DaxResult | null>(null);
   const [generatedDax, setGeneratedDax] = useState('');
+  const [isDaxManuallyEdited, setIsDaxManuallyEdited] = useState(false);
   
   // Question and tags states
   const [question, setQuestion] = useState(questionFromUrl || '');
@@ -151,23 +152,24 @@ function NovoTreinamentoPageContent() {
     }
   }, [groupId]);
 
-  // Load metadata quando selectedDataset mudar
+  // Load metadata quando selectedDataset ou groupId mudar
   useEffect(() => {
-    if (selectedDataset) {
-      console.log('=== useEffect: selectedDataset mudou ===', selectedDataset);
+    if (selectedDataset && groupId) {
+      console.log('=== useEffect: selectedDataset ou groupId mudou ===', { selectedDataset, groupId });
       loadMetadata();
     }
-  }, [selectedDataset]);
+  }, [selectedDataset, groupId]);
 
-  // Generate DAX quando seleções mudarem
+  // Generate DAX quando seleções mudarem (apenas se não foi editado manualmente)
   useEffect(() => {
-    if (selectedMeasures.length > 0) {
+    if (selectedMeasures.length > 0 && !isDaxManuallyEdited) {
       const dax = generateDax();
       setGeneratedDax(dax);
-    } else {
+    } else if (selectedMeasures.length === 0) {
       setGeneratedDax('');
+      setIsDaxManuallyEdited(false);
     }
-  }, [selectedMeasures, selectedGroupers, selectedFilters, orderBy, limit]);
+  }, [selectedMeasures, selectedGroupers, selectedFilters, orderBy, limit, isDaxManuallyEdited]);
 
   async function loadDatasets() {
     console.log('=== loadDatasets chamado ===');
@@ -210,11 +212,17 @@ function NovoTreinamentoPageContent() {
   }
 
   async function loadMetadata() {
+    if (!selectedDataset || !groupId) {
+      console.log('=== loadMetadata: faltando selectedDataset ou groupId ===', { selectedDataset, groupId });
+      return;
+    }
+    
     console.log('=== loadMetadata chamado ===');
     console.log('selectedDataset:', selectedDataset);
+    console.log('groupId:', groupId);
     setLoadingMetadata(true);
     try {
-      const url = `/api/assistente-ia/model-metadata?dataset_id=${selectedDataset}`;
+      const url = `/api/assistente-ia/model-metadata?dataset_id=${selectedDataset}&group_id=${groupId}`;
       console.log('Buscando metadata:', url);
       const res = await fetch(url);
       console.log('Metadata response status:', res.status);
@@ -356,6 +364,7 @@ function NovoTreinamentoPageContent() {
           tags: tags,
           category: tags[0] || 'geral',
           dataset_id: selectedDataset,
+          group_id: groupId,  // ← ADICIONAR
           unanswered_question_id: unansweredId || null
         })
       });
@@ -448,18 +457,50 @@ function NovoTreinamentoPageContent() {
               <input
                 type="text"
                 value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setTagInput(value);
+                }}
                 onFocus={() => setShowTagSuggestions(true)}
                 onKeyDown={(e) => {
+                  // Enter: adicionar tag se houver texto
                   if (e.key === 'Enter' && tagInput.trim()) {
                     e.preventDefault();
-                    if (!tags.includes(tagInput.trim())) {
-                      setTags([...tags, tagInput.trim()]);
+                    let tagName = tagInput.trim();
+                    // Remover # se presente
+                    if (tagName.startsWith('#')) {
+                      tagName = tagName.substring(1);
+                    }
+                    tagName = tagName.toLowerCase();
+                    if (tagName && !tags.includes(tagName)) {
+                      setTags([...tags, tagName]);
+                    }
+                    setTagInput('');
+                  }
+                  // Espaço: verificar se tem #tag e adicionar automaticamente
+                  else if (e.key === ' ' && tagInput.trim()) {
+                    const tagPattern = /^#([a-zA-Z0-9_-]+)$/;
+                    const match = tagInput.trim().match(tagPattern);
+                    if (match) {
+                      e.preventDefault();
+                      const tagName = match[1].toLowerCase();
+                      if (tagName && !tags.includes(tagName)) {
+                        setTags([...tags, tagName]);
+                      }
+                      setTagInput('');
+                    }
+                  }
+                  // Tab: adicionar tag se começar com #
+                  else if (e.key === 'Tab' && tagInput.trim().startsWith('#')) {
+                    e.preventDefault();
+                    let tagName = tagInput.trim().substring(1).toLowerCase();
+                    if (tagName && !tags.includes(tagName)) {
+                      setTags([...tags, tagName]);
                     }
                     setTagInput('');
                   }
                 }}
-                placeholder={tags.length === 0 ? "Digite ou selecione tags..." : ""}
+                placeholder={tags.length === 0 ? "Digite #tag ou selecione tags..." : ""}
                 className="flex-1 min-w-[120px] outline-none text-sm bg-transparent"
               />
       </div>
@@ -614,19 +655,49 @@ function NovoTreinamentoPageContent() {
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm mb-6">
           <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
             <span className="text-sm font-semibold text-gray-700">DAX Gerado</span>
-          <button
-              onClick={copyDax}
-              disabled={!generatedDax}
-              className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg disabled:opacity-50 transition-colors"
-              title="Copiar DAX"
-            >
-              <Copy className="w-4 h-4" />
-          </button>
+            <div className="flex items-center gap-2">
+              {isDaxManuallyEdited && (
+                <button
+                  onClick={() => {
+                    if (selectedMeasures.length > 0) {
+                      const dax = generateDax();
+                      setGeneratedDax(dax);
+                      setIsDaxManuallyEdited(false);
+                    }
+                  }}
+                  className="px-2 py-1 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                  title="Regenerar DAX automaticamente"
+                >
+                  Regenerar
+                </button>
+              )}
+              <button
+                onClick={copyDax}
+                disabled={!generatedDax}
+                className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg disabled:opacity-50 transition-colors"
+                title="Copiar DAX"
+              >
+                <Copy className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           <div className="p-4 bg-gray-50 border border-gray-100 rounded-lg mx-4 my-3">
-            <pre className="text-sm text-gray-700 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
-              {generatedDax || '// Selecione uma medida para gerar o DAX'}
-            </pre>
+            <textarea
+              value={generatedDax}
+              onChange={(e) => {
+                setGeneratedDax(e.target.value);
+                setIsDaxManuallyEdited(true);
+              }}
+              placeholder="// Selecione uma medida para gerar o DAX ou edite manualmente"
+              className="w-full text-sm text-gray-700 font-mono whitespace-pre-wrap bg-transparent border-none outline-none resize-none min-h-[120px] max-h-64 overflow-y-auto"
+              spellCheck={false}
+            />
+            {isDaxManuallyEdited && (
+              <div className="mt-2 text-xs text-blue-600 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                <span>DAX editado manualmente. Alterações nas seleções não regenerarão automaticamente.</span>
+              </div>
+            )}
           </div>
           <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex justify-end">
           <button

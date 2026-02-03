@@ -173,8 +173,35 @@ export async function POST(request: NextRequest) {
       tags,
       connection_id,
       dataset_id,
-      unanswered_question_id  // ← NOVO PARÂMETRO
+      group_id,  // ← ADICIONAR
+      unanswered_question_id
     } = body;
+
+    // Usar group_id do parâmetro se fornecido, senão usar do membership
+    const finalGroupId = group_id || membership.company_group_id;
+
+    // Se for developer e passou group_id, validar se o grupo pertence a ele
+    if (group_id && membership.role === 'developer') {
+      const user = await getAuthUser();
+      if (user) {
+        const developerId = await getUserDeveloperId(user.id);
+        if (developerId) {
+          const { data: group } = await supabase
+            .from('company_groups')
+            .select('id')
+            .eq('id', group_id)
+            .eq('developer_id', developerId)
+            .single();
+          
+          if (!group) {
+            return NextResponse.json(
+              { success: false, error: 'Grupo não encontrado ou sem permissão' },
+              { status: 403 }
+            );
+          }
+        }
+      }
+    }
 
     // Validações
     if (!user_question || !dax_query || !formatted_response) {
@@ -187,7 +214,7 @@ export async function POST(request: NextRequest) {
     const { data: trainingExample, error } = await supabase
       .from('ai_training_examples')
       .insert({
-        company_group_id: membership.company_group_id,
+        company_group_id: finalGroupId,
         connection_id: connection_id || null,  // Permitir null
         dataset_id,
         user_question,
@@ -208,23 +235,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ← NOVO: Se tem unanswered_question_id, marcar como resolvida
+    // Se tem unanswered_question_id, marcar como treinada em ai_pending_questions
     if (unanswered_question_id) {
       const { data: { user } } = await supabase.auth.getUser();
       
       const { error: updateError } = await supabase
-        .from('ai_unanswered_questions')
+        .from('ai_pending_questions')
         .update({
-          status: 'resolved',
-          resolved_at: new Date().toISOString(),
-          resolved_by: user?.id,
+          status: 'trained',
+          trained_at: new Date().toISOString(),
+          trained_by: user?.id,
           training_example_id: trainingExample.id  // Vincular ao exemplo criado
         })
         .eq('id', unanswered_question_id)
-        .eq('company_group_id', membership.company_group_id);
+        .eq('company_group_id', finalGroupId);
 
       if (updateError) {
-        console.error('Erro ao marcar pergunta como resolvida:', updateError);
+        console.error('Erro ao marcar pergunta como treinada:', updateError);
         // Não falhar a requisição, apenas logar o erro
       }
     }

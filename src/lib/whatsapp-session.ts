@@ -201,7 +201,7 @@ Agora pode fazer suas perguntas.
 
 // Gera rodapé
 export function generateFooter(datasetName: string): string {
-  return `\n\n─────────────\n📊 *${datasetName}* | _trocar_`;
+  return `\n\n─────────────\n📊 *${datasetName}*`;
 }
 
 // FUNÇÃO PRINCIPAL

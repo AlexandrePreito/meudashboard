@@ -67,10 +67,10 @@ export default function QuestionCard({ question, onTrain, onIgnore }: QuestionCa
               )}
             </div>
             <div className="flex items-center gap-3 flex-wrap">
-              {question.status === 'resolved' ? (
+              {question.status === 'resolved' || question.status === 'trained' ? (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-green-100 text-green-700 border border-green-200">
                   <CheckCircle className="w-3 h-3" />
-                  Resolvida
+                  {question.status === 'trained' ? 'Treinada' : 'Resolvida'}
                 </span>
               ) : (
                 <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border ${getPriorityColor(question.priority_score)}`}>

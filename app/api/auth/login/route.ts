@@ -63,6 +63,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Verificar se está usando senha padrão "123456"
+    const isDefaultPassword = await bcrypt.compare('123456', user.password_hash);
+    const needsPasswordChange = isDefaultPassword;
+
     // Verificar se é admin de algum grupo
     let userRole = user.is_master ? 'master' : 'user';
     let groupIds: string[] = [];
@@ -144,6 +148,7 @@ export async function POST(request: NextRequest) {
         groupIds: groupIds,
         developer: developerInfo,
         group: membershipData,
+        needsPasswordChange: needsPasswordChange,
       },
     });
 

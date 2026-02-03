@@ -20,7 +20,7 @@ function PerguntasPendentesContent() {
   const [questions, setQuestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'pending' | 'resolved' | 'ignored'>('pending');
+  const [statusFilter, setStatusFilter] = useState<'pending' | 'trained' | 'ignored'>('pending');
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
@@ -43,11 +43,18 @@ function PerguntasPendentesContent() {
     if (!activeGroup?.id) return;
     
     try {
-      const res = await fetch(`/api/assistente-ia/questions?counts=true&group_id=${activeGroup.id}`);
+      // Buscar stats da nova API de pending
+      const res = await fetch(`/api/assistente-ia/pending?counts=true&group_id=${activeGroup.id}`);
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.counts) {
-          setStats(data.counts);
+          // Mapear os nomes dos status para compatibilidade
+          setStats({
+            total: data.counts.total || 0,
+            pending: data.counts.pending || 0,
+            resolved: data.counts.trained || 0, // trained = resolved (para compatibilidade com UI)
+            ignored: data.counts.ignored || 0
+          });
         }
       }
     } catch (err) {
@@ -64,8 +71,9 @@ function PerguntasPendentesContent() {
     
     setLoading(true);
     try {
+      // Buscar da nova API de pending
       const params = new URLSearchParams({
-        status: statusFilter,
+        status: statusFilter, // pending, trained, ignored
         limit: '50',
         group_id: activeGroup.id
       });
@@ -74,12 +82,17 @@ function PerguntasPendentesContent() {
         params.append('search', search);
       }
 
-      const response = await fetch(`/api/assistente-ia/questions?${params}`);
+      console.log('[PENDENTES] Buscando:', `/api/assistente-ia/pending?${params.toString()}`);
+      
+      const response = await fetch(`/api/assistente-ia/pending?${params}`);
       const data = await response.json();
+
+      console.log('[PENDENTES] Resposta:', { success: data.success, count: data.data?.length || 0 });
 
       if (data.success) {
         setQuestions(data.data || []);
       } else {
+        console.error('[PENDENTES] Erro na API:', data.error);
         setQuestions([]);
       }
     } catch (err) {
@@ -113,10 +126,14 @@ function PerguntasPendentesContent() {
 
   const handleIgnore = async (questionId: string) => {
     try {
-      const response = await fetch(`/api/assistente-ia/questions/${questionId}`, {
-        method: 'POST',
+      // Usar a nova API de pending
+      const response = await fetch(`/api/assistente-ia/pending`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'ignore' })
+        body: JSON.stringify({ 
+          id: questionId,
+          status: 'ignored'
+        })
       });
 
       const data = await response.json();
@@ -172,10 +189,10 @@ function PerguntasPendentesContent() {
             <p className="text-sm text-gray-500">Pendentes</p>
           </div>
 
-          {/* Resolvidas */}
+          {/* Treinadas (Resolvidas) */}
           <div 
             className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow cursor-pointer"
-            onClick={() => setStatusFilter('resolved')}
+            onClick={() => setStatusFilter('trained')}
           >
             <div className="flex items-center justify-between mb-4">
               <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
@@ -187,7 +204,7 @@ function PerguntasPendentesContent() {
               </span>
             </div>
             <p className="text-2xl font-bold text-gray-900">{stats.resolved}</p>
-            <p className="text-sm text-gray-500">Resolvidas</p>
+            <p className="text-sm text-gray-500">Treinadas</p>
           </div>
 
           {/* Ignoradas */}
@@ -221,15 +238,15 @@ function PerguntasPendentesContent() {
               className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-[42px]"
             />
           </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-[42px] w-[180px]"
-          >
-            <option value="pending">Pendentes</option>
-            <option value="resolved">Resolvidas</option>
-            <option value="ignored">Ignoradas</option>
-          </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              className="px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-[42px] w-[180px]"
+            >
+              <option value="pending">Pendentes</option>
+              <option value="trained">Treinadas</option>
+              <option value="ignored">Ignoradas</option>
+            </select>
           <button
             onClick={handleSearch}
             className="px-3 py-2 rounded-lg transition-colors flex items-center justify-center h-[42px] w-[42px] text-white"
@@ -253,7 +270,7 @@ function PerguntasPendentesContent() {
           <div className="flex items-center justify-between p-4 border-b border-gray-200">
             <h2 className="font-semibold text-gray-900 flex items-center gap-2">
               <List size={18} className="text-gray-400" />
-              Perguntas {statusFilter === 'pending' ? 'Pendentes' : statusFilter === 'resolved' ? 'Resolvidas' : 'Ignoradas'}
+              Perguntas {statusFilter === 'pending' ? 'Pendentes' : statusFilter === 'trained' ? 'Treinadas' : 'Ignoradas'}
             </h2>
             {questions.length > 0 && (
               <span className="text-sm text-gray-500">{questions.length} {questions.length === 1 ? 'pergunta' : 'perguntas'}</span>
@@ -269,15 +286,33 @@ function PerguntasPendentesContent() {
             </div>
           ) : questions.length > 0 ? (
             <div className="divide-y divide-gray-100">
-              {questions.map((question) => (
-                <div key={question.id} className="p-4 hover:bg-gray-50 transition-colors">
-                  <QuestionCard
-                    question={question}
-                    onTrain={handleTrain}
-                    onIgnore={handleIgnore}
-                  />
-                </div>
-              ))}
+              {questions.map((question: any) => {
+                // Adaptar dados de ai_pending_questions para o formato esperado pelo QuestionCard
+                // A tabela ai_pending_questions não tem priority_score, user_count, attempt_count
+                // Vamos usar valores padrão ou calcular
+                const adaptedQuestion = {
+                  id: question.id,
+                  user_question: question.user_question,
+                  phone_number: question.user_phone || '',
+                  priority_score: 5, // Valor padrão (pode ser calculado depois)
+                  user_count: 1, // Valor padrão
+                  attempt_count: 1, // Valor padrão
+                  last_asked_at: question.created_at,
+                  error_message: question.failure_reason || question.ai_response?.substring(0, 100),
+                  status: question.status || 'pending',
+                  training_example_id: question.training_example_id
+                };
+                
+                return (
+                  <div key={question.id} className="p-4 hover:bg-gray-50 transition-colors">
+                    <QuestionCard
+                      question={adaptedQuestion}
+                      onTrain={handleTrain}
+                      onIgnore={handleIgnore}
+                    />
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="p-12 text-center">
