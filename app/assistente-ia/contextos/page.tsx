@@ -18,6 +18,7 @@ interface ContextInfo {
   id: string;
   dataset_id: string;
   context_type: 'chat' | 'dax';
+  context_content?: string | null;
   section_medidas: any[];
   section_tabelas: any[];
   section_queries: any[];
@@ -93,14 +94,25 @@ function ContextosContent() {
   const loadDatasets = async () => {
     try {
       setLoading(true);
-      // Montar URL com group_id se houver grupo ativo
-      const url = activeGroup
-        ? `/api/assistente-ia/datasets?group_id=${activeGroup.id}`
+      let groupId = activeGroup?.id;
+      // Quando activeGroup é null (ex: Master ou ainda não carregou), buscar primeiro grupo
+      if (!groupId) {
+        const groupsRes = await fetch('/api/user/groups');
+        if (groupsRes.ok) {
+          const groupsData = await groupsRes.json();
+          const groups = groupsData.groups || [];
+          if (groups.length > 0) {
+            groupId = groups[0].id;
+          }
+        }
+      }
+      const url = groupId
+        ? `/api/assistente-ia/datasets?group_id=${groupId}`
         : '/api/assistente-ia/datasets';
       
       const res = await fetch(url);
       const data = await res.json();
-      const datasetsList = data.data || data.datasets || data || [];
+      const datasetsList = Array.isArray(data?.data) ? data.data : Array.isArray(data?.datasets) ? data.datasets : Array.isArray(data) ? data : [];
       setDatasets(datasetsList);
       
       // Se o dataset selecionado não está mais na lista, limpar seleção
@@ -140,6 +152,40 @@ function ContextosContent() {
     link.href = `/prompts/${fileName}`;
     link.download = fileName;
     link.click();
+  };
+
+  const getDatasetName = () => {
+    const ds = datasets.find((d) => (d.dataset_id || d.id) === selectedDataset);
+    return ds?.name?.replace(/\s+/g, '-').toLowerCase() || 'modelo';
+  };
+
+  const handleDownloadContext = (ctx: ContextInfo) => {
+    const content = ctx.context_content;
+    if (!content) {
+      toast.error('Conteúdo do contexto não disponível para download');
+      return;
+    }
+    const baseName = getDatasetName();
+    const isChat = ctx.context_type === 'chat';
+    const fileName = `contexto-${isChat ? 'chat' : 'dax'}-${baseName}.${isChat ? 'md' : 'json'}`;
+    let blobContent: string;
+    if (isChat) {
+      blobContent = content;
+    } else {
+      try {
+        blobContent = JSON.stringify(JSON.parse(content), null, 2);
+      } catch {
+        blobContent = content;
+      }
+    }
+    const blob = new Blob([blobContent], { type: isChat ? 'text/markdown' : 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Download: ${fileName}`);
   };
 
   const handleFileImport = (file: File, type: 'chat' | 'dax') => {
@@ -341,6 +387,9 @@ function ContextosContent() {
               onChange={(e) => setSelectedDataset(e.target.value)}
               className="w-full max-w-md px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-green-500 bg-white text-gray-900"
             >
+              <option value="">
+                {datasets.length === 0 ? 'Nenhum dataset encontrado' : 'Selecione um dataset'}
+              </option>
               {datasets.map((ds) => (
                 <option key={ds.id} value={ds.dataset_id || ds.id}>{ds.name}</option>
               ))}
@@ -402,13 +451,22 @@ function ContextosContent() {
                           })()}
                         </div>
                       </div>
-                      <button
-                        onClick={() => handleDelete(chatContext.id)}
-                        className="ml-4 p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Excluir"
-                      >
-                        <Trash2 size={18} />
-                      </button>
+                      <div className="ml-4 flex items-center gap-1">
+                        <button
+                          onClick={() => handleDownloadContext(chatContext)}
+                          className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Baixar documentação"
+                        >
+                          <Download size={18} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(chatContext.id)}
+                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Excluir"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -462,13 +520,22 @@ function ContextosContent() {
                           })()}
                         </div>
                       </div>
-                      <button
-                        onClick={() => handleDelete(daxContext.id)}
-                        className="ml-4 p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Excluir"
-                      >
-                        <Trash2 size={18} />
-                      </button>
+                      <div className="ml-4 flex items-center gap-1">
+                        <button
+                          onClick={() => handleDownloadContext(daxContext)}
+                          className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                          title="Baixar base de DAX"
+                        >
+                          <Download size={18} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(daxContext.id)}
+                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Excluir"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
