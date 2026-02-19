@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { callClaude, classifyError, extractTextFromResponse, hasToolUse, getToolUseBlocks } from '@/lib/ai/claude-client';
 import Anthropic from '@anthropic-ai/sdk';
-import OpenAI from 'openai';
 import { resolveSession, generateFooter } from '@/lib/whatsapp-session';
 import { 
   parseDocumentation, 
@@ -10,585 +10,10 @@ import {
 } from '@/lib/assistente-ia/documentation-parser';
 import { generateWhatsAppPrompt } from '@/lib/prompts/system-prompt';
 import { getQueryContext, formatQueryContextForPrompt, saveQueryLearning, markTrainingExampleUsed } from '@/lib/query-learning';
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || '',
-});
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || '',
-});
-
-// ============================================
-// FUNÇÃO PARA EXECUTAR DAX
-// ============================================
-export async function executeDaxQuery(connectionId: string, datasetId: string, query: string, supabase: any): Promise<{ success: boolean; results?: any[]; error?: string }> {
-  try {
-    const { data: connection } = await supabase
-      .from('powerbi_connections')
-      .select('*')
-      .eq('id', connectionId)
-      .single();
-
-    if (!connection) {
-      return { success: false, error: 'Conexão não encontrada' };
-    }
-
-    const tokenUrl = `https://login.microsoftonline.com/${connection.tenant_id}/oauth2/v2.0/token`;
-    const tokenResponse = await fetch(tokenUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'client_credentials',
-        client_id: connection.client_id,
-        client_secret: connection.client_secret,
-        scope: 'https://analysis.windows.net/powerbi/api/.default',
-      }),
-    });
-
-    if (!tokenResponse.ok) {
-      return { success: false, error: 'Erro na autenticação' };
-    }
-
-    const tokenData = await tokenResponse.json();
-
-    const daxRes = await fetch(
-      `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/datasets/${datasetId}/executeQueries`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${tokenData.access_token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          queries: [{ query }],
-          serializerSettings: { includeNulls: true }
-        })
-      }
-    );
-
-    if (!daxRes.ok) {
-      const errorText = await daxRes.text();
-      return { success: false, error: `Erro DAX: ${errorText}` };
-    }
-
-    const daxData = await daxRes.json();
-    const results = daxData.results?.[0]?.tables?.[0]?.rows || [];
-
-    return { success: true, results };
-  } catch (e: any) {
-    return { success: false, error: e.message };
-  }
-}
-
-// ============================================
-// FUNÇÃO PARA FORMATAR TEXTO PARA FALA
-// ============================================
-function formatTextForSpeech(text: string): string {
-  let formatted = text;
-  
-  formatted = formatted.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[️⃣]/gu, '');
-  formatted = formatted.replace(/[━─═]+/g, '');
-  
-  formatted = formatted.replace(/R\$\s*([\d.,]+)/g, (match, value) => {
-    const cleanValue = value.replace(/\./g, '').replace(',', '.');
-    const num = parseFloat(cleanValue);
-    
-    if (isNaN(num)) return match;
-    
-    if (num >= 1000000000) {
-      const bilhoes = num / 1000000000;
-      return `${bilhoes.toFixed(1).replace('.', ' vírgula ')} bilhões de reais`;
-    } else if (num >= 1000000) {
-      const milhoes = num / 1000000;
-      if (milhoes === Math.floor(milhoes)) {
-        return `${Math.floor(milhoes)} ${milhoes === 1 ? 'milhão' : 'milhões'} de reais`;
-      }
-      return `${milhoes.toFixed(1).replace('.', ' vírgula ')} ${milhoes >= 2 ? 'milhões' : 'milhão'} de reais`;
-    } else if (num >= 1000) {
-      const milhares = num / 1000;
-      if (milhares === Math.floor(milhares)) {
-        return `${Math.floor(milhares)} mil reais`;
-      }
-      return `${milhares.toFixed(1).replace('.', ' vírgula ')} mil reais`;
-    } else {
-      return `${num.toFixed(2).replace('.', ' reais e ')} centavos`;
-    }
-  });
-  
-  formatted = formatted.replace(/([\d.,]+)%/g, (match, value) => {
-    const num = parseFloat(value.replace(',', '.'));
-    if (isNaN(num)) return match;
-    return `${num.toString().replace('.', ' vírgula ')} por cento`;
-  });
-  
-  formatted = formatted.replace(/\b(\d{1,3}(?:\.\d{3})+)\b/g, (match) => {
-    const num = parseInt(match.replace(/\./g, ''));
-    if (num >= 1000000) {
-      return `${(num / 1000000).toFixed(1).replace('.', ' vírgula ')} milhões`;
-    } else if (num >= 1000) {
-      return `${(num / 1000).toFixed(0)} mil`;
-    }
-    return match;
-  });
-  
-  formatted = formatted.replace(/\n+/g, '. ');
-  formatted = formatted.replace(/\s+/g, ' ');
-  formatted = formatted.replace(/\.\s*\./g, '.');
-  
-  return formatted.trim();
-}
-
-// ============================================
-// FUNÇÃO PARA BAIXAR ÁUDIO DO WHATSAPP
-// ============================================
-async function downloadWhatsAppAudio(instance: any, messageData: any, maxRetries: number = 2): Promise<Buffer | null> {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      console.log(`[downloadAudio] Tentativa ${attempt}/${maxRetries}`);
-      
-      const audioMessage = messageData.message?.audioMessage;
-      if (!audioMessage) return null;
-
-      // Tentar pegar o mediaUrl ou base64 direto do webhook
-      const mediaUrl = audioMessage.url || messageData.mediaUrl;
-      const base64Audio = audioMessage.base64 || messageData.base64;
-
-      if (base64Audio) {
-        console.log('[downloadAudio] Usando base64 do webhook');
-        return Buffer.from(base64Audio, 'base64');
-      }
-
-      if (mediaUrl) {
-        console.log('[downloadAudio] Baixando de URL:', mediaUrl.substring(0, 50));
-        const response = await fetch(mediaUrl);
-        if (!response.ok) throw new Error('Falha ao baixar mídia');
-        const arrayBuffer = await response.arrayBuffer();
-        return Buffer.from(arrayBuffer);
-      }
-
-      // Tentar via Evolution API - getBase64FromMediaMessage
-      const messageId = messageData.key?.id;
-      if (!messageId) return null;
-
-      const apiUrl = instance.api_url?.replace(/\/$/, '');
-      const url = `${apiUrl}/chat/getBase64FromMediaMessage/${instance.instance_name}`;
-      
-      console.log('[downloadAudio] Buscando via Evolution API:', url);
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': instance.api_key,
-        },
-        body: JSON.stringify({
-          message: {
-            key: messageData.key,
-            message: messageData.message
-          }
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Evolution API erro: ${response.status}`);
-      }
-
-      const data = await response.json();
-      if (data.base64) {
-        console.log('[downloadAudio] ✅ Base64 obtido via Evolution API');
-        return Buffer.from(data.base64, 'base64');
-      }
-
-      throw new Error('Nenhum base64 retornado');
-    } catch (error: any) {
-      console.error(`[downloadAudio] Tentativa ${attempt} falhou:`, error.message);
-      
-      if (attempt < maxRetries) {
-        console.log('[downloadAudio] Aguardando 1s antes de retry...');
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-    }
-  }
-  
-  console.error('[downloadAudio] Todas as tentativas falharam');
-  return null;
-}
-
-// ============================================
-// FUNÇÃO PARA ENVIAR INDICADOR "DIGITANDO..."
-// ============================================
-async function sendTypingIndicator(instance: any, phone: string): Promise<void> {
-  try {
-    const apiUrl = instance.api_url?.replace(/\/$/, '');
-    const url = `${apiUrl}/chat/presence/${instance.instance_name}`;
-    
-    await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': instance.api_key,
-      },
-      body: JSON.stringify({
-        number: phone.replace(/\D/g, ''),
-        presence: 'composing' // 'composing' = digitando, 'recording' = gravando áudio
-      }),
-    });
-  } catch (error) {
-    // Silencioso - não é crítico
-    console.log('[Webhook] Aviso: Não foi possível enviar indicador de digitação');
-  }
-}
-
-// ============================================
-// FUNÇÃO PARA TRANSCREVER ÁUDIO COM WHISPER
-// ============================================
-async function transcribeAudio(audioBuffer: Buffer): Promise<string | null> {
-  try {
-    console.log('[transcribeAudio] Iniciando transcrição, buffer size:', audioBuffer.length);
-    
-    if (!process.env.OPENAI_API_KEY) {
-      console.error('[transcribeAudio] OPENAI_API_KEY não configurada');
-      return null;
-    }
-
-    // Usar toFile da OpenAI SDK (compatível com Node.js)
-    const { toFile } = await import('openai/uploads');
-    const file = await toFile(audioBuffer, 'audio.ogg', { type: 'audio/ogg' });
-    
-    const transcription = await openai.audio.transcriptions.create({
-      file: file,
-      model: 'whisper-1',
-      language: 'pt',
-    });
-
-    console.log('[transcribeAudio] ✅ Transcrição:', transcription.text?.substring(0, 100));
-    return transcription.text || null;
-  } catch (error: any) {
-    console.error('[transcribeAudio] Erro:', error.message);
-    console.error('[transcribeAudio] Stack:', error.stack);
-    return null;
-  }
-}
-
-// ============================================
-// FUNÇÃO PARA CLASSIFICAR ERROS
-// ============================================
-function classifyError(error: any): {
-  isTemporary: boolean;
-  shouldRetry: boolean;
-  retryAfter?: number; // segundos
-  userMessage: string;
-} {
-  const errorStatus = error.status || error.statusCode;
-  const errorMessage = error.message || String(error);
-  
-  // Erros temporários (rate limit, timeout, server overload)
-  if (errorStatus === 529 || errorStatus === 503 || errorStatus === 429) {
-    return {
-      isTemporary: true,
-      shouldRetry: true,
-      retryAfter: errorStatus === 429 ? 60 : 10, // 60s para rate limit, 10s para outros
-      userMessage: 'Estou processando sua pergunta, mas preciso de um momento. ⏳\n\nVou tentar novamente em alguns segundos. Se não conseguir, te aviso para tentar mais tarde.'
-    };
-  }
-  
-  // Timeout
-  if (errorMessage.includes('timeout') || errorMessage === 'Claude timeout') {
-    return {
-      isTemporary: true,
-      shouldRetry: true,
-      retryAfter: 5,
-      userMessage: 'Estou processando sua pergunta, mas preciso de um momento. ⏳\n\nVou tentar novamente em alguns segundos. Se não conseguir, te aviso para tentar mais tarde.'
-    };
-  }
-  
-  // Erros de rede temporários
-  if (errorMessage.includes('ECONNRESET') || errorMessage.includes('ETIMEDOUT') || errorMessage.includes('network')) {
-    return {
-      isTemporary: true,
-      shouldRetry: true,
-      retryAfter: 3,
-      userMessage: 'Estou processando sua pergunta, mas preciso de um momento. ⏳\n\nVou tentar novamente em alguns segundos. Se não conseguir, te aviso para tentar mais tarde.'
-    };
-  }
-  
-  // Erros permanentes (auth, invalid request, etc)
-  if (errorStatus === 401 || errorStatus === 403 || errorStatus === 400) {
-    return {
-      isTemporary: false,
-      shouldRetry: false,
-      userMessage: 'Não consegui processar sua solicitação no momento. ❌\n\nPor favor, tente novamente mais tarde ou reformule sua pergunta.'
-    };
-  }
-  
-  // Erro desconhecido - tratar como temporário por segurança
-  return {
-    isTemporary: true,
-    shouldRetry: true,
-    retryAfter: 5,
-    userMessage: 'Estou processando sua pergunta, mas preciso de um momento. ⏳\n\nVou tentar novamente em alguns segundos. Se não conseguir, te aviso para tentar mais tarde.'
-  };
-}
-
-// ============================================
-// FUNÇÃO DE RETRY PARA CHAMADAS CLAUDE (COM TIMEOUT)
-// ============================================
-async function callClaudeWithRetry(
-  params: {
-    model: string;
-    max_tokens: number;
-    system: string;
-    messages: any[];
-    tools?: any[];
-  },
-  maxRetries = 4,  // ← AUMENTADO de 2 para 4
-  timeoutMs = 30000  // ← TIMEOUT de 30 segundos
-): Promise<Anthropic.Message> {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      // Criar promise com timeout
-      const claudePromise = anthropic.messages.create({
-        model: params.model,
-        max_tokens: params.max_tokens,
-        system: params.system,
-        messages: params.messages,
-        tools: params.tools,
-      });
-      
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Claude timeout')), timeoutMs);
-      });
-      
-      const response = await Promise.race([claudePromise, timeoutPromise]);
-      return response as Anthropic.Message;
-    } catch (error: any) {
-      console.error(`[Claude] Tentativa ${attempt} falhou:`, error.message);
-      
-      const errorInfo = classifyError(error);
-      
-      // Se não deve fazer retry ou é última tentativa, lançar erro
-      if (!errorInfo.shouldRetry || attempt >= maxRetries) {
-        throw error;
-      }
-      
-      // Backoff exponencial: 2s, 5s, 10s, 20s
-      const waitTime = Math.min(2000 * Math.pow(2, attempt - 1), 20000);
-      console.log(`[Claude] Aguardando ${waitTime}ms antes da tentativa ${attempt + 1}...`);
-      await new Promise(resolve => setTimeout(resolve, waitTime));
-    }
-  }
-  
-  throw new Error('Todas as tentativas falharam');
-}
-
-// ============================================
-// FUNÇÃO PARA GERAR ÁUDIO COM OPENAI TTS
-// ============================================
-export async function generateAudio(text: string): Promise<string | null> {
-  try {
-    const speechText = formatTextForSpeech(text);
-    const limitedText = speechText.slice(0, 4000);
-    
-    if (!process.env.OPENAI_API_KEY) {
-      console.error('[generateAudio] OPENAI_API_KEY não configurada');
-      return null;
-    }
-    
-    const response = await openai.audio.speech.create({
-      model: 'tts-1-hd',  // ← Usar tts-1-hd (mais natural)
-      voice: 'shimmer',
-      input: limitedText,
-      response_format: 'mp3',
-      speed: 1.0
-    });
-    
-    const arrayBuffer = await response.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString('base64');
-    return base64;
-  } catch (error: any) {
-    console.error('[generateAudio] Erro:', error.message);
-    return null;
-  }
-}
-
-// ============================================
-// FUNÇÃO PARA ENVIAR ÁUDIO VIA WHATSAPP
-// ============================================
-export async function sendWhatsAppAudio(instance: any, phone: string, audioBase64: string): Promise<boolean> {
-  try {
-    const apiUrl = instance.api_url?.replace(/\/$/, '');
-    const cleanPhone = phone.replace(/\D/g, '');
-    
-    // Tentativa 1: sendWhatsAppAudio
-    const url = `${apiUrl}/message/sendWhatsAppAudio/${instance.instance_name}`;
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': instance.api_key,
-      },
-      body: JSON.stringify({
-        number: cleanPhone,
-        audio: audioBase64
-      }),
-    });
-    
-    if (response.ok) {
-      console.log('[sendWhatsAppAudio] ✅ Áudio enviado');
-      return true;
-    }
-    
-    // Tentativa 2: sendMedia (fallback)
-    console.log('[sendWhatsAppAudio] Tentando sendMedia...');
-    const mediaUrl = `${apiUrl}/message/sendMedia/${instance.instance_name}`;
-    
-    const mediaResponse = await fetch(mediaUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': instance.api_key,
-      },
-      body: JSON.stringify({
-        number: cleanPhone,
-        mediatype: 'audio',
-        mimetype: 'audio/mp3',
-        media: `data:audio/mp3;base64,${audioBase64}`,
-        fileName: 'audio.mp3'
-      }),
-    });
-    
-    if (mediaResponse.ok) {
-      console.log('[sendWhatsAppAudio] ✅ Áudio enviado via sendMedia');
-      return true;
-    }
-    
-    console.error('[sendWhatsAppAudio] ❌ Falha ao enviar áudio');
-    return false;
-  } catch (error: any) {
-    console.error('[sendWhatsAppAudio] Erro:', error.message);
-    return false;
-  }
-}
-
-// ============================================
-// FUNÇÃO PARA ENVIAR MENSAGEM WHATSAPP
-// ============================================
-export async function sendWhatsAppMessage(instance: any, phone: string, message: string): Promise<boolean> {
-  try {
-    const apiUrl = instance.api_url?.replace(/\/$/, '');
-    const url = `${apiUrl}/message/sendText/${instance.instance_name}`;
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': instance.api_key,
-      },
-      body: JSON.stringify({
-        number: phone,
-        text: message,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[sendWhatsAppMessage] Erro:', errorText);
-      return false;
-    }
-
-    return true;
-  } catch (error: any) {
-    console.error('[sendWhatsAppMessage] Erro:', error.message);
-    return false;
-  }
-}
-
-// ============================================
-// FUNÇÃO AUXILIAR: Buscar instância
-// ============================================
-export async function getInstanceForAuthorizedNumber(authorizedNumber: any, supabase: any): Promise<any> {
-  if (authorizedNumber?.instance_id) {
-    const { data: instance } = await supabase
-      .from('whatsapp_instances')
-      .select('*')
-      .eq('id', authorizedNumber.instance_id)
-      .eq('is_connected', true)
-      .maybeSingle();
-    
-    if (instance) return instance;
-  }
-
-  const { data: anyInstance } = await supabase
-    .from('whatsapp_instances')
-    .select('*')
-    .eq('is_connected', true)
-    .limit(1)
-    .maybeSingle();
-  
-  return anyInstance;
-}
-
-// ============================================
-// FUNÇÃO PARA IDENTIFICAR INTENÇÃO DA PERGUNTA
-// ============================================
-export function identifyQuestionIntent(question: string): string {
-  const q = question.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  
-  // Faturamento
-  if (q.match(/faturamento.*(filial|loja|unidade)/)) return 'faturamento_filial';
-  if (q.match(/faturamento.*(vendedor|garcom|funcionario)/)) return 'faturamento_vendedor';
-  if (q.match(/faturamento.*(produto|item)/)) return 'faturamento_produto';
-  if (q.match(/faturamento|faturou|receita total|vendeu quanto/)) return 'faturamento_total';
-  
-  // Vendas por
-  if (q.match(/vendas?.*(filial|loja)/)) return 'faturamento_filial';
-  if (q.match(/vendas?.*(vendedor|garcom|funcionario)/)) return 'faturamento_vendedor';
-  if (q.match(/vendas?.*(produto|item)/)) return 'faturamento_produto';
-  
-  // Rankings
-  if (q.match(/top.*(vendedor|garcom|funcionario)|melhor vendedor|quem (mais )?vendeu/)) return 'top_vendedores';
-  if (q.match(/top.*(produto|item)|produto.*(mais|melhor)/)) return 'top_produtos';
-  if (q.match(/top.*(filial|loja)|filial.*(mais|melhor)/)) return 'top_filiais';
-  
-  // Métricas
-  if (q.match(/ticket.*(medio|médio)/)) return 'ticket_medio';
-  if (q.match(/margem|lucro/)) return 'margem';
-  if (q.match(/cmv|custo/)) return 'cmv';
-  
-  // Financeiro
-  if (q.match(/contas?.*(pagar|vencer)|a pagar/)) return 'contas_pagar';
-  if (q.match(/contas?.*(receber)|a receber/)) return 'contas_receber';
-  if (q.match(/saldo|caixa|banco/)) return 'saldo';
-  
-  return 'outros';
-}
-
-// ============================================
-// FUNÇÃO PARA BUSCAR QUERIES QUE FUNCIONARAM
-// ============================================
-export async function getWorkingQueries(
-  supabase: any, 
-  datasetId: string, 
-  intent: string
-): Promise<string[]> {
-  try {
-    const { data } = await supabase
-      .from('ai_query_learning')
-      .select('dax_query, times_reused')
-      .eq('dataset_id', datasetId)
-      .eq('question_intent', intent)
-      .eq('success', true)
-      .order('times_reused', { ascending: false })
-      .limit(3);
-    
-    return data?.map((r: any) => r.dax_query) || [];
-  } catch (e) {
-    console.error('[Learning] Erro ao buscar queries:', e);
-    return [];
-  }
-}
+import { executeDaxQuery } from '@/lib/ai/dax-engine';
+import { sendWhatsAppMessage, sendWhatsAppAudio, sendTypingIndicator, getInstanceForAuthorizedNumber } from '@/lib/whatsapp/messaging';
+import { generateAudio, downloadWhatsAppAudio, transcribeAudio } from '@/lib/whatsapp/audio';
+import { identifyQuestionIntent, getWorkingQueries, saveQueryResult, isFailureResponse, identifyFailureReason } from '@/lib/ai/learning';
 
 // ============================================
 // FUNÇÃO PARA SALVAR MENSAGEM NA FILA
@@ -652,66 +77,6 @@ async function saveMessageToQueue(
 }
 
 // ============================================
-// FUNÇÃO PARA SALVAR RESULTADO DA QUERY
-// ============================================
-export async function saveQueryResult(
-  supabase: any,
-  datasetId: string,
-  companyGroupId: string,
-  userQuestion: string,
-  intent: string,
-  daxQuery: string,
-  success: boolean,
-  errorMessage?: string,
-  executionTimeMs?: number,
-  resultRows?: number
-): Promise<void> {
-  try {
-    const crypto = require('crypto');
-    const queryHash = crypto.createHash('md5').update(daxQuery).digest('hex');
-    
-    // Verificar se query já existe
-    const { data: existing } = await supabase
-      .from('ai_query_learning')
-      .select('id, times_reused')
-      .eq('dataset_id', datasetId)
-      .eq('dax_query_hash', queryHash)
-      .maybeSingle();
-    
-    if (existing && success) {
-      // Query já existe e deu sucesso: incrementar uso
-      await supabase
-        .from('ai_query_learning')
-        .update({ 
-          times_reused: existing.times_reused + 1,
-          last_used_at: new Date().toISOString()
-        })
-        .eq('id', existing.id);
-      console.log('[Learning] Query reutilizada, times_reused:', existing.times_reused + 1);
-    } else if (!existing) {
-      // Query nova: inserir
-      await supabase
-        .from('ai_query_learning')
-        .insert({
-          dataset_id: datasetId,
-          company_group_id: companyGroupId,
-          user_question: userQuestion.substring(0, 500),
-          question_intent: intent,
-          dax_query: daxQuery,
-          dax_query_hash: queryHash,
-          success,
-          error_message: errorMessage?.substring(0, 500),
-          execution_time_ms: executionTimeMs,
-          result_rows: resultRows
-        });
-      console.log('[Learning] Nova query salva, success:', success);
-    }
-  } catch (e) {
-    console.error('[Learning] Erro ao salvar:', e);
-  }
-}
-
-// ============================================
 // POST - WEBHOOK DO EVOLUTION API
 // ============================================
 export async function POST(request: Request) {
@@ -763,6 +128,19 @@ export async function POST(request: Request) {
     // Verificar se é mensagem de áudio (para não ignorar por estar vazia)
     const hasAudioMessage = !!messageContent.audioMessage || !!messageData.message?.audioMessage || !!body.data?.message?.audioMessage;
 
+    // DEBUG TEMPORÁRIO - Remover após resolver áudio
+    if (hasAudioMessage) {
+      console.log('[AUDIO-DEBUG] ===== DADOS DO ÁUDIO =====');
+      console.log('[AUDIO-DEBUG] messageText:', messageText ? messageText.substring(0, 100) : 'VAZIO');
+      console.log('[AUDIO-DEBUG] messageContent keys:', Object.keys(messageContent));
+      console.log('[AUDIO-DEBUG] audioMessage keys:', Object.keys(messageContent.audioMessage || {}));
+      console.log('[AUDIO-DEBUG] audioMessage:', JSON.stringify(messageContent.audioMessage, null, 2)?.substring(0, 500));
+      console.log('[AUDIO-DEBUG] messageData keys:', Object.keys(messageData));
+      console.log('[AUDIO-DEBUG] body.data keys:', Object.keys(body.data || {}));
+      console.log('[AUDIO-DEBUG] messageData.body:', messageData.body);
+      console.log('[AUDIO-DEBUG] ===========================');
+    }
+
     // Ignorar mensagens enviadas por mim OU mensagens vazias que NÃO são áudio
     if (fromMe || (!messageText.trim() && !hasAudioMessage)) {
       console.log('[Webhook] Ignorando:', { fromMe, emptyText: !messageText.trim(), isAudio: hasAudioMessage });
@@ -808,65 +186,50 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: 'error', reason: 'no instance' });
     }
 
-    // ========== BUSCAR INSTÂNCIA ==========
-    instance = await getInstanceForAuthorizedNumber(authorizedNumber, supabase);
-    if (!instance) {
-      console.log('[Webhook] Sem instância conectada');
-      return NextResponse.json({ status: 'error', reason: 'no instance' });
-    }
-
-    // ========== VERIFICAR E TRANSCREVER ÁUDIO ==========
-    const isAudioMessage = !!messageContent.audioMessage || !!messageData.audioMessage || body.data?.audioMessage;
+    // ========== VERIFICAR ÁUDIO ==========
+    const isAudioMessage = hasAudioMessage;
     let respondWithAudio = false;
     let processedMessageText = messageText;
-    
-    if (isAudioMessage) {
-      console.log('[Webhook] 🎤 Áudio detectado, tentando transcrever...');
-      
-      // Se não veio texto, tentar transcrever
-      if (!messageText.trim()) {
+
+    if (isAudioMessage && !messageText.trim()) {
+      // Áudio sem transcrição da Evolution API — tentar transcrever manualmente
+      console.log('[Webhook] 🎤 Áudio sem transcrição, tentando Whisper...');
+
+      try {
         const audioBuffer = await downloadWhatsAppAudio(instance, messageData);
-        
         if (audioBuffer) {
           const transcription = await transcribeAudio(audioBuffer);
-          
           if (transcription) {
             processedMessageText = transcription;
-            respondWithAudio = true;
-            console.log('[Webhook] ✅ Áudio transcrito:', transcription.substring(0, 50));
-          } else {
-            // Falha na transcrição
-            const audioMsg = `Desculpe ${authorizedNumber?.name || ''}, não consegui entender o áudio. 🎤\n\nPode enviar novamente ou digitar sua pergunta?`;
-            await sendWhatsAppMessage(instance, phone, audioMsg);
-            await supabase.from('whatsapp_messages').insert({
-              company_group_id: authorizedNumber.company_group_id,
-              phone_number: phone,
-              message_content: audioMsg,
-              direction: 'outgoing',
-              sender_name: 'Assistente IA',
-              instance_id: instance.id
-            });
-            return NextResponse.json({ status: 'error', reason: 'transcription_failed' });
+            // respondWithAudio = true; — áudio sempre responde em texto
+            console.log('[Webhook] ✅ Áudio transcrito via Whisper:', transcription.substring(0, 50));
           }
-        } else {
-          // Não conseguiu baixar áudio
-          const audioMsg = `Desculpe ${authorizedNumber?.name || ''}, não consegui processar o áudio. 🎤\n\nEnvie sua pergunta como *texto*!`;
-          await sendWhatsAppMessage(instance, phone, audioMsg);
-          await supabase.from('whatsapp_messages').insert({
-            company_group_id: authorizedNumber.company_group_id,
-            phone_number: phone,
-            message_content: audioMsg,
-            direction: 'outgoing',
-            sender_name: 'Assistente IA',
-            instance_id: instance.id
-          });
-          return NextResponse.json({ status: 'error', reason: 'audio_download_failed' });
         }
-      } else {
-        // Áudio já veio com transcrição
-        respondWithAudio = true;
-        console.log('[Webhook] ✅ Áudio com transcrição existente');
+      } catch (whisperError: any) {
+        console.log('[Webhook] Whisper falhou:', whisperError.message);
       }
+
+      // Se não conseguiu transcrever de jeito nenhum
+      if (!processedMessageText.trim()) {
+        const audioMsg = `Desculpe ${authorizedNumber?.name || ''}, não consegui entender o áudio. 🎤\n\nPode enviar novamente ou digitar sua pergunta?`;
+        await sendWhatsAppMessage(instance, phone, audioMsg);
+        await supabase.from('whatsapp_messages').insert({
+          company_group_id: authorizedNumber.company_group_id,
+          phone_number: phone,
+          message_content: audioMsg,
+          direction: 'outgoing',
+          sender_name: 'Assistente IA',
+          instance_id: instance.id
+        });
+        return NextResponse.json({ status: 'error', reason: 'transcription_failed' });
+      }
+    }
+
+    // Se áudio COM transcrição da Evolution API — usar texto (responder em texto, não áudio)
+    if (isAudioMessage && messageText.trim()) {
+      // respondWithAudio = true; — áudio sempre responde em texto
+      processedMessageText = messageText;
+      console.log('[Webhook] 🎤 Áudio com transcrição da Evolution API - responderá com áudio');
     }
 
     // Verificar se tem mensagem para processar
@@ -976,6 +339,12 @@ export async function POST(request: Request) {
       processedMessageText,
       authorizedNumber
     );
+
+    // Se selecionou dataset e tem sessão, continuar processando (não parar na confirmação)
+    if (sessionResult.hasSession && sessionResult.session) {
+      // Sessão válida, seguir para processamento da IA
+      console.log('[Webhook] Sessão ativa:', sessionResult.session.dataset_name);
+    }
 
     // Se precisa mostrar menu ou confirmação
     if (sessionResult.menuMessage && !sessionResult.hasSession) {
@@ -1187,215 +556,68 @@ export async function POST(request: Request) {
     );
     const queryContextStr = formatQueryContextForPrompt(queryContext);
 
-    // Formatar exemplos treinados de forma mais efetiva
-    let exemplosSection = '';
-    if (queryContext && queryContext.trainingExamples && queryContext.trainingExamples.length > 0) {
-      exemplosSection = `
-
-## EXEMPLOS DE REFERÊNCIA (USE COMO BASE)
-Estes são exemplos já validados e aprovados. Use-os como referência para consultas similares:
-
-${queryContext.trainingExamples.map((ex: any, i: number) => `
-### Exemplo ${i + 1}:
-**Pergunta:** "${ex.user_question}"
-**DAX Correto:**
-\`\`\`dax
-${ex.dax_query}
-\`\`\`
-**Resposta formatada:** ${ex.formatted_response?.substring(0, 200) || 'N/A'}
-`).join('\n')}
-
-IMPORTANTE: Se a pergunta do usuário for similar a algum exemplo acima, USE O MESMO PADRÃO DAX.
-`;
-    }
-
     // ========== GERAR SYSTEM PROMPT OTIMIZADO ==========
     const currentMonth = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
     const currentDate = new Date().toLocaleDateString('pt-BR');
     const currentYear = new Date().getFullYear();
     const currentMonthNumber = new Date().getMonth() + 1;
 
-    // Chain of Thought - Processo de raciocínio
-    const chainOfThought = `
-## PROCESSO DE RACIOCÍNIO (siga sempre)
-Antes de gerar qualquer DAX, pense:
-1. **Entender:** O que exatamente o usuário quer saber?
-2. **Identificar:** Quais medidas e tabelas são necessárias?
-3. **Verificar:** Existe exemplo similar treinado? Se sim, usar como base.
-4. **Construir:** Montar a query DAX passo a passo.
-5. **Validar:** A query faz sentido? Usa as colunas corretas?
+    // Formatar exemplos treinados de forma compacta
+    let exemplosFormatados = '';
+    if (queryContext && queryContext.trainingExamples && queryContext.trainingExamples.length > 0) {
+      exemplosFormatados = queryContext.trainingExamples.map((ex: any, i: number) =>
+        `${i + 1}. "${ex.user_question}" → ${ex.dax_query}`
+      ).join('\n');
+    }
 
-Nunca invente nomes de colunas ou medidas. Use SOMENTE o que está na documentação.
-`;
-
-    // Gerar system prompt usando função otimizada
+    // System prompt base (da função generateWhatsAppPrompt)
     const systemPromptBase = generateWhatsAppPrompt({
       modelName: datasetName || aiContext?.context_name || 'Power BI',
-      modelContext: modelContext, // Contexto otimizado do parser
-      queryContext: queryContextStr, // Queries similares
+      modelContext: modelContext,
+      queryContext: queryContextStr,
       userName: authorizedNumber?.name,
       datasetName: datasetName
     });
 
-    // Adicionar regras específicas do WhatsApp (período, formato, etc)
+// System prompt final — complementa o base sem duplicar
     const systemPrompt = `${systemPromptBase}
-${chainOfThought}
-${exemplosSection}
 
-# ⚠️ REGRA CRÍTICA - FILTRO DE DATA OBRIGATÓRIO EM TODA QUERY
-**NUNCA execute uma query DAX sem filtro de período.**
+${exemplosFormatados ? `# EXEMPLOS VALIDADOS (USE COMO BASE)\n${exemplosFormatados}\nSe a pergunta for similar, USE O MESMO PADRÃO DAX.\n` : ''}
+# PERÍODO PADRÃO
+Hoje: ${currentDate} | Mês: ${currentMonthNumber} | Ano: ${currentYear}
+Mês anterior: ${currentMonthNumber - 1 || 12}/${currentMonthNumber === 1 ? currentYear - 1 : currentYear}
+Quando o usuário NÃO especificar período, use ${currentMonth}.
+SEMPRE inicie a resposta com: 📅 *${currentMonth}*
 
-Quando o usuário NÃO especificar data/período:
-- Mês atual: ${currentMonthNumber}
-- Ano atual: ${currentYear}
+# REGRAS DAX OBRIGATÓRIAS
+- NUNCA execute query sem filtro de período
+- EVALUATE ROW("Nome", CALCULATE([Medida], filtros)) para valor único
+- EVALUATE SUMMARIZECOLUMNS(Coluna, "Total", [Medida]) para agrupamentos
+- TOPN(N, ...) para rankings
+- NUNCA invente nomes — use SOMENTE o que está no contexto abaixo
+- Se a query falhar, analise o erro, corrija e tente novamente
+- Se valor individual > total, a query está ERRADA (faltou filtro)
 
-## FORMATO OBRIGATÓRIO DAS QUERIES:
-**IMPORTANTE: Os nomes de tabelas/colunas abaixo são EXEMPLOS. Use os nomes REAIS do CONTEXTO DO MODELO.**
+# FORMATAÇÃO
+- *negrito* para destaques (asterisco simples)
+- Valores monetários COMPLETOS: R$ 1.234.567,89
+- Máximo 800 caracteres
+- Emojis com moderação (máx 5)
 
-Para valor único (exemplo de formato):
-EVALUATE ROW("Nome", CALCULATE([Medida], TabelaData[ColunaMes] = ${currentMonthNumber}, TabelaData[ColunaAno] = ${currentYear}))
-
-Para agrupamentos (exemplo de formato):
-EVALUATE CALCULATETABLE(SUMMARIZECOLUMNS(Coluna, "Total", [Medida]), TabelaData[ColunaMes] = ${currentMonthNumber}, TabelaData[ColunaAno] = ${currentYear})
-
-Para rankings Top N (exemplo de formato):
-EVALUATE TOPN(N, CALCULATETABLE(SUMMARIZECOLUMNS(Coluna, "Total", [Medida]), TabelaData[ColunaMes] = ${currentMonthNumber}, TabelaData[ColunaAno] = ${currentYear}), [Total], DESC)
-
-**Consulte o CONTEXTO DO MODELO acima para descobrir os nomes reais da tabela de datas e suas colunas.**
-
-## VALIDAÇÃO
-Se um valor individual for maior que o total, a query está ERRADA (faltou filtro de data).
-
-## MANTER CONTEXTO TEMPORAL
-Ao responder sugestões (1, 2, 3), use o MESMO período da resposta anterior.
-
-# REGRA CRÍTICA DE PERÍODO
-**SEMPRE que o usuário NÃO especificar data/período, use ${currentMonth} como padrão.**
-- "Qual o faturamento?" → Faturamento de ${currentMonth}
-- "Vendas por filial?" → Vendas de ${currentMonth}  
-- "Top 10 produtos?" → Top 10 de ${currentMonth}
-- "Ticket médio?" → Ticket médio de ${currentMonth}
-
-**SEMPRE inicie a resposta informando o período:**
-📅 *${currentMonth}*
-
-# REGRA DE SUGESTÕES (OBRIGATÓRIO)
-**SEMPRE termine TODA resposta com exatamente 3 sugestões de aprofundamento relacionadas ao tema.**
-
-Formato:
+# SUGESTÕES (OBRIGATÓRIO)
+SEMPRE termine com 3 sugestões:
 ━━━━━━━━━━━━━━━━━
 📊 *Posso detalhar:*
-1️⃣ [Análise relacionada 1]
-2️⃣ [Análise relacionada 2]
-3️⃣ [Análise relacionada 3]
+1️⃣ [Análise 1]
+2️⃣ [Análise 2]
+3️⃣ [Análise 3]
 
-Exemplos de sugestões por tema:
-- Faturamento → Por filial, Por vendedor/garçom, Por produto
-- Vendas → Por período, Por cliente, Por categoria
-- Produtos → Mais vendidos, Margem de lucro, Por filial
-- Clientes → Top clientes, Inadimplentes, Novos vs recorrentes
-
-# INTERPRETAÇÃO DE NÚMEROS
-Se o usuário responder apenas "1", "2" ou "3", ele está escolhendo uma das sugestões anteriores.
-Consulte o histórico e execute a análise correspondente.
-
-# QUANDO USUÁRIO ESCOLHE OPÇÃO
-Se a mensagem do usuário for uma das sugestões anteriores (ex: "Faturamento por filial"), 
-execute a consulta DAX correspondente usando o mesmo período da resposta anterior.
-
-# FORMATAÇÃO WHATSAPP
-- Use *negrito* para destaques
-- Valores monetários COMPLETOS: R$ 1.234.567,89 (NUNCA abrevie)
-- Máximo 800 caracteres por resposta
-- Emojis com moderação (máx 5 por mensagem)
-- Sem asteriscos duplos, use simples: *texto*
-
-# FORMATO PADRÃO DE RESPOSTA
-📅 *${currentMonth}*
-
-💰 *[Métrica Principal]*
-R$ X.XXX.XXX,XX
-
-[Detalhes relevantes se houver]
-
-━━━━━━━━━━━━━━━━━
-📊 *Posso detalhar:*
-1️⃣ [Sugestão 1]
-2️⃣ [Sugestão 2]
-3️⃣ [Sugestão 3]
-
-
-**SEMPRE inicie a resposta informando o período:**
-📅 *${currentMonth}*
-
-# REGRA DE SUGESTÕES (OBRIGATÓRIO)
-**SEMPRE termine TODA resposta com exatamente 3 sugestões de aprofundamento relacionadas ao tema.**
-
-Formato:
-━━━━━━━━━━━━━━━━━
-📊 *Posso detalhar:*
-1️⃣ [Análise relacionada 1]
-2️⃣ [Análise relacionada 2]
-3️⃣ [Análise relacionada 3]
-
-Exemplos de sugestões por tema:
-- Faturamento → Por filial, Por vendedor/garçom, Por produto
-- Vendas → Por período, Por cliente, Por categoria
-- Produtos → Mais vendidos, Margem de lucro, Por filial
-- Clientes → Top clientes, Inadimplentes, Novos vs recorrentes
-
-# INTERPRETAÇÃO DE NÚMEROS
-Se o usuário responder apenas "1", "2" ou "3", ele está escolhendo uma das sugestões anteriores.
-Consulte o histórico e execute a análise correspondente.
-
-# QUANDO USUÁRIO ESCOLHE OPÇÃO
-Se a mensagem do usuário for uma das sugestões anteriores (ex: "Faturamento por filial"), 
-execute a consulta DAX correspondente usando o mesmo período da resposta anterior.
-
-# FORMATAÇÃO WHATSAPP
-- Use *negrito* para destaques
-- Valores monetários COMPLETOS: R$ 1.234.567,89 (NUNCA abrevie)
-- Máximo 800 caracteres por resposta
-- Emojis com moderação (máx 5 por mensagem)
-- Sem asteriscos duplos, use simples: *texto*
-
-# FORMATO PADRÃO DE RESPOSTA
-📅 *${currentMonth}*
-
-💰 *[Métrica Principal]*
-R$ X.XXX.XXX,XX
-
-[Detalhes relevantes se houver]
-
-━━━━━━━━━━━━━━━━━
-📊 *Posso detalhar:*
-1️⃣ [Sugestão 1]
-2️⃣ [Sugestão 2]
-3️⃣ [Sugestão 3]
+Se o usuário responder "1", "2" ou "3", execute a sugestão usando o MESMO período.
 
 # CONTEXTO DO MODELO DE DADOS
-${modelContext.slice(0, 10000)}
+${modelContext ? modelContext.slice(0, 12000) : 'Nenhum contexto disponível.'}
 
-# INSTRUÇÕES DAX
-- Use a ferramenta execute_dax para buscar dados
-- Leia o CONTEXTO DO MODELO DE DADOS acima para descobrir os nomes EXATOS de tabelas, colunas e medidas
-- NUNCA invente nomes - use SOMENTE o que está documentado no contexto
-
-## REGRA DE FILTRO DE DATA
-- Quando o usuário NÃO especificar período, filtre pelo mês/ano atual
-- Consulte a documentação da tabela de datas (Calendario ou similar) no contexto para saber os nomes corretos das colunas
-- Mês atual: ${currentMonthNumber} | Ano atual: ${currentYear}
-- SEMPRE aplique filtro de data nas queries (sem filtro = total histórico = ERRADO)
-
-## FORMATO DAS QUERIES
-- Use EVALUATE ROW(...) para valores únicos
-- Use EVALUATE SUMMARIZECOLUMNS(...) para agrupamentos
-- Use CALCULATE([Medida], filtros...) para aplicar filtros
-
-# REFERÊNCIA TEMPORAL
-Hoje: ${currentDate}
-Mês: ${currentMonthNumber}
-Ano: ${currentYear}`;
+Use a ferramenta execute_dax para consultar dados. Leia o contexto acima para nomes exatos.`;
 
     // ========== TOOLS ==========
     const tools: Anthropic.Tool[] = [
@@ -1445,10 +667,10 @@ Ano: ${currentYear}`;
     let daxError: string | null = null;
     
     try {
-      response = await callClaudeWithRetry({
-      model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,  // ← Espaço para respostas completas com 3 sugestões
-      system: systemPrompt,
+      response = await callClaude({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2048,
+        system: systemPrompt,
         messages: conversationHistory,
         tools
       });
@@ -1516,10 +738,15 @@ Ano: ${currentYear}`;
       return NextResponse.json({ status: 'error', reason: errorInfo.isTemporary ? 'temporary_error' : 'permanent_error' });
     }
 
-    // ========== PROCESSAR TOOL CALLS (MÁXIMO 1 ITERAÇÃO) ==========
+    // ========== PROCESSAR TOOL CALLS (MÁXIMO 3 ITERAÇÕES) ==========
     const messages: any[] = [...conversationHistory];
+    let iterations = 0;
+    const maxIterations = 3;
 
-    if (response.stop_reason === 'tool_use') {
+    while (response.stop_reason === 'tool_use' && iterations < maxIterations) {
+      iterations++;
+      console.log(`[Webhook] Tool call iteração ${iterations}/${maxIterations}`);
+
       const toolUseBlocks = response.content.filter((block: any) => block.type === 'tool_use');
       const toolResults: any[] = [];
 
@@ -1528,11 +755,11 @@ Ano: ${currentYear}`;
           const toolInput = toolUse.input as { query?: string };
           if (!toolInput.query) continue;
 
-          console.log('[Webhook] DAX query:', toolInput.query?.substring(0, 300));
+          console.log(`[Webhook] DAX query (iteração ${iterations}):`, toolInput.query?.substring(0, 300));
           const daxResult = await executeDaxQuery(connectionId, datasetId, toolInput.query, supabase);
           console.log('[Webhook] DAX resultado:', daxResult.success ? `✅ ${daxResult.results?.length || 0} linhas` : `❌ ${daxResult.error}`);
 
-          // Salvar resultado para aprendizado (usando novo sistema)
+          // Salvar resultado para aprendizado
           if (toolInput.query) {
             await saveQueryLearning(supabase, {
               company_group_id: authorizedNumber.company_group_id,
@@ -1547,126 +774,119 @@ Ano: ${currentYear}`;
           }
 
           if (daxResult.success) {
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: toolUse.id,
-              content: JSON.stringify(daxResult.results?.slice(0, 20), null, 2)  // ← LIMITAR a 20 linhas
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: toolUse.id,
+              content: JSON.stringify(daxResult.results?.slice(0, 20), null, 2)
             });
           } else {
             daxError = daxResult.error || 'Erro desconhecido';
             toolResults.push({
               type: 'tool_result',
               tool_use_id: toolUse.id,
-              content: `Erro: ${daxError}. Tente outra medida.`
+              content: `Erro na query DAX: ${daxError}. Analise o erro, corrija a query e tente novamente com nomes corretos de tabelas/colunas conforme o contexto do modelo.`
             });
           }
         }
       }
 
-      if (toolResults.length > 0) {
+      if (toolResults.length === 0) break;
+
       messages.push({ role: 'assistant', content: response.content });
       messages.push({ role: 'user', content: toolResults });
 
-        try {
-      response = await callClaudeWithRetry({
-        model: 'claude-sonnet-4-20250514',
-            max_tokens: 1000,
-        system: systemPrompt,
-        messages,
-            tools
-      });
-          console.log('[Webhook] Claude 2ª resposta | Tempo:', Date.now() - startTime, 'ms');
-        } catch (retryError: any) {
-          console.error('[Webhook] Claude retry erro (2ª chamada):', retryError.message);
-          
-          // Se a segunda chamada falhar, tentar salvar na fila ou retornar resposta básica
-          const errorInfo = classifyError(retryError);
-          
-          if (errorInfo.isTemporary && errorInfo.shouldRetry) {
-            // Salvar na fila para retry posterior
-            const queueId = await saveMessageToQueue(
-              supabase,
-              phone,
-              authorizedNumber.company_group_id,
-              processedMessage,
-              messages, // Usar mensagens completas incluindo tool results
-              systemPrompt,
-              connectionId || null,
-              datasetId || null,
-              {
-                isTemporary: true,
-                retryAfter: errorInfo.retryAfter,
-                errorMessage: retryError.message || 'Erro na segunda chamada'
-              },
-              respondWithAudio
-            );
-            
-            if (queueId) {
-              const userName = authorizedNumber.name?.split(' ')[0] || '';
-              const msg = `Olá ${userName}! Processei os dados, mas estou com dificuldade para formatar a resposta. ⏳\n\nVou tentar novamente em alguns segundos.`;
-              await sendWhatsAppMessage(instance, phone, msg);
-              await supabase.from('whatsapp_messages').insert({
-                company_group_id: authorizedNumber.company_group_id,
-                phone_number: phone,
-                message_content: msg,
-                direction: 'outgoing',
-                sender_name: 'Assistente IA',
-                instance_id: instance.id
-              });
-              return NextResponse.json({ status: 'queued', queue_id: queueId, reason: 'second_call_error' });
-            }
-          }
-          
-          // Se não conseguiu salvar na fila, verificar se há toolResults com dados
-          // Extrair dados dos toolResults se disponíveis
-          let hasData = false;
-          let dataToShow: any[] = [];
-          
-          if (toolResults.length > 0) {
-            for (const toolResult of toolResults) {
-              if (toolResult.content && !toolResult.content.includes('Erro:')) {
-                try {
-                  const parsed = JSON.parse(toolResult.content);
-                  if (Array.isArray(parsed) && parsed.length > 0) {
-                    hasData = true;
-                    dataToShow = parsed;
-                    break;
-                  }
-                } catch (e) {
-                  // Ignorar erro de parsing
-                }
-              }
-            }
-          }
-          
-          if (hasData && dataToShow.length > 0) {
-            const basicResponse = `📊 *Dados encontrados:*\n\n${JSON.stringify(dataToShow.slice(0, 5), null, 2)}\n\nDesculpe, tive dificuldade para formatar a resposta. Por favor, tente novamente.`;
-            await sendWhatsAppMessage(instance, phone, basicResponse);
+      try {
+        response = await callClaude({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 2048,
+          system: systemPrompt,
+          messages,
+          tools
+        });
+        console.log(`[Webhook] Claude resposta iteração ${iterations} | Tempo:`, Date.now() - startTime, 'ms');
+      } catch (retryError: any) {
+        console.error(`[Webhook] Claude erro na iteração ${iterations}:`, retryError.message);
+
+        const errorInfo = classifyError(retryError);
+
+        // Se é erro temporário na primeira iteração e tem dados, tentar mostrar
+        if (errorInfo.isTemporary && errorInfo.shouldRetry) {
+          const queueId = await saveMessageToQueue(
+            supabase,
+            phone,
+            authorizedNumber.company_group_id,
+            processedMessage,
+            messages,
+            systemPrompt,
+            connectionId || null,
+            datasetId || null,
+            {
+              isTemporary: true,
+              retryAfter: errorInfo.retryAfter,
+              errorMessage: retryError.message || 'Erro na iteração ' + iterations
+            },
+            respondWithAudio
+          );
+
+          if (queueId) {
+            const userName = authorizedNumber.name?.split(' ')[0] || '';
+            const msg = `Olá ${userName}! Estou processando sua pergunta. ⏳\n\nVou tentar novamente em alguns segundos.`;
+            await sendWhatsAppMessage(instance, phone, msg);
             await supabase.from('whatsapp_messages').insert({
               company_group_id: authorizedNumber.company_group_id,
               phone_number: phone,
-              message_content: basicResponse,
+              message_content: msg,
               direction: 'outgoing',
               sender_name: 'Assistente IA',
               instance_id: instance.id
             });
-            return NextResponse.json({ status: 'partial_success', reason: 'formatting_error' });
+            return NextResponse.json({ status: 'queued', queue_id: queueId });
           }
-          
-          // Se não há dados, retornar erro
-          const userName = authorizedNumber.name?.split(' ')[0] || '';
-          const errorMsg = `Desculpe ${userName}, não consegui processar sua solicitação. Por favor, tente novamente.`;
-          await sendWhatsAppMessage(instance, phone, errorMsg);
+        }
+
+        // Tentar extrair dados brutos dos toolResults se disponíveis
+        let hasData = false;
+        let dataToShow: any[] = [];
+
+        for (const toolResult of toolResults) {
+          if (toolResult.content && !toolResult.content.includes('Erro')) {
+            try {
+              const parsed = JSON.parse(toolResult.content);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                hasData = true;
+                dataToShow = parsed;
+                break;
+              }
+            } catch (e) {}
+          }
+        }
+
+        if (hasData && dataToShow.length > 0) {
+          const basicResponse = `📊 *Dados encontrados:*\n\n${JSON.stringify(dataToShow.slice(0, 5), null, 2)}\n\nDesculpe, tive dificuldade para formatar. Tente novamente.`;
+          await sendWhatsAppMessage(instance, phone, basicResponse);
           await supabase.from('whatsapp_messages').insert({
             company_group_id: authorizedNumber.company_group_id,
             phone_number: phone,
-            message_content: errorMsg,
+            message_content: basicResponse,
             direction: 'outgoing',
             sender_name: 'Assistente IA',
             instance_id: instance.id
           });
-          return NextResponse.json({ status: 'error', reason: 'second_call_failed' });
+          return NextResponse.json({ status: 'partial_success' });
         }
+
+        const userName = authorizedNumber.name?.split(' ')[0] || '';
+        const errorMsg = `Desculpe ${userName}, não consegui processar sua solicitação. Por favor, tente novamente.`;
+        await sendWhatsAppMessage(instance, phone, errorMsg);
+        await supabase.from('whatsapp_messages').insert({
+          company_group_id: authorizedNumber.company_group_id,
+          phone_number: phone,
+          message_content: errorMsg,
+          direction: 'outgoing',
+          sender_name: 'Assistente IA',
+          instance_id: instance.id
+        });
+        return NextResponse.json({ status: 'error', reason: 'tool_call_failed' });
       }
     }
 
@@ -1712,52 +932,6 @@ Ano: ${currentYear}`;
     }
 
     // ========== DETECTAR E SALVAR PERGUNTAS NÃO RESPONDIDAS ==========
-    
-    // Função para detectar se a resposta é uma falha/genérica
-    function isFailureResponse(response: string): boolean {
-      const failureIndicators = [
-        'não encontrei',
-        'não consegui', 
-        'não tenho acesso',
-        'não possuo',
-        'não foi possível',
-        'não tenho informações',
-        'não tenho dados',
-        'sem dados',
-        'dados não disponíveis',
-        'informação não disponível',
-        'não entendi',
-        'não localizei',
-        'não há dados',
-        'não existe',
-        'não sei responder',
-        'não posso responder',
-        'análises sugeridas',
-        'análises disponíveis',
-        'tente perguntar',
-        'não consegui processar',
-        'não foi possível encontrar',
-        'não localizei informações',
-        'desculpe, não',
-        'não tenho essa informação'
-      ];
-      
-      const normalized = response.toLowerCase();
-      return failureIndicators.some(indicator => normalized.includes(indicator));
-    }
-
-    // Identificar razão da falha
-    function identifyFailureReason(response: string, hasDaxError: boolean): string {
-      if (hasDaxError) return 'execution_error';
-      
-      const normalized = response.toLowerCase();
-      if (normalized.includes('não encontrei dados') || normalized.includes('sem dados')) return 'no_data';
-      if (normalized.includes('não localizei query') || normalized.includes('não entendi')) return 'no_query_match';
-      if (normalized.includes('erro ao executar') || normalized.includes('erro dax')) return 'execution_error';
-      if (normalized.includes('análises sugeridas')) return 'no_query_match';
-      
-      return 'unknown';
-    }
 
     // Verificar se foi falha (incluindo resposta vazia)
     // IMPORTANTE: Verificar DEPOIS de preencher a resposta vazia
@@ -1823,36 +997,7 @@ Ano: ${currentYear}`;
       });
       
       try {
-        // Tentar salvar em ai_pending_questions primeiro (nova tabela)
-        // Se não existir, usar ai_unanswered_questions (tabela antiga)
-        let saved = false;
-        
-        // Tentar ai_pending_questions
-        const { error: pendingError } = await supabase
-          .from('ai_pending_questions')
-          .insert({
-            company_group_id: companyGroupId, // ✅ Usar do dataset ativo!
-            connection_id: connectionId || null,
-            dataset_id: datasetId || null,
-            user_question: processedMessage,
-            user_phone: phone,
-            ai_response: assistantMessage,
-            failure_reason: failureReason,
-            source: 'whatsapp',
-            status: 'pending',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
-
-        if (!pendingError) {
-          console.log('[Webhook] ✅ Pergunta salva em ai_pending_questions:', processedMessage.substring(0, 50));
-          saved = true;
-        } else {
-          console.log('[Webhook] ⚠️ Tabela ai_pending_questions não existe ou erro:', pendingError.message);
-          // Continuar para tentar ai_unanswered_questions
-        }
-
-        // Também salvar em ai_unanswered_questions (tabela existente) para compatibilidade
+        // Salvar em ai_unanswered_questions
         // Verificar se já existe pergunta similar pendente (busca mais flexível)
         const { data: existingQuestion } = await supabase
           .from('ai_unanswered_questions')
@@ -1891,7 +1036,7 @@ Ano: ${currentYear}`;
           const { data: newQuestion, error: insertError } = await supabase
             .from('ai_unanswered_questions')
             .insert({
-              company_group_id: authorizedNumber.company_group_id,
+              company_group_id: companyGroupId,
               connection_id: connectionId || null,
               dataset_id: datasetId || null,
               user_question: processedMessage,
@@ -1930,8 +1075,10 @@ Ano: ${currentYear}`;
     const footerPattern = /─────────────[\s\S]*?📊.*?\|.*?_trocar_/;
     const cleanAssistantMessage = assistantMessage.replace(footerPattern, '').trim();
     
-    // Adicionar rodapé com nome do dataset (apenas uma vez)
-    const footer = generateFooter(datasetName);
+    // Adicionar footer APENAS se a resposta não já contém o nome do dataset
+    const datasetLabel = datasetName || '';
+    const alreadyHasFooter = cleanAssistantMessage.includes(datasetLabel) && cleanAssistantMessage.includes('━━━');
+    const footer = alreadyHasFooter ? '' : generateFooter(datasetLabel);
     const messageWithFooter = cleanAssistantMessage + footer;
     
     console.log('[Webhook] Enviando resposta - respondWithAudio:', respondWithAudio, '| Mensagem length:', messageWithFooter.length);
@@ -1939,7 +1086,6 @@ Ano: ${currentYear}`;
     if (respondWithAudio) {
       console.log('[Webhook] 🎤 Gerando áudio com OpenAI TTS...');
       try {
-        // Áudio sem rodapé (rodapé será enviado separadamente)
         const audioBase64 = await generateAudio(cleanAssistantMessage);
         if (audioBase64) {
           console.log('[Webhook] ✅ Áudio gerado (', audioBase64.length, 'bytes), enviando via WhatsApp...');
@@ -1948,10 +1094,8 @@ Ano: ${currentYear}`;
           if (!sent) {
             console.log('[Webhook] ⚠️ Falha ao enviar áudio, enviando como texto...');
             sent = await sendWhatsAppMessage(instance, phone, messageWithFooter);
-          } else {
-            // Se áudio foi enviado, enviar rodapé como texto separado (apenas uma vez)
-            await sendWhatsAppMessage(instance, phone, footer);
           }
+          // NÃO enviar footer separado após áudio — fica poluído
         } else {
           console.log('[Webhook] ❌ Falha ao gerar áudio (retornou null), enviando texto');
           sent = await sendWhatsAppMessage(instance, phone, messageWithFooter);

@@ -1,6 +1,49 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
+// Formatar valor como moeda brasileira
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+}
+
+// Formatar resultado DAX para mensagem (estrutura por filial quando múltiplas linhas)
+function formatDaxResult(results: any[]): string {
+  if (!results || results.length === 0) return 'Sem dados';
+  if (results.length === 1) {
+    const row = results[0];
+    const keys = Object.keys(row);
+    const valueKey = keys.find(k => k.toLowerCase().includes('valor') || typeof row[k] === 'number');
+    if (valueKey && typeof row[valueKey] === 'number') return formatCurrency(row[valueKey]);
+    return String(Object.values(row)[0] || 'Sem dados');
+  }
+  const lines: string[] = [];
+  let totalLine: string | null = null;
+  const firstRow = results[0];
+  const keys = Object.keys(firstRow);
+  const labelKey = keys.find(k =>
+    k.toLowerCase().includes('filial') || k.toLowerCase().includes('nome') ||
+    k.toLowerCase().includes('empresa') || k.toLowerCase().includes('cliente') ||
+    !k.toLowerCase().includes('valor')
+  );
+  const valueKey = keys.find(k => k.toLowerCase().includes('valor') || typeof firstRow[k] === 'number');
+  for (const row of results) {
+    if (labelKey && row[labelKey] === null) continue;
+    const label = labelKey ? String(row[labelKey] || '') : '';
+    const value = valueKey ? row[valueKey] : null;
+    let formattedValue = '';
+    if (typeof value === 'number') formattedValue = formatCurrency(value);
+    else if (value !== null && value !== undefined) formattedValue = String(value);
+    if (label.toUpperCase() === 'TOTAL' || label.toUpperCase().includes('TOTAL')) {
+      totalLine = `━━━━━━━━━━━━━━\n*${label}*: ${formattedValue}`;
+    } else if (label && formattedValue) {
+      lines.push(`${label}: ${formattedValue}`);
+    }
+  }
+  let result = lines.join('\n');
+  if (totalLine) result += '\n' + totalLine;
+  return result || 'Sem dados';
+}
+
 const CONDITIONS_MAP: Record<string, string> = {
   'greater_than': 'Maior que',
   'less_than': 'Menor que',
@@ -214,35 +257,23 @@ export async function GET(request: Request) {
         daxResult = await executeDaxQuery(alert.connection_id, alert.dataset_id, alert.dax_query, supabase);
         
         if (daxResult.success && daxResult.results?.length > 0) {
-          const row = daxResult.results[0];
+          // Usar formatDaxResult para estrutura por filial (igual ao trigger manual)
+          variables['{{valor}}'] = formatDaxResult(daxResult.results);
           
-          // Extrair todas as colunas do resultado DAX como variáveis
+          // Extrair primeira linha para variáveis adicionais (condição, etc)
+          const row = daxResult.results[0];
           for (const [key, value] of Object.entries(row)) {
-            // Remove colchetes do nome da coluna: [Valor] -> Valor
             const cleanKey = key.replace(/^\[|\]$/g, '').toLowerCase().replace(/\s+/g, '_');
-            
-            // Formata o valor
             let formattedValue: string;
             if (typeof value === 'number') {
-              // Se parece ser valor monetário (maior que 100), formata como moeda
-              if (Math.abs(value) >= 100) {
-                formattedValue = value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-              } else {
-                formattedValue = value.toLocaleString('pt-BR');
-              }
+              formattedValue = Math.abs(value) >= 100
+                ? (value as number).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                : (value as number).toLocaleString('pt-BR');
             } else {
               formattedValue = String(value || '');
             }
-            
-            // Adiciona como variável (várias formas de acessar)
             variables[`{{${cleanKey}}}`] = formattedValue;
             variables[`{{${key}}}`] = formattedValue;
-          }
-          
-          // Garantir que {{valor}} pegue o primeiro valor numérico
-          const firstNumericValue = Object.values(row).find(v => typeof v === 'number');
-          if (firstNumericValue !== undefined) {
-            variables['{{valor}}'] = (firstNumericValue as number).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
           }
         }
       }

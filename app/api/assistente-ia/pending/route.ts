@@ -67,10 +67,10 @@ export async function GET(request: NextRequest) {
       }
 
       const [totalResult, pendingResult, trainedResult, ignoredResult] = await Promise.all([
-        supabase.from('ai_pending_questions').select('*', { count: 'exact', head: true }).eq('company_group_id', groupId),
-        supabase.from('ai_pending_questions').select('*', { count: 'exact', head: true }).eq('company_group_id', groupId).eq('status', 'pending'),
-        supabase.from('ai_pending_questions').select('*', { count: 'exact', head: true }).eq('company_group_id', groupId).eq('status', 'trained'),
-        supabase.from('ai_pending_questions').select('*', { count: 'exact', head: true }).eq('company_group_id', groupId).eq('status', 'ignored')
+        supabase.from('ai_unanswered_questions').select('*', { count: 'exact', head: true }).eq('company_group_id', groupId),
+        supabase.from('ai_unanswered_questions').select('*', { count: 'exact', head: true }).eq('company_group_id', groupId).eq('status', 'pending'),
+        supabase.from('ai_unanswered_questions').select('*', { count: 'exact', head: true }).eq('company_group_id', groupId).eq('status', 'trained'),
+        supabase.from('ai_unanswered_questions').select('*', { count: 'exact', head: true }).eq('company_group_id', groupId).eq('status', 'ignored')
       ]);
 
       return NextResponse.json({
@@ -88,9 +88,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, data: [], total: 0, limit, offset });
     }
 
-    // Buscar da tabela ai_pending_questions
+    // Buscar da tabela ai_unanswered_questions
     let query = supabase
-      .from('ai_pending_questions')
+      .from('ai_unanswered_questions')
       .select('*', { count: 'exact' })
       .eq('company_group_id', groupId)
       .order('created_at', { ascending: false })
@@ -163,7 +163,7 @@ export async function PATCH(request: NextRequest) {
     }
     
     const { error } = await supabase
-      .from('ai_pending_questions')
+      .from('ai_unanswered_questions')
       .update(updateData)
       .eq('id', id);
     
@@ -197,7 +197,7 @@ export async function DELETE(request: NextRequest) {
     }
     
     const { error } = await supabase
-      .from('ai_pending_questions')
+      .from('ai_unanswered_questions')
       .delete()
       .eq('id', id);
     

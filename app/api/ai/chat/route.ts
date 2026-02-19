@@ -1,246 +1,68 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser } from '@/lib/auth';
+import { callClaude, classifyError, extractTextFromResponse, hasToolUse, getToolUseBlocks, MODELS } from '@/lib/ai/claude-client';
 import Anthropic from '@anthropic-ai/sdk';
 import { 
   generateOptimizedContext,
   ParsedDocumentation 
 } from '@/lib/assistente-ia/documentation-parser';
+import { executeDaxQuery } from '@/lib/ai/dax-engine';
+import { identifyQuestionIntent, getWorkingQueries, saveQueryResult, isFailureResponse, identifyFailureReason } from '@/lib/ai/learning';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || '',
-});
-
-const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
-const FAST_MODEL = 'claude-haiku-3-5-20241022';
-
-// ============================================
-// FUNÇÃO PARA CLASSIFICAR ERROS
-// ============================================
-function classifyError(error: any): {
-  isTemporary: boolean;
-  shouldRetry: boolean;
-  retryAfter?: number;
-  userMessage: string;
-} {
-  const errorStatus = error.status || error.statusCode;
-  const errorMessage = error.message || String(error);
-  
-  if (errorStatus === 529 || errorStatus === 503 || errorStatus === 429) {
-    return {
-      isTemporary: true,
-      shouldRetry: true,
-      retryAfter: errorStatus === 429 ? 60 : 10,
-      userMessage: 'Estou processando sua pergunta, mas preciso de um momento. Vou tentar novamente em alguns segundos.'
-    };
-  }
-  
-  if (errorMessage.includes('timeout') || errorMessage === 'Claude timeout') {
-    return {
-      isTemporary: true,
-      shouldRetry: true,
-      retryAfter: 5,
-      userMessage: 'Estou processando sua pergunta, mas preciso de um momento. Vou tentar novamente em alguns segundos.'
-    };
-  }
-  
-  if (errorMessage.includes('ECONNRESET') || errorMessage.includes('ETIMEDOUT') || errorMessage.includes('network')) {
-    return {
-      isTemporary: true,
-      shouldRetry: true,
-      retryAfter: 3,
-      userMessage: 'Estou processando sua pergunta, mas preciso de um momento. Vou tentar novamente em alguns segundos.'
-    };
-  }
-  
-  if (errorStatus === 401 || errorStatus === 403 || errorStatus === 400) {
-    return {
-      isTemporary: false,
-      shouldRetry: false,
-      userMessage: 'Não consegui processar sua solicitação no momento. Por favor, tente novamente mais tarde ou reformule sua pergunta.'
-    };
-  }
-  
-  return {
-    isTemporary: true,
-    shouldRetry: true,
-    retryAfter: 5,
-    userMessage: 'Estou processando sua pergunta, mas preciso de um momento. Vou tentar novamente em alguns segundos.'
-  };
-}
-
-// ============================================
-// FUNÇÃO DE RETRY PARA CHAMADAS CLAUDE
-// ============================================
-async function callClaudeWithRetry(
-  params: {
-    model: string;
-    max_tokens: number;
-    system: string;
-    messages: any[];
-    tools?: any[];
-  },
-  maxRetries = 4,
-  timeoutMs = 30000
-): Promise<Anthropic.Message> {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const claudePromise = anthropic.messages.create({
-        model: params.model,
-        max_tokens: params.max_tokens,
-        system: params.system,
-        messages: params.messages,
-        tools: params.tools,
-      });
-      
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Claude timeout')), timeoutMs);
-      });
-      
-      const response = await Promise.race([claudePromise, timeoutPromise]);
-      return response as Anthropic.Message;
-    } catch (error: any) {
-      if (attempt >= maxRetries) throw error;
-      
-      const errorInfo = classifyError(error);
-      if (!errorInfo.shouldRetry) throw error;
-      
-      const waitTime = Math.min(2000 * Math.pow(2, attempt - 1), 20000);
-      await new Promise(resolve => setTimeout(resolve, waitTime));
-    }
-  }
-  
-  throw new Error('Todas as tentativas falharam');
-}
-
-// ============================================
-// FUNÇÃO PARA IDENTIFICAR INTENÇÃO DA PERGUNTA
-// ============================================
-function identifyQuestionIntent(question: string): string {
-  const q = question.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  
-  if (q.match(/faturamento.*(filial|loja|unidade)/)) return 'faturamento_filial';
-  if (q.match(/faturamento.*(vendedor|garcom|funcionario)/)) return 'faturamento_vendedor';
-  if (q.match(/faturamento.*(produto|item)/)) return 'faturamento_produto';
-  if (q.match(/faturamento|faturou|receita total|vendeu quanto/)) return 'faturamento_total';
-  
-  if (q.match(/vendas?.*(filial|loja)/)) return 'faturamento_filial';
-  if (q.match(/vendas?.*(vendedor|garcom|funcionario)/)) return 'faturamento_vendedor';
-  if (q.match(/vendas?.*(produto|item)/)) return 'faturamento_produto';
-  
-  if (q.match(/top.*(vendedor|garcom|funcionario)|melhor vendedor|quem (mais )?vendeu/)) return 'top_vendedores';
-  if (q.match(/top.*(produto|item)|produto.*(mais|melhor)/)) return 'top_produtos';
-  if (q.match(/top.*(filial|loja)|filial.*(mais|melhor)/)) return 'top_filiais';
-  
-  if (q.match(/ticket.*(medio|médio)/)) return 'ticket_medio';
-  if (q.match(/margem|lucro/)) return 'margem';
-  if (q.match(/cmv|custo/)) return 'cmv';
-  
-  if (q.match(/contas?.*(pagar|vencer)|a pagar/)) return 'contas_pagar';
-  if (q.match(/contas?.*(receber)|a receber/)) return 'contas_receber';
-  if (q.match(/saldo|caixa|banco/)) return 'saldo';
-  
-  return 'outros';
-}
-
-// ============================================
-// FUNÇÃO PARA BUSCAR QUERIES QUE FUNCIONARAM
-// ============================================
-async function getWorkingQueries(
-  supabase: any, 
-  datasetId: string, 
-  intent: string
-): Promise<string[]> {
-  try {
-    const { data } = await supabase
-      .from('ai_query_learning')
-      .select('dax_query, times_reused')
-      .eq('dataset_id', datasetId)
-      .eq('question_intent', intent)
-      .eq('success', true)
-      .order('times_reused', { ascending: false })
-      .limit(3);
-    
-    return data?.map((r: any) => r.dax_query) || [];
-  } catch (e) {
-    console.error('[Learning] Erro ao buscar queries:', e);
-    return [];
-  }
-}
-
-// ============================================
-// FUNÇÃO PARA SALVAR RESULTADO DA QUERY
-// ============================================
-async function saveQueryResult(
-  supabase: any,
-  datasetId: string,
-  companyGroupId: string,
-  userQuestion: string,
-  intent: string,
-  daxQuery: string,
-  success: boolean,
-  errorMessage?: string,
-  executionTimeMs?: number,
-  resultRows?: number
-): Promise<void> {
-  try {
-    const crypto = require('crypto');
-    const queryHash = crypto.createHash('md5').update(daxQuery).digest('hex');
-    
-    const { data: existing } = await supabase
-      .from('ai_query_learning')
-      .select('id, times_reused')
-      .eq('dataset_id', datasetId)
-      .eq('dax_query_hash', queryHash)
-      .maybeSingle();
-    
-    if (existing && success) {
-      await supabase
-        .from('ai_query_learning')
-        .update({ 
-          times_reused: existing.times_reused + 1,
-          last_used_at: new Date().toISOString()
-        })
-        .eq('id', existing.id);
-      console.log('[Learning] Query reutilizada, times_reused:', existing.times_reused + 1);
-    } else if (!existing) {
-      await supabase
-        .from('ai_query_learning')
-        .insert({
-          dataset_id: datasetId,
-          company_group_id: companyGroupId,
-          user_question: userQuestion.substring(0, 500),
-          question_intent: intent,
-          dax_query: daxQuery,
-          dax_query_hash: queryHash,
-          success,
-          error_message: errorMessage?.substring(0, 500),
-          execution_time_ms: executionTimeMs,
-          result_rows: resultRows
-        });
-      console.log('[Learning] Nova query salva, success:', success);
-    }
-  } catch (e) {
-    console.error('[Learning] Erro ao salvar:', e);
-  }
-}
-
-// Função para buscar contexto do modelo (com otimização)
+// Função para buscar contexto do modelo (com fallbacks por connection, dataset e grupo)
 async function getModelContext(
   supabase: any, 
   connectionId: string, 
-  userQuestion?: string
+  userQuestion?: string,
+  datasetId?: string | null,
+  companyGroupId?: string | null
 ): Promise<string | null> {
   try {
-    const { data: context } = await supabase
+    let context = null;
+
+    // 1. Tentar por connection_id (forma original)
+    const { data: ctx1 } = await supabase
       .from('ai_model_contexts')
       .select('context_content, section_base, section_medidas, section_tabelas, section_queries, section_exemplos')
       .eq('connection_id', connectionId)
       .eq('is_active', true)
       .limit(1)
       .maybeSingle();
+    
+    context = ctx1;
 
-    if (!context) return null;
+    // 2. Fallback: por dataset_id + company_group_id (como WhatsApp e treinamento salvam)
+    if (!context && datasetId && companyGroupId) {
+      const { data: ctx2 } = await supabase
+        .from('ai_model_contexts')
+        .select('context_content, section_base, section_medidas, section_tabelas, section_queries, section_exemplos')
+        .eq('dataset_id', datasetId)
+        .eq('company_group_id', companyGroupId)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+      
+      context = ctx2;
+    }
+
+    // 3. Fallback: só por dataset_id
+    if (!context && datasetId) {
+      const { data: ctx3 } = await supabase
+        .from('ai_model_contexts')
+        .select('context_content, section_base, section_medidas, section_tabelas, section_queries, section_exemplos')
+        .eq('dataset_id', datasetId)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+      
+      context = ctx3;
+    }
+
+    if (!context) {
+      console.log('[Chat] Nenhum contexto encontrado para connection:', connectionId, 'dataset:', datasetId);
+      return null;
+    }
 
     // Se tem seções parseadas e pergunta do usuário, usar contexto otimizado
     if (context.section_base && context.section_medidas && userQuestion) {
@@ -266,7 +88,7 @@ async function getModelContext(
       };
       
       const optimized = generateOptimizedContext(parsed, userQuestion);
-      console.log(`[Chat] Contexto otimizado: ${optimized.length} chars (de ${context.context_content?.length || 0} total)`);
+      console.log('[Chat] Contexto otimizado: ' + optimized.length + ' chars (de ' + (context.context_content?.length || 0) + ' total)');
       return optimized;
     }
 
@@ -279,82 +101,6 @@ async function getModelContext(
   } catch (error) {
     console.error('Erro ao buscar contexto:', error);
     return null;
-  }
-}
-
-// Função para executar DAX
-async function executeDaxQuery(connectionId: string, datasetId: string, query: string, supabase: any): Promise<{ success: boolean; results?: any[]; error?: string }> {
-  try {
-    const { data: connection } = await supabase
-      .from('powerbi_connections')
-      .select('*')
-      .eq('id', connectionId)
-      .single();
-
-    if (!connection) {
-      return { success: false, error: 'Conexão não encontrada' };
-    }
-
-    // Obter token
-    const tokenUrl = `https://login.microsoftonline.com/${connection.tenant_id}/oauth2/v2.0/token`;
-    const tokenResponse = await fetch(tokenUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'client_credentials',
-        client_id: connection.client_id,
-        client_secret: connection.client_secret,
-        scope: 'https://analysis.windows.net/powerbi/api/.default',
-      }),
-    });
-
-    if (!tokenResponse.ok) {
-      return { success: false, error: 'Erro na autenticação' };
-    }
-
-    const tokenData = await tokenResponse.json();
-
-    // Executar DAX
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
-
-    try {
-      const daxRes = await fetch(
-        `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/datasets/${datasetId}/executeQueries`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${tokenData.access_token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            queries: [{ query }],
-            serializerSettings: { includeNulls: true }
-          }),
-          signal: controller.signal
-        }
-      );
-
-      clearTimeout(timeoutId);
-
-      if (!daxRes.ok) {
-        const errorText = await daxRes.text();
-        return { success: false, error: `Erro DAX: ${errorText}` };
-      }
-
-      const daxData = await daxRes.json();
-      const results = daxData.results?.[0]?.tables?.[0]?.rows || [];
-
-      return { success: true, results };
-    } catch (fetchError: any) {
-      clearTimeout(timeoutId);
-      if (fetchError.name === 'AbortError') {
-        return { success: false, error: 'Timeout: A consulta DAX demorou mais de 15 segundos' };
-      }
-      throw fetchError;
-    }
-  } catch (e: any) {
-    return { success: false, error: e.message };
   }
 }
 
@@ -403,9 +149,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // Buscar contexto do modelo (com otimização baseada na pergunta)
-    const modelContext = connectionId ? await getModelContext(supabase, connectionId, message) : null;
-
     // Buscar grupo do usuário
     let companyGroupId: string | null = null;
     
@@ -445,6 +188,9 @@ export async function POST(request: Request) {
     if (!companyGroupId) {
       return NextResponse.json({ error: 'Grupo não encontrado' }, { status: 400 });
     }
+
+    // Buscar contexto do modelo (com fallbacks por connection, dataset e grupo)
+    const modelContext = connectionId ? await getModelContext(supabase, connectionId, message, datasetId, companyGroupId) : null;
 
     // Validar limite diário de mensagens do developer
     const { data: developerData } = await supabase
@@ -589,83 +335,52 @@ export async function POST(request: Request) {
     const systemPrompt = `Você é um assistente de BI amigável e inteligente chamado "Assistente Aquarius".
 
 ## PERSONALIDADE
-- Seja simpático, direto e prestativo
-- Use linguagem natural e acessível
-- NUNCA mencione nomes técnicos de medidas, fórmulas DAX ou IDs
-- Apresente os dados de forma clara e humanizada
-- Use emojis moderadamente para tornar a conversa agradável
+- Simpático, direto e prestativo
+- Linguagem natural e acessível
+- NUNCA mencione nomes técnicos de medidas, fórmulas DAX ou IDs ao usuário
+- Use emojis moderadamente
 
-## REGRA DE PERÍODO PADRÃO (MUITO IMPORTANTE!)
-- Quando o usuário NÃO especificar um período, SEMPRE use o MÊS ATUAL (${currentMonth})
-- Filtre os dados pelo mês ${currentMonthNumber} e ano ${currentYear}
-- SEMPRE mencione o período na resposta: "No mês de ${currentMonth}..."
-- Se o usuário pedir "mês anterior", use o mês ${currentMonthNumber - 1 || 12}/${currentMonthNumber === 1 ? currentYear - 1 : currentYear}
-- Só use outro período se o usuário especificar explicitamente
+## PERÍODO PADRÃO
+Hoje: ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.
+Mês atual: ${currentMonth} (mês ${currentMonthNumber}, ano ${currentYear})
+Quando o usuário NÃO especificar período, SEMPRE use ${currentMonth}.
+SEMPRE mencione o período na resposta.
+Mês anterior: ${currentMonthNumber - 1 || 12}/${currentMonthNumber === 1 ? currentYear - 1 : currentYear}
 
 ## FORMATO DAS RESPOSTAS
-- Comece SEMPRE mencionando o período dos dados
-- Destaque o valor principal em **negrito**
-- Seja conciso: máximo 3-4 frases
-- Formate valores monetários: R$ 1.234,56
-- Formate percentuais: 12,5%
+- Comece mencionando o período
+- Destaque valores em **negrito**
+- Conciso: máximo 3-4 frases antes das sugestões
+- Valores monetários: R$ 1.234,56 | Percentuais: 12,5%
+- Use contexto anterior para "detalhe" ou "mais"
 
-## CONTEXTO DA CONVERSA
-- Lembre-se do que foi perguntado anteriormente
-- Use o contexto para dar respostas mais relevantes
-- Se o usuário pedir "detalhe" ou "mais", use o contexto anterior
-- Mantenha o mesmo período ao dar detalhes, a menos que o usuário mude
-
-## DATA ATUAL
-Hoje é ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.
-Mês atual: ${currentMonth}
-
-${modelContext ? `
-## CONHECIMENTO DO MODELO DE DADOS
+${modelContext ? `## CONHECIMENTO DO MODELO DE DADOS
 ${modelContext}
 
-IMPORTANTE: Use este conhecimento para responder, mas NUNCA mencione nomes técnicos de medidas ou tabelas para o usuário.
-` : ''}
+IMPORTANTE: Use este conhecimento para gerar queries corretas, mas NUNCA mencione nomes técnicos ao usuário.` : ''}
 
-${connectionId && datasetId ? `
-## ACESSO AOS DADOS
-Você tem acesso ao relatório "${reportName || 'atual'}" e pode buscar dados reais.
-Dataset: ${datasetId}
+${connectionId && datasetId ? `## ACESSO AOS DADOS
+Relatório: "${reportName || 'atual'}"
 
-Regras para queries DAX (uso interno, nunca mencione ao usuário):
-- Use EVALUATE para retornar dados
-- Para métricas: EVALUATE ROW("Resultado", [Medida])
-- Para agrupar: EVALUATE SUMMARIZE(Tabela, Coluna, "Total", SUM(Valor))
-- SEMPRE filtre pelo período adequado usando CALCULATE com filtro de data
-` : ''}
+Regras DAX (uso interno):
+- EVALUATE ROW("Resultado", CALCULATE([Medida], filtros)) para valor único
+- EVALUATE SUMMARIZECOLUMNS(Coluna, "Total", [Medida]) para agrupamentos
+- TOPN(N, ...) para rankings
+- SEMPRE filtre por período usando a tabela de datas do contexto
+- NUNCA invente nomes de tabelas/colunas — use SOMENTE o que está no contexto acima
+- Se a query falhar, analise o erro, corrija os nomes e tente novamente` : ''}
 
-## SUGESTÕES OBRIGATÓRIAS
-SEMPRE termine sua resposta com EXATAMENTE 4 sugestões relevantes no formato:
+## SUGESTÕES (OBRIGATÓRIO)
+SEMPRE termine com EXATAMENTE 4 sugestões no formato:
 
 [SUGESTOES]
-- Sugestão curta e clara 1
-- Sugestão curta e clara 2
-- Sugestão curta e clara 3
-- Sugestão curta e clara 4
+- Sugestão curta 1
+- Sugestão curta 2
+- Sugestão curta 3
+- Sugestão curta 4
 [/SUGESTOES]
 
-As sugestões devem:
-- Ser relacionadas ao que foi perguntado
-- SEMPRE incluir "Comparar com mês anterior" como uma das opções
-- Oferecer diferentes perspectivas (por período, por categoria, comparativo, ranking)
-- Ser curtas (máximo 5 palavras cada)
-- Exemplos bons: "Ver por filial", "Comparar com mês anterior", "Top 10 produtos", "Detalhes por vendedor"
-
-## EXEMPLO DE RESPOSTA IDEAL
-"📊 No mês de ${currentMonth}, o faturamento total foi de **R$ 85.234,56**
-
-Este valor representa um crescimento em relação ao período anterior.
-
-[SUGESTOES]
-- Comparar com mês anterior
-- Ver por filial
-- Top 10 produtos
-- Detalhes por vendedor
-[/SUGESTOES]"`;
+Regras: relacionadas ao tema, máximo 5 palavras cada, SEMPRE incluir "Comparar com mês anterior".`;
 
     // Construir mensagens para o Claude
     const messages: Anthropic.MessageParam[] = [];
@@ -692,7 +407,7 @@ Este valor representa um crescimento em relação ao período anterior.
       const questionIntent = identifyQuestionIntent(message);
       const workingQueries = await getWorkingQueries(supabase, datasetId, questionIntent);
       if (workingQueries.length > 0) {
-        learningContext = `\n\n# QUERIES QUE FUNCIONARAM PARA PERGUNTAS SIMILARES\nUse estas queries como referência:\n${workingQueries.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n`;
+        learningContext = `\n\n# QUERIES VALIDADAS (USE COMO BASE)\n${workingQueries.map((q, i) => `${i + 1}. ${q}`).join('\n')}\nSe a pergunta for similar, USE O MESMO PADRÃO DAX.\n`;
       }
     }
     
@@ -701,9 +416,9 @@ Este valor representa um crescimento em relação ao período anterior.
     // Chamar Claude com retry (usa modelo rápido para primeira análise)
     let response;
     try {
-      response = await callClaudeWithRetry({
-        model: tools.length > 0 ? DEFAULT_MODEL : FAST_MODEL,
-        max_tokens: 1024,
+      response = await callClaude({
+        model: MODELS.DEFAULT,
+        max_tokens: 2048,
         system: enhancedSystemPrompt,
         messages,
         tools: tools.length > 0 ? tools : undefined
@@ -719,6 +434,7 @@ Este valor representa um crescimento em relação ao período anterior.
     // Processar tool calls em loop (máximo 3 iterações)
     let iterations = 0;
     const maxIterations = 3;
+    let daxError: string | null = null;
 
     while (response.stop_reason === 'tool_use' && iterations < maxIterations) {
       iterations++;
@@ -740,6 +456,7 @@ Este valor representa um crescimento em relação ao período anterior.
             toolInput.query,
             supabase
           );
+          if (!daxResult.success) daxError = daxResult.error || 'Erro desconhecido';
 
           // Salvar resultado para aprendizado
           if (datasetId && companyGroupId) {
@@ -781,10 +498,10 @@ Este valor representa um crescimento em relação ao período anterior.
 
       // Chamar Claude novamente com os resultados (com retry)
       try {
-        response = await callClaudeWithRetry({
-          model: DEFAULT_MODEL,
-          max_tokens: 1024,
-          system: enhancedSystemPrompt || systemPrompt,
+        response = await callClaude({
+          model: MODELS.DEFAULT,
+          max_tokens: 2048,
+          system: enhancedSystemPrompt,
           messages,
           tools: tools.length > 0 ? tools : undefined
         });
@@ -806,8 +523,64 @@ Este valor representa um crescimento em relação ao período anterior.
     }
 
     // Se não teve resposta de texto, gerar uma mensagem padrão
-    if (!assistantMessage.trim()) {
+    const wasEmptyResponse = !assistantMessage.trim();
+    if (wasEmptyResponse) {
       assistantMessage = 'Desculpe, não consegui processar sua solicitação. Por favor, tente novamente com uma pergunta diferente.';
+    }
+
+    // Detectar e salvar perguntas não respondidas (para treinamento)
+    const isEvasiveResponse = isFailureResponse(assistantMessage) || wasEmptyResponse;
+    if (isEvasiveResponse || daxError) {
+      try {
+        let errorMessage = daxError ? `Erro DAX: ${daxError}` : `Resposta evasiva: ${assistantMessage.substring(0, 200)}`;
+        const { data: existingQuestion } = await supabase
+          .from('ai_unanswered_questions')
+          .select('id, user_count, attempt_count')
+          .eq('company_group_id', companyGroupId)
+          .ilike('user_question', `%${message.substring(0, 50)}%`)
+          .eq('status', 'pending')
+          .maybeSingle();
+
+        if (existingQuestion) {
+          await supabase
+            .from('ai_unanswered_questions')
+            .update({
+              attempt_count: (existingQuestion.attempt_count || 0) + 1,
+              last_asked_at: new Date().toISOString(),
+              error_message: errorMessage,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingQuestion.id);
+          console.log('[Chat] ✅ Pergunta pendente atualizada:', existingQuestion.id);
+        } else {
+          const { data: newQuestion, error: insertError } = await supabase
+            .from('ai_unanswered_questions')
+            .insert({
+              company_group_id: companyGroupId,
+              connection_id: connectionId || null,
+              dataset_id: datasetId || null,
+              user_question: message,
+              phone_number: 'chat_web',
+              attempted_dax: null,
+              error_message: errorMessage,
+              status: 'pending',
+              attempt_count: 1,
+              user_count: 1,
+              first_asked_at: new Date().toISOString(),
+              last_asked_at: new Date().toISOString(),
+              created_at: new Date().toISOString()
+            })
+            .select('id')
+            .single();
+          if (insertError) {
+            console.error('[Chat] Erro ao criar pergunta pendente:', insertError.message);
+          } else {
+            console.log('[Chat] ✅ Nova pergunta pendente criada:', newQuestion?.id);
+          }
+        }
+      } catch (saveError: any) {
+        console.error('[Chat] Erro ao salvar pergunta pendente:', saveError.message);
+      }
     }
 
     // Salvar mensagens no banco

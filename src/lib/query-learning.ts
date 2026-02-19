@@ -248,56 +248,30 @@ export async function findTrainingExamples(
 }
 
 /**
- * Formata exemplos de treinamento para o prompt (com instruções de adaptação)
+ * Formata exemplos de treinamento para o prompt (compacto, sem regras duplicadas)
  */
 export function formatTrainingExamplesForPrompt(examples: TrainingExample[]): string {
   if (examples.length === 0) return '';
 
   const parts: string[] = [];
-  parts.push('\n## 🎓 EXEMPLOS DE TREINAMENTO (use como REFERÊNCIA ADAPTÁVEL)\n');
-  parts.push('Estes exemplos mostram como responder. **ADAPTE conforme a pergunta do usuário.**');
-  parts.push('Se a pergunta for similar mas com período diferente, use a mesma medida e adapte o filtro.\n');
+  parts.push('\n## EXEMPLOS DE TREINAMENTO (ADAPTE conforme a pergunta)\n');
 
   examples.forEach((ex, i) => {
-    // Extrair medidas usadas se disponível
     const measures = (ex as any).measures_used || extractMeasuresAndColumns(ex.dax_query).measures;
-    const measuresText = measures.length > 0 ? measures.join(', ') : 'não especificado';
+    const measuresText = measures.length > 0 ? measures.join(', ') : '';
     
-    parts.push(`### Exemplo ${i + 1}: "${ex.user_question}"`);
-    parts.push(`**Medidas:** ${measuresText}`);
-    parts.push(`**Query DAX:**`);
+    parts.push(`### ${i + 1}. "${ex.user_question}"`);
+    if (measuresText) parts.push(`Medidas: ${measuresText}`);
     parts.push('```dax');
     parts.push(ex.dax_query);
     parts.push('```');
     if (ex.formatted_response) {
-      parts.push(`**Resposta modelo:** "${ex.formatted_response}"`);
+      parts.push(`Resposta: "${ex.formatted_response}"`);
     }
     parts.push('');
-    parts.push('💡 **Para adaptar:** Mantenha a medida, mude o filtro de data/período conforme necessário.');
-    parts.push('---\n');
   });
 
-  parts.push('### 📋 REGRAS DE ADAPTAÇÃO DE TREINAMENTO:\n');
-  parts.push('1. **Identificar o CONCEITO** do exemplo treinado:');
-  parts.push('   - "pagar hoje" → CONCEITO = contas a pagar + filtro tempo');
-  parts.push('   - "inadimplência" → CONCEITO = valores atrasados');
-  parts.push('   - "saldo" → CONCEITO = posição bancária\n');
-  parts.push('2. **Manter a MEDIDA** do exemplo treinado\n');
-  parts.push('3. **Adaptar o FILTRO** conforme a pergunta:');
-  parts.push('   - Tempo: hoje → amanhã → semana → mês → ano');
-  parts.push('   - Agrupador: total → por dia → por mês → por fornecedor');
-  parts.push('   - Top N: top 5 → top 10 → top 20\n');
-  parts.push('### Exemplos de Adaptação:\n');
-  parts.push('| Treinado | Pergunta do Usuário | Adaptação |');
-  parts.push('|----------|---------------------|-----------|');
-  parts.push('| "pagar hoje" | "pagar amanhã" | Mesmo [CP Valor], filtro +1 dia |');
-  parts.push('| "pagar hoje" | "pagar esta semana" | Mesmo [CP Valor], filtro 7 dias |');
-  parts.push('| "pagar hoje" | "pagar em fevereiro" | Mesmo [CP Valor], filtro mês=2 |');
-  parts.push('| "top 5 devedores" | "top 10 devedores" | Mesmo conceito, TOPN(10,...) |');
-  parts.push('| "inadimplência total" | "inadimplência por cliente" | Mesmo [CR Atrasados], + agrupador |\n');
-  parts.push('### ⚠️ NUNCA diga "não sei" se:');
-  parts.push('- Existe exemplo treinado com conceito similar');
-  parts.push('- É possível adaptar mudando apenas filtro ou agrupador');
+  parts.push('Mantenha a MEDIDA do exemplo. Adapte FILTRO e AGRUPADOR conforme a pergunta.');
 
   return parts.join('\n');
 }
@@ -437,38 +411,33 @@ export async function getQueryContext(
 }
 
 /**
- * Formata contexto completo para incluir no prompt
+ * Formata contexto completo para incluir no prompt (compacto)
  */
 export function formatQueryContextForPrompt(context: QueryContext): string {
   const parts: string[] = [];
 
-  // Exemplos de treinamento (prioridade alta - aparecem primeiro)
+  // Exemplos de treinamento (prioridade alta)
   if (context.trainingExamples && context.trainingExamples.length > 0) {
     parts.push(formatTrainingExamplesForPrompt(context.trainingExamples));
   }
 
   // Queries similares do histórico
   if (context.similarQueries.length > 0) {
-    parts.push('\n## Perguntas Similares do Histórico\n');
-    parts.push('Estas queries foram executadas anteriormente e funcionaram:\n');
+    parts.push('\n## QUERIES QUE FUNCIONARAM\n');
     
     context.similarQueries.slice(0, 3).forEach((q, i) => {
-      parts.push(`### ${i + 1}. "${q.user_question}" (usada ${q.times_reused} vezes)`);
-      parts.push(`\`\`\`dax`);
+      parts.push(`${i + 1}. "${q.user_question}" (usada ${q.times_reused}x)`);
+      parts.push('```dax');
       parts.push(q.dax_query);
-      parts.push(`\`\`\``);
-      parts.push('');
+      parts.push('```');
     });
 
-    parts.push('**Instruções:**');
-    parts.push('- Adapte estas queries para a pergunta atual');
-    parts.push('- Mantenha a estrutura e padrões que funcionaram');
-    parts.push('- Use os mesmos nomes de medidas/colunas quando possível');
+    parts.push('Adapte estas queries para a pergunta atual.');
   }
 
   // Medidas sugeridas
   if (context.suggestedMeasures.length > 0) {
-    parts.push(`\n**Medidas sugeridas (baseado em queries anteriores):** ${context.suggestedMeasures.join(', ')}`);
+    parts.push(`\nMedidas recomendadas: ${context.suggestedMeasures.join(', ')}`);
   }
 
   return parts.join('\n');

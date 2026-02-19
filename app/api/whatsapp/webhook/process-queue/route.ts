@@ -6,61 +6,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import Anthropic from '@anthropic-ai/sdk';
-// Importar funções do webhook principal
-// Note: Estas funções precisam ser exportadas do route.ts
-import { 
-  getInstanceForAuthorizedNumber, 
-  sendWhatsAppMessage, 
-  sendWhatsAppAudio,
-  generateAudio,
-  executeDaxQuery, 
-  identifyQuestionIntent, 
-  getWorkingQueries, 
-  saveQueryResult 
-} from '../route';
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || '',
-});
-
-// Função de retry para Claude (mesma do webhook principal)
-async function callClaudeWithRetry(
-  params: {
-    model: string;
-    max_tokens: number;
-    system: string;
-    messages: any[];
-    tools?: any[];
-  },
-  maxRetries = 4,
-  timeoutMs = 30000
-): Promise<Anthropic.Message> {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const claudePromise = anthropic.messages.create({
-        model: params.model,
-        max_tokens: params.max_tokens,
-        system: params.system,
-        messages: params.messages,
-        tools: params.tools,
-      });
-      
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Claude timeout')), timeoutMs);
-      });
-      
-      const response = await Promise.race([claudePromise, timeoutPromise]);
-      return response as Anthropic.Message;
-    } catch (error: any) {
-      if (attempt >= maxRetries) throw error;
-      
-      const waitTime = Math.min(2000 * Math.pow(2, attempt - 1), 20000);
-      await new Promise(resolve => setTimeout(resolve, waitTime));
-    }
-  }
-  
-  throw new Error('Todas as tentativas falharam');
-}
+import { getInstanceForAuthorizedNumber, sendWhatsAppMessage, sendWhatsAppAudio, sendTypingIndicator } from '@/lib/whatsapp/messaging';
+import { generateAudio, downloadWhatsAppAudio, transcribeAudio } from '@/lib/whatsapp/audio';
+import { executeDaxQuery } from '@/lib/ai/dax-engine';
+import { identifyQuestionIntent, getWorkingQueries, saveQueryResult, isFailureResponse, identifyFailureReason } from '@/lib/ai/learning';
+import { callClaude } from '@/lib/ai/claude-client';
 
 export async function POST(request: NextRequest) {
   const supabase = createAdminClient();
@@ -168,13 +118,17 @@ export async function POST(request: NextRequest) {
           }
         ] : [];
         
-        let response = await callClaudeWithRetry({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system: systemPrompt,
-          messages: conversationHistory,
-          tools: tools.length > 0 ? tools : undefined
-        });
+        let response = await callClaude(
+          {
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 1000,
+            system: systemPrompt,
+            messages: conversationHistory,
+            tools: tools.length > 0 ? tools : undefined
+          },
+          4,
+          30000
+        );
         
         // Processar tool calls se houver
         const messages: any[] = [...conversationHistory];
@@ -221,13 +175,17 @@ export async function POST(request: NextRequest) {
             messages.push({ role: 'assistant', content: response.content });
             messages.push({ role: 'user', content: toolResults });
             
-            response = await callClaudeWithRetry({
-              model: 'claude-sonnet-4-20250514',
-              max_tokens: 1000,
-              system: systemPrompt,
-              messages,
-              tools: tools.length > 0 ? tools : undefined
-            });
+            response = await callClaude(
+              {
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 1000,
+                system: systemPrompt,
+                messages,
+                tools: tools.length > 0 ? tools : undefined
+              },
+              4,
+              30000
+            );
           }
         }
         

@@ -151,17 +151,17 @@ export function findDatasetByInput(
 ): AvailableDataset | null {
   const normalized = input.trim().toLowerCase();
   const num = parseInt(normalized);
-  
-  // Se é número, buscar por option_number
-  if (!isNaN(num) && num > 0 && num <= datasets.length) {
+
+  // Se é número puro, buscar por option_number
+  if (/^\d+$/.test(normalized) && num > 0 && num <= datasets.length) {
     return datasets.find(d => d.option_number === num) || null;
   }
-  
-  // Se é texto, buscar por nome
-  return datasets.find(d => 
-    (d.dataset_name || '').toLowerCase().includes(normalized) ||
-    (d.context_name || '').toLowerCase().includes(normalized) ||
-    (d.connection_name || '').toLowerCase().includes(normalized)
+
+  // Se é texto, buscar APENAS por nome EXATO (não parcial)
+  return datasets.find(d =>
+    (d.dataset_name || '').toLowerCase() === normalized ||
+    (d.context_name || '').toLowerCase() === normalized ||
+    (d.connection_name || '').toLowerCase() === normalized
   ) || null;
 }
 
@@ -260,6 +260,37 @@ export async function resolveSession(
     };
   }
 
+  // Buscar sessão EXPIRADA RECENTE (últimas 48h)
+  // Se o usuário tinha sessão recente e manda "1","2","3", provavelmente é sugestão, não seleção
+  const isShortMessage = /^[1-3]$/.test(message.trim());
+  if (isShortMessage) {
+    const { data: recentSession } = await supabase
+      .from('whatsapp_active_sessions')
+      .select('*')
+      .eq('phone_number', phone)
+      .gt('expires_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
+      .maybeSingle();
+
+    if (recentSession) {
+      // Reativar sessão expirada
+      console.log('[resolveSession] Reativando sessão expirada para mensagem curta:', message);
+
+      const datasets = await getAvailableDatasets(supabase, phone);
+      const previousDataset = datasets.find(d => d.dataset_id === recentSession.dataset_id);
+
+      if (previousDataset) {
+        await setActiveSession(supabase, phone, previousDataset);
+        const newSession = await getActiveSession(supabase, phone);
+        return {
+          hasSession: true,
+          session: newSession,
+          needsSelection: false,
+          availableDatasets: datasets
+        };
+      }
+    }
+  }
+
   // Buscar datasets disponíveis
   const datasets = await getAvailableDatasets(supabase, phone);
 
@@ -284,16 +315,37 @@ export async function resolveSession(
     };
   }
 
-  // Verificar se mensagem é seleção
+  // Verificar se mensagem é seleção de dataset
   const selected = findDatasetByInput(datasets, message);
   if (selected) {
     await setActiveSession(supabase, phone, selected);
+    const newSession = await getActiveSession(supabase, phone);
+
+    // Se a mensagem era APENAS um número ou nome de dataset, mostrar confirmação
+    // Se era uma pergunta real que por coincidência contém nome do dataset, iniciar sessão e processar
+    const isDirectSelection = /^\d+$/.test(message.trim()) ||
+      datasets.some(d =>
+        (d.dataset_name || '').toLowerCase() === message.trim().toLowerCase() ||
+        (d.context_name || '').toLowerCase() === message.trim().toLowerCase() ||
+        (d.connection_name || '').toLowerCase() === message.trim().toLowerCase()
+      );
+
+    if (isDirectSelection) {
+      return {
+        hasSession: false,
+        session: null,
+        needsSelection: false,
+        availableDatasets: datasets,
+        menuMessage: generateSelectionConfirmation(selected)
+      };
+    }
+
+    // Era uma pergunta — ativar sessão e deixar processar
     return {
-      hasSession: false,
-      session: null,
+      hasSession: true,
+      session: newSession,
       needsSelection: false,
-      availableDatasets: datasets,
-      menuMessage: generateSelectionConfirmation(selected)
+      availableDatasets: datasets
     };
   }
 

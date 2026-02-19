@@ -10,6 +10,7 @@ interface MessageEditorProps {
   rows?: number;
   alertName?: string;
   testValue?: string;
+  onPreviewClick?: () => Promise<void>;
 }
 
 const EMOJI_LIST = ['📊', '📈', '📉', '💰', '💵', '🏪', '🏢', '📅', '⏰', '✅', '❌', '⚠️', '🚨', 'ℹ️', '🔔', '📣', '👋', '👍', '🎯', '🔥'];
@@ -33,7 +34,7 @@ const TEMPLATES = [
   }
 ];
 
-export default function MessageEditor({ value, onChange, placeholder, rows = 8, alertName = 'Meu Alerta', testValue }: MessageEditorProps) {
+export default function MessageEditor({ value, onChange, placeholder, rows = 8, alertName = 'Meu Alerta', testValue, onPreviewClick }: MessageEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showEmojis, setShowEmojis] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -88,7 +89,7 @@ export default function MessageEditor({ value, onChange, placeholder, rows = 8, 
     const now = new Date();
     const exampleValues: Record<string, string> = {
       '{{nome_alerta}}': alertName,
-      '{{valor}}': testValue || 'R$ 15.234,50',
+      '{{valor}}': testValue || 'Aguardando teste da query...',
       '{{data}}': now.toLocaleDateString('pt-BR'),
       '{{hora}}': now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
       '{{condicao}}': 'maior que',
@@ -225,7 +226,10 @@ export default function MessageEditor({ value, onChange, placeholder, rows = 8, 
           {/* Preview */}
           <button
             type="button"
-            onClick={() => setShowPreview(true)}
+            onClick={async () => {
+              if (onPreviewClick) await onPreviewClick();
+              setShowPreview(true);
+            }}
             className="flex items-center gap-1 px-2 py-1 bg-green-50 hover:bg-green-100 text-green-700 rounded transition-colors text-sm"
             title="Visualizar mensagem"
           >

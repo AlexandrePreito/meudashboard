@@ -27,7 +27,11 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient();
 
-    const { data: context } = await supabase
+    // Buscar contexto com fallbacks (igual ao chat)
+    let modelContext = '';
+
+    // 1. Tentar por connection_id
+    const { data: contextByConn } = await supabase
       .from('ai_model_contexts')
       .select('context_content')
       .eq('connection_id', connection_id)
@@ -35,10 +39,50 @@ export async function POST(request: Request) {
       .limit(1)
       .maybeSingle();
 
-    const modelContext = context?.context_content || '';
+    if (contextByConn?.context_content) {
+      modelContext = contextByConn.context_content;
+    } else {
+      // 2. Buscar company_group_id da conexão (powerbi_connections NÃO tem dataset_id)
+      const { data: connection } = await supabase
+        .from('powerbi_connections')
+        .select('company_group_id')
+        .eq('id', connection_id)
+        .maybeSingle();
+
+      if (connection?.company_group_id) {
+        // 3. Tentar por dataset_id passado no body + company_group_id da conexão
+        if (dataset_id) {
+          const { data: ctxByDataset } = await supabase
+            .from('ai_model_contexts')
+            .select('context_content')
+            .eq('dataset_id', dataset_id)
+            .eq('company_group_id', connection.company_group_id)
+            .eq('is_active', true)
+            .limit(1)
+            .maybeSingle();
+          if (ctxByDataset?.context_content) {
+            modelContext = ctxByDataset.context_content;
+          }
+        }
+
+        // 4. Tentar qualquer contexto ativo do mesmo company_group
+        if (!modelContext) {
+          const { data: ctxByGroup } = await supabase
+            .from('ai_model_contexts')
+            .select('context_content')
+            .eq('company_group_id', connection.company_group_id)
+            .eq('is_active', true)
+            .limit(1)
+            .maybeSingle();
+          if (ctxByGroup?.context_content) {
+            modelContext = ctxByGroup.context_content;
+          }
+        }
+      }
+    }
 
     if (!modelContext) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         success: false,
         error: 'Contexto do modelo não encontrado. Configure o contexto IA primeiro.',
       });

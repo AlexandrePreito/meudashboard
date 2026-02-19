@@ -723,6 +723,11 @@ export default function NovoAlertaPage() {
                         rows={12}
                         alertName={formData.name || 'Vendas Abaixo da Meta'}
                         testValue={daxTestResult?.success ? String(daxTestResult.value) : undefined}
+                        onPreviewClick={async () => {
+                          if (!daxTestResult?.success) {
+                            await handleTestDax();
+                          }
+                        }}
                       />
                       
                       {/* Variáveis disponíveis */}
