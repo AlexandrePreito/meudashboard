@@ -1,6 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getUserGroupMembership } from '@/lib/auth';
+import { getUserGroupMembership, getAuthUser, getUserDeveloperId } from '@/lib/auth';
+
+async function resolveGroupId(supabase: any, requestedGroupId: string | null, membership: { user_id: string; company_group_id: string }) {
+  let groupId = membership.company_group_id;
+  if (!requestedGroupId || requestedGroupId === groupId) return groupId;
+
+  const user = await getAuthUser();
+  if (!user) return groupId;
+
+  // Master: pode acessar qualquer grupo ativo
+  if (user.is_master) {
+    const { data: group } = await supabase.from('company_groups').select('id').eq('id', requestedGroupId).eq('status', 'active').maybeSingle();
+    if (group) return requestedGroupId;
+  }
+
+  // Developer: grupos do seu developer_id
+  const developerId = await getUserDeveloperId(user.id);
+  if (developerId) {
+    const { data: group } = await supabase.from('company_groups').select('id').eq('id', requestedGroupId).eq('developer_id', developerId).eq('status', 'active').maybeSingle();
+    if (group) return requestedGroupId;
+  }
+
+  // Usuário comum: membership em user_group_membership
+  const { data: memberCheck } = await supabase
+    .from('user_group_membership')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('company_group_id', requestedGroupId)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (memberCheck) return requestedGroupId;
+  return groupId;
+}
 
 // GET - Buscar contextos
 export async function GET(request: NextRequest) {
@@ -11,15 +44,44 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = createAdminClient();
-    const groupId = membership.company_group_id;
-
     const { searchParams } = new URL(request.url);
+    const requestedGroupId = searchParams.get('group_id');
+    const contextId = searchParams.get('id');
+    const includeContent = searchParams.get('includeContent') === 'true';
     const datasetId = searchParams.get('datasetId');
     const contextType = searchParams.get('type');
 
+    const groupId = await resolveGroupId(supabase, requestedGroupId, membership);
+
+    // Buscar por ID específico — sempre retorna com content completo
+    if (contextId) {
+      const { data, error } = await supabase
+        .from('ai_model_contexts')
+        .select('*')
+        .eq('id', contextId)
+        .eq('company_group_id', groupId)
+        .single();
+
+      if (error) {
+        console.error('Erro ao buscar contexto por ID:', error);
+        return NextResponse.json({ error: error.message }, { status: error.code === 'PGRST116' ? 404 : 500 });
+      }
+
+      if (!data) {
+        return NextResponse.json({ error: 'Contexto não encontrado' }, { status: 404 });
+      }
+
+      return NextResponse.json({ context: data, contexts: [data] });
+    }
+
+    // Listagem por datasetId — incluir context_content apenas quando solicitado (campo grande)
+    const selectFields = includeContent
+      ? '*'
+      : 'id, dataset_id, context_type, context_name, section_base, section_medidas, section_tabelas, section_queries, section_exemplos, is_active, company_group_id, parsed_at, created_at, updated_at';
+
     let query = supabase
       .from('ai_model_contexts')
-      .select('*')
+      .select(selectFields)
       .eq('company_group_id', groupId);
 
     if (datasetId) {
@@ -54,14 +116,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { datasetId, contextType = 'chat', content, sections, daxData } = body;
+    const { datasetId, contextType = 'chat', content, sections, daxData, group_id: requestedGroupId } = body;
 
     if (!datasetId) {
       return NextResponse.json({ error: 'Dataset é obrigatório' }, { status: 400 });
     }
 
     const supabase = createAdminClient();
-    const groupId = membership.company_group_id;
+    const groupId = await resolveGroupId(supabase, requestedGroupId, membership);
 
     // Verificar se já existe contexto deste tipo para este dataset
     const { data: existing } = await supabase
@@ -184,13 +246,14 @@ export async function DELETE(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const requestedGroupId = searchParams.get('group_id');
 
     if (!id) {
       return NextResponse.json({ error: 'ID é obrigatório' }, { status: 400 });
     }
 
     const supabase = createAdminClient();
-    const groupId = membership.company_group_id;
+    const groupId = await resolveGroupId(supabase, requestedGroupId, membership);
 
     // Verificar se o contexto pertence ao grupo do usuário
     const { data: context } = await supabase

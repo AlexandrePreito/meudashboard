@@ -36,7 +36,6 @@ function ContextosContent() {
   const [contexts, setContexts] = useState<ContextInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingContexts, setLoadingContexts] = useState(false);
-  const [resolvedGroupId, setResolvedGroupId] = useState<string>('');
   
   const [showHelp, setShowHelp] = useState(false);
   const [showChatModal, setShowChatModal] = useState(false);
@@ -66,7 +65,7 @@ function ContextosContent() {
     if (selectedDataset) {
       loadContexts();
     }
-  }, [selectedDataset, activeGroup?.id, resolvedGroupId]);
+  }, [selectedDataset, activeGroup?.id]);
 
   useEffect(() => {
     if (chatContent.trim()) {
@@ -111,9 +110,6 @@ function ContextosContent() {
         ? `/api/assistente-ia/datasets?group_id=${groupId}`
         : '/api/assistente-ia/datasets';
       
-      // Salvar groupId resolvido para uso em loadContexts
-      if (groupId) setResolvedGroupId(groupId);
-      
       const res = await fetch(url);
       const data = await res.json();
       const datasetsList = Array.isArray(data?.data) ? data.data : Array.isArray(data?.datasets) ? data.datasets : Array.isArray(data) ? data : [];
@@ -141,8 +137,7 @@ function ContextosContent() {
     if (!selectedDataset) return;
     setLoadingContexts(true);
     try {
-      const gid = activeGroup?.id || resolvedGroupId;
-      const groupParam = gid ? `&group_id=${gid}` : '';
+      const groupParam = activeGroup?.id ? `&group_id=${activeGroup.id}` : '';
       const res = await fetch(`/api/assistente-ia/context?datasetId=${selectedDataset}${groupParam}`);
       const data = await res.json();
       setContexts(data.contexts || []);
@@ -171,8 +166,7 @@ function ContextosContent() {
     // context_content não vem na listagem (performance), buscar sob demanda pelo ID
     if (!content) {
       try {
-        const gid = activeGroup?.id || resolvedGroupId;
-        const res = await fetch(`/api/assistente-ia/context?id=${ctx.id}${gid ? `&group_id=${gid}` : ''}`);
+        const res = await fetch(`/api/assistente-ia/context?id=${ctx.id}${activeGroup?.id ? `&group_id=${activeGroup.id}` : ''}`);
         const data = await res.json();
         content = data.context?.context_content || data.contexts?.[0]?.context_content;
       } catch (error) {
