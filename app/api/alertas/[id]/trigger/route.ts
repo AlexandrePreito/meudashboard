@@ -4,76 +4,126 @@ import { getAuthUser } from '@/lib/auth';
 
 // Formatar valor como moeda brasileira
 function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL'
-  }).format(value);
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 }
 
-// Formatar resultado da DAX para mensagem
+// Limpar nome da coluna removendo colchetes e prefixos de tabela
+// Ex: "[Valor]" → "valor", "Empresa[Filial]" → "filial", "[Empresa[Filial]]" → "filial"
+function cleanColumnName(key: string): string {
+  return key
+    .replace(/^.*\[/, '')  // Remove tudo antes do último [, incluindo prefixo de tabela
+    .replace(/\]$/, '')    // Remove ] final
+    .toLowerCase()
+    .trim();
+}
+
+// Formatar resultado DAX para mensagem WhatsApp
 function formatDaxResult(results: any[]): string {
-  if (!results || results.length === 0) {
-    return 'Sem dados';
-  }
+  if (!results || results.length === 0) return 'Sem dados';
+
+  const firstRow = results[0];
+  const keys = Object.keys(firstRow);
+
+  // Log para debug
+  console.log('[formatDaxResult] Keys do resultado:', keys);
+  console.log('[formatDaxResult] Primeiro row:', JSON.stringify(firstRow));
 
   // Se for só uma linha com um valor, retorna o valor formatado
   if (results.length === 1) {
-    const row = results[0];
-    const keys = Object.keys(row);
-    
-    // Procurar coluna de valor (geralmente contém "Valor" ou é numérica)
-    const valueKey = keys.find(k => k.toLowerCase().includes('valor') || typeof row[k] === 'number');
-    if (valueKey && typeof row[valueKey] === 'number') {
-      return formatCurrency(row[valueKey]);
+    // Procurar qualquer valor numérico
+    for (const key of keys) {
+      const val = firstRow[key];
+      if (typeof val === 'number') {
+        return formatCurrency(val);
+      }
     }
-    return String(Object.values(row)[0] || 'Sem dados');
+    // Se não achou número, retorna o primeiro valor
+    const firstVal = Object.values(firstRow)[0];
+    return firstVal !== null && firstVal !== undefined ? String(firstVal) : 'Sem dados';
   }
 
-  // Múltiplas linhas - formatar como tabela
+  // Múltiplas linhas - identificar colunas por nome limpo
+  let labelKey: string | null = null;
+  let valueKey: string | null = null;
+
+  // Primeiro: encontrar a coluna de VALOR (numérica)
+  for (const key of keys) {
+    const clean = cleanColumnName(key);
+    if (clean.includes('valor') || clean.includes('value') || clean.includes('amount') || clean.includes('total')) {
+      valueKey = key;
+      break;
+    }
+  }
+
+  // Se não encontrou por nome, pegar a primeira coluna numérica
+  if (!valueKey) {
+    for (const key of keys) {
+      // Verificar em TODOS os rows, não só o primeiro (que pode ser null)
+      const hasNumber = results.some(row => typeof row[key] === 'number');
+      if (hasNumber) {
+        valueKey = key;
+        break;
+      }
+    }
+  }
+
+  // Segundo: encontrar a coluna de LABEL (texto/dimensão)
+  for (const key of keys) {
+    if (key === valueKey) continue; // Pular a coluna de valor
+    const clean = cleanColumnName(key);
+    if (clean.includes('filial') || clean.includes('nome') || clean.includes('empresa') ||
+        clean.includes('cliente') || clean.includes('produto') || clean.includes('vendedor') ||
+        clean.includes('categoria') || clean.includes('grupo') || clean.includes('regiao') ||
+        clean.includes('loja') || clean.includes('unidade')) {
+      labelKey = key;
+      break;
+    }
+  }
+
+  // Se não encontrou por nome, pegar a primeira coluna que NÃO é a de valor
+  if (!labelKey) {
+    for (const key of keys) {
+      if (key !== valueKey) {
+        labelKey = key;
+        break;
+      }
+    }
+  }
+
+  console.log('[formatDaxResult] labelKey:', labelKey, '| valueKey:', valueKey);
+
+  // Formatar linhas
   const lines: string[] = [];
   let totalLine: string | null = null;
 
-  // Identificar colunas
-  const firstRow = results[0];
-  const keys = Object.keys(firstRow);
-  
-  // Procurar coluna de label (Filial, Nome, etc) e valor
-  const labelKey = keys.find(k => 
-    k.toLowerCase().includes('filial') || 
-    k.toLowerCase().includes('nome') || 
-    k.toLowerCase().includes('empresa') ||
-    k.toLowerCase().includes('cliente') ||
-    !k.toLowerCase().includes('valor')
-  );
-  const valueKey = keys.find(k => 
-    k.toLowerCase().includes('valor') || 
-    typeof firstRow[k] === 'number'
-  );
-
   for (const row of results) {
-    // Pular linhas com valores null
-    if (labelKey && row[labelKey] === null) continue;
-    
-    const label = labelKey ? String(row[labelKey] || '') : '';
-    const value = valueKey ? row[valueKey] : null;
-    
+    const label = labelKey ? String(row[labelKey] ?? '') : '';
+    const rawValue = valueKey ? row[valueKey] : null;
+
+    // Pular linhas onde o label é null/vazio E o valor também é null
+    if (!label && rawValue === null) continue;
+
     // Formatar valor
     let formattedValue = '';
-    if (typeof value === 'number') {
-      formattedValue = formatCurrency(value);
-    } else if (value !== null && value !== undefined) {
-      formattedValue = String(value);
+    if (typeof rawValue === 'number') {
+      formattedValue = formatCurrency(rawValue);
+    } else if (rawValue !== null && rawValue !== undefined) {
+      formattedValue = String(rawValue);
+    } else {
+      formattedValue = 'R$ 0,00'; // Valor null = zero
     }
 
-    // Verificar se é linha de total
-    if (label.toUpperCase() === 'TOTAL' || label.toUpperCase().includes('TOTAL')) {
+    // Separar linha de TOTAL das demais
+    const isTotal = label.toUpperCase() === 'TOTAL' || label.toUpperCase().includes('TOTAL');
+
+    if (isTotal) {
       totalLine = `━━━━━━━━━━━━━━\n*${label}*: ${formattedValue}`;
-    } else if (label && formattedValue) {
-      lines.push(`${label}: ${formattedValue}`);
+    } else if (label) {
+      lines.push(`• ${label}: ${formattedValue}`);
     }
   }
 
-  // Montar resultado final
+  // Montar resultado: linhas normais + total no final
   let result = lines.join('\n');
   if (totalLine) {
     result += '\n' + totalLine;
