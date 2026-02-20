@@ -6,7 +6,7 @@ function formatCurrency(value: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 }
 
-// Formatar resultado DAX para mensagem (estrutura por filial quando múltiplas linhas)
+// Formatar resultado DAX para mensagem (igual ao trigger - que funcionava no envio manual)
 function formatDaxResult(results: any[]): string {
   if (!results || results.length === 0) return 'Sem dados';
   if (results.length === 1) {
@@ -21,11 +21,16 @@ function formatDaxResult(results: any[]): string {
   const firstRow = results[0];
   const keys = Object.keys(firstRow);
   const labelKey = keys.find(k =>
-    k.toLowerCase().includes('filial') || k.toLowerCase().includes('nome') ||
-    k.toLowerCase().includes('empresa') || k.toLowerCase().includes('cliente') ||
+    k.toLowerCase().includes('filial') ||
+    k.toLowerCase().includes('nome') ||
+    k.toLowerCase().includes('empresa') ||
+    k.toLowerCase().includes('cliente') ||
     !k.toLowerCase().includes('valor')
   );
-  const valueKey = keys.find(k => k.toLowerCase().includes('valor') || typeof firstRow[k] === 'number');
+  const valueKey = keys.find(k =>
+    k.toLowerCase().includes('valor') ||
+    typeof firstRow[k] === 'number'
+  );
   for (const row of results) {
     if (labelKey && row[labelKey] === null) continue;
     const label = labelKey ? String(row[labelKey] || '') : '';
