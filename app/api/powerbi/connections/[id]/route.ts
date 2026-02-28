@@ -54,10 +54,9 @@ export async function PUT(
         return NextResponse.json({ error: 'Sem permissão para editar conexões' }, { status: 403 });
       }
 
-      // Buscar a conexão e verificar se pertence a um grupo do developer
       const { data: connection } = await supabase
         .from('powerbi_connections')
-        .select('company_group_id')
+        .select('company_group_id, developer_id')
         .eq('id', id)
         .single();
 
@@ -65,20 +64,32 @@ export async function PUT(
         return NextResponse.json({ error: 'Conexão não encontrada' }, { status: 404 });
       }
 
-      // Verificar se o grupo pertence ao developer
-      const { data: group } = await supabase
-        .from('company_groups')
-        .select('id')
-        .eq('id', connection.company_group_id)
-        .eq('developer_id', developerId)
-        .single();
-
-      if (!group) {
-        return NextResponse.json({ error: 'Sem permissão para editar esta conexão' }, { status: 403 });
+      const isShared = connection.developer_id && !connection.company_group_id;
+      if (isShared) {
+        if (connection.developer_id !== developerId) {
+          return NextResponse.json({ error: 'Sem permissão para editar esta conexão' }, { status: 403 });
+        }
+      } else {
+        const { data: group } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('id', connection.company_group_id)
+          .eq('developer_id', developerId)
+          .single();
+        if (!group) {
+          return NextResponse.json({ error: 'Sem permissão para editar esta conexão' }, { status: 403 });
+        }
       }
     }
 
     const body = await request.json();
+    if (!user.is_master && body.developer_id) {
+      const devId = await getUserDeveloperId(user.id);
+      if (body.developer_id !== devId) {
+        return NextResponse.json({ error: 'developer_id inválido' }, { status: 403 });
+      }
+    }
+
     const { data, error } = await supabase
       .from('powerbi_connections')
       .update(body)
@@ -122,7 +133,7 @@ export async function DELETE(
       // Buscar a conexão e verificar se pertence a um grupo do developer
       const { data: connection } = await supabase
         .from('powerbi_connections')
-        .select('company_group_id')
+        .select('company_group_id, developer_id')
         .eq('id', id)
         .single();
 
@@ -130,16 +141,21 @@ export async function DELETE(
         return NextResponse.json({ error: 'Conexão não encontrada' }, { status: 404 });
       }
 
-      // Verificar se o grupo pertence ao developer
-      const { data: group } = await supabase
-        .from('company_groups')
-        .select('id')
-        .eq('id', connection.company_group_id)
-        .eq('developer_id', developerId)
-        .single();
-
-      if (!group) {
-        return NextResponse.json({ error: 'Sem permissão para excluir esta conexão' }, { status: 403 });
+      const isShared = connection.developer_id && !connection.company_group_id;
+      if (isShared) {
+        if (connection.developer_id !== developerId) {
+          return NextResponse.json({ error: 'Sem permissão para excluir esta conexão' }, { status: 403 });
+        }
+      } else {
+        const { data: group } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('id', connection.company_group_id)
+          .eq('developer_id', developerId)
+          .single();
+        if (!group) {
+          return NextResponse.json({ error: 'Sem permissão para excluir esta conexão' }, { status: 403 });
+        }
       }
     }
 

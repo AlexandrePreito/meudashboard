@@ -3,10 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
+import FeatureGate from '@/components/ui/FeatureGate';
 import PermissionGuard from '@/components/assistente-ia/PermissionGuard';
+import Pagination from '@/components/ui/Pagination';
 import { TrainingExample } from '@/types/assistente-ia';
-import { Plus, Pencil, Trash2, Sparkles, Search } from 'lucide-react';
+import { Plus, Pencil, Trash2, Sparkles } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
+
+const PAGE_SIZE = 20;
 
 const TAGS_DISPONIVEIS = [
   { value: 'vendas', label: 'Vendas', color: 'bg-blue-100 text-blue-800' },
@@ -40,6 +44,8 @@ function TreinarIAContent() {
   const router = useRouter();
   const { activeGroup } = useMenu();
   const [examples, setExamples] = useState<TrainingExample[]>([]);
+  const [totalItems, setTotalItems] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>('');
@@ -51,14 +57,18 @@ function TreinarIAContent() {
   }, [activeGroup?.id]);
 
   useEffect(() => {
-    // Recarregar exemplos quando o grupo ou dataset mudar
+    setPage(1);
+  }, [selectedDataset, selectedTag, search]);
+
+  useEffect(() => {
     if (activeGroup) {
       loadExamples();
     } else {
       setExamples([]);
+      setTotalItems(0);
       setLoading(false);
     }
-  }, [selectedDataset, activeGroup?.id]);
+  }, [selectedDataset, selectedTag, search, activeGroup?.id, page]);
 
   const loadDatasets = async () => {
     if (!activeGroup) {
@@ -90,33 +100,36 @@ function TreinarIAContent() {
   const loadExamples = async () => {
     if (!activeGroup) {
       setExamples([]);
+      setTotalItems(0);
       setLoading(false);
       return;
     }
     
     try {
       setLoading(true);
-      // Montar URL com filtros
-      const params = new URLSearchParams();
-      if (selectedDataset) {
-        params.append('dataset_id', selectedDataset);
-      }
-      if (activeGroup.id) {
-        params.append('group_id', activeGroup.id);
-      }
+      const params = new URLSearchParams({
+        group_id: activeGroup.id,
+        limit: String(PAGE_SIZE),
+        offset: String((page - 1) * PAGE_SIZE),
+      });
+      if (selectedDataset) params.append('dataset_id', selectedDataset);
+      if (selectedTag) params.append('category', selectedTag);
+      if (search.trim()) params.append('search', search.trim());
       
-      const url = `/api/assistente-ia/training${params.toString() ? '?' + params.toString() : ''}`;
-      const response = await fetch(url);
+      const response = await fetch(`/api/assistente-ia/training?${params}`);
       if (response.ok) {
         const data = await response.json();
         setExamples(data.data || []);
+        setTotalItems(data.total ?? 0);
       } else {
         console.error('Erro ao carregar exemplos:', await response.text());
         setExamples([]);
+        setTotalItems(0);
       }
     } catch (error) {
       console.error('Erro ao carregar exemplos:', error);
       setExamples([]);
+      setTotalItems(0);
     } finally {
       setLoading(false);
     }
@@ -131,7 +144,7 @@ function TreinarIAContent() {
       });
       
       if (response.ok) {
-        setExamples(examples.filter(ex => ex.id !== id));
+        loadExamples();
       } else {
         alert('Erro ao excluir exemplo');
       }
@@ -140,15 +153,6 @@ function TreinarIAContent() {
       alert('Erro ao excluir exemplo');
     }
   };
-
-  const filteredExamples = examples.filter(ex => {
-    const matchesSearch = ex.user_question.toLowerCase().includes(search.toLowerCase()) ||
-                         ex.formatted_response?.toLowerCase().includes(search.toLowerCase());
-    const matchesTag = !selectedTag || selectedTag === '' || 
-                     (ex.tags && ex.tags.includes(selectedTag)) || 
-                     ex.category === selectedTag;
-    return matchesSearch && matchesTag;
-  });
 
   return (
     <PermissionGuard>
@@ -169,7 +173,7 @@ function TreinarIAContent() {
         </div>
 
         {/* Filtros */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-6">
+        <div className="card-modern p-4 mb-6">
           <div className="flex gap-4">
             <div className="flex-1">
               <input
@@ -215,8 +219,8 @@ function TreinarIAContent() {
         )}
 
         {/* Empty State */}
-        {!loading && filteredExamples.length === 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-12 text-center">
+        {!loading && examples.length === 0 && (
+          <div className="card-modern p-12 text-center">
             <Sparkles className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <h3 className="font-medium text-gray-900 mb-2">Nenhum exemplo encontrado</h3>
             <p className="text-gray-500 text-sm mb-4">Comece adicionando o primeiro exemplo de treinamento</p>
@@ -230,45 +234,69 @@ function TreinarIAContent() {
           </div>
         )}
 
-        {/* Lista de exemplos */}
-        {!loading && filteredExamples.length > 0 && (
-          <div className="space-y-3">
-            {filteredExamples.map(example => (
-              <div key={example.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:border-blue-300 transition-colors">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="font-medium text-gray-900 mb-1">{example.user_question}</h3>
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      {(example.tags && example.tags.length > 0 ? example.tags : example.category ? [example.category] : []).map(tag => (
-                        <span key={tag} className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs">
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      Criado em {new Date(example.created_at).toLocaleDateString('pt-BR')}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => router.push(`/assistente-ia/treinar/${example.id}`)}
-                      className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      title="Editar"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => deleteExample(example.id)}
-                      className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Excluir"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+        {/* Tabela de exemplos */}
+        {!loading && examples.length > 0 && (
+          <>
+            <div className="card-modern overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50">
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-700">Pergunta</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-700">Tags</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-700">Criado em</th>
+                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-700">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {examples.map((example) => (
+                    <tr key={example.id} className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
+                      <td className="px-4 py-3 text-sm text-gray-900 max-w-md truncate" title={example.user_question}>
+                        {example.user_question}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {(example.tags && example.tags.length > 0 ? example.tags : example.category ? [example.category] : []).map((tag) => (
+                            <span key={tag} className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs">
+                              #{tag}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {new Date(example.created_at).toLocaleDateString('pt-BR')}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => router.push(`/assistente-ia/treinar/${example.id}`)}
+                            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Editar"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => deleteExample(example.id)}
+                            className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Excluir"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-4">
+              <Pagination
+                totalItems={totalItems}
+                currentPage={page}
+                onPageChange={setPage}
+                pageSize={PAGE_SIZE}
+              />
+            </div>
+          </>
         )}
       </div>
     </PermissionGuard>
@@ -279,7 +307,9 @@ function TreinarIAContent() {
 export default function TreinarIAPage() {
   return (
     <MainLayout>
-      <TreinarIAContent />
+      <FeatureGate feature="ai">
+        <TreinarIAContent />
+      </FeatureGate>
     </MainLayout>
   );
 }

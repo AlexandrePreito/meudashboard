@@ -12,8 +12,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
     }
 
-    // Bloquear viewer e operator
-    if (membership.role === 'viewer' || membership.role === 'operator') {
+    const user = await getAuthUser();
+    const isMaster = user?.is_master === true;
+
+    // Bloquear viewer e operator (exceto master)
+    if (!isMaster && (membership.role === 'viewer' || membership.role === 'operator')) {
       return NextResponse.json({ success: false, error: 'Sem permissão' }, { status: 403 });
     }
 
@@ -28,10 +31,13 @@ export async function GET(request: NextRequest) {
 
     // Determinar qual group_id usar
     let groupId = groupIdParam || membership.company_group_id;
-    
+
+    // Se for master, aceitar qualquer group_id passado
+    if (isMaster && groupIdParam) {
+      groupId = groupIdParam;
+    }
     // Se for developer e passou group_id, validar se o grupo pertence a ele
-    if (groupIdParam && membership.role === 'developer') {
-      const user = await getAuthUser();
+    else if (groupIdParam && membership.role === 'developer') {
       if (user) {
         const developerId = await getUserDeveloperId(user.id);
         if (developerId) {

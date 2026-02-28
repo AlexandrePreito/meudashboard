@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
+import FeatureGate from '@/components/ui/FeatureGate';
 import Button from '@/components/ui/Button';
 import { useMenu } from '@/contexts/MenuContext';
 import { 
@@ -127,7 +128,7 @@ function WebhookContent() {
         </div>
 
         {/* Card URL do Webhook */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="card-modern p-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
               <Webhook className="text-green-600" size={24} />
@@ -285,7 +286,9 @@ function WebhookContent() {
 export default function WebhookPage() {
   return (
     <MainLayout>
-      <WebhookContent />
+      <FeatureGate feature="whatsapp">
+        <WebhookContent />
+      </FeatureGate>
     </MainLayout>
   );
 }

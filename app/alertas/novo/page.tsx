@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
+import FeatureGate from '@/components/ui/FeatureGate';
 import Button from '@/components/ui/Button';
 import MessageEditor from '@/components/whatsapp/MessageEditor';
 import { 
@@ -450,15 +451,18 @@ export default function NovoAlertaPage() {
   if (loading) {
     return (
       <MainLayout>
-        <div className="flex items-center justify-center h-96">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-        </div>
+        <FeatureGate feature="alerts">
+          <div className="flex items-center justify-center h-96">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          </div>
+        </FeatureGate>
       </MainLayout>
     );
   }
 
   return (
     <MainLayout>
+      <FeatureGate feature="alerts">
       <div className="space-y-6">
         {/* Header */}
         <div>
@@ -467,7 +471,7 @@ export default function NovoAlertaPage() {
         </div>
 
         {/* Tabs */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="card-modern overflow-hidden">
           <div className="flex border-b border-gray-200">
             {FORM_TABS.map((tab, index) => {
               const Icon = tab.icon;
@@ -1117,6 +1121,7 @@ export default function NovoAlertaPage() {
           </form>
         </div>
       </div>
+      </FeatureGate>
     </MainLayout>
   );
 }

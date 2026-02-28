@@ -98,10 +98,42 @@ export async function GET(request: NextRequest) {
 
     const groupsMap = new Map((groups || []).map(g => [g.id, g]));
 
+    // Telas por grupo (para filtrar screen_users por grupo do usuário)
+    const { data: allScreens } = await supabase
+      .from('powerbi_dashboard_screens')
+      .select('id, company_group_id, title')
+      .in('company_group_id', groupIds);
+    const screenIdToGroup = new Map<string, string>();
+    const screenIdToTitle = new Map<string, string>();
+    allScreens?.forEach((s: { id: string; company_group_id: string; title?: string }) => {
+      screenIdToGroup.set(s.id, s.company_group_id);
+      screenIdToTitle.set(s.id, s.title || s.id);
+    });
+    const screenIdsByGroup = new Map<string, string[]>();
+    allScreens?.forEach((s: { id: string; company_group_id: string }) => {
+      const list = screenIdsByGroup.get(s.company_group_id) || [];
+      list.push(s.id);
+      screenIdsByGroup.set(s.company_group_id, list);
+    });
+
+    const { data: screenUsers } = await supabase
+      .from('powerbi_screen_users')
+      .select('screen_id, user_id')
+      .in('user_id', userIds);
+    const userScreenIdsMap = new Map<string, string[]>();
+    screenUsers?.forEach((r: { screen_id: string; user_id: string }) => {
+      const gid = screenIdToGroup.get(r.screen_id);
+      if (!gid) return;
+      const list = userScreenIdsMap.get(r.user_id) || [];
+      if (!list.includes(r.screen_id)) list.push(r.screen_id);
+      userScreenIdsMap.set(r.user_id, list);
+    });
+
     // Formatar dados
     const users = memberships.map(m => {
       const userData = usersMap.get(m.user_id);
       const groupData = groupsMap.get(m.company_group_id);
+      const screenIds = userScreenIdsMap.get(m.user_id)?.filter(sid => screenIdToGroup.get(sid) === m.company_group_id) || [];
       return {
         id: userData?.id || m.user_id,
         email: userData?.email || '',
@@ -116,6 +148,8 @@ export async function GET(request: NextRequest) {
         can_use_ai: m.can_use_ai ?? false,
         can_refresh: m.can_refresh ?? false,
         created_at: userData?.created_at || m.created_at,
+        screen_ids: screenIds,
+        screen_titles: screenIds.map((sid: string) => screenIdToTitle.get(sid) || sid),
       };
     });
 

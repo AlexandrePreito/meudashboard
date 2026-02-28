@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
+import FeatureGate from '@/components/ui/FeatureGate';
 import Button from '@/components/ui/Button';
 import { 
   Plus,
@@ -386,15 +387,18 @@ function NovoTreinamentoPageContent() {
   if (loadingDatasets || !groupId) {
     return (
       <MainLayout>
-        <div className="flex items-center justify-center h-96">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-        </div>
+        <FeatureGate feature="ai">
+          <div className="flex items-center justify-center h-96">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          </div>
+        </FeatureGate>
       </MainLayout>
     );
   }
 
   return (
     <MainLayout>
+      <FeatureGate feature="ai">
       <div className="max-w-6xl mx-auto p-6">
         {/* Header */}
         <div className="mb-6">
@@ -545,7 +549,7 @@ function NovoTreinamentoPageContent() {
         </div>
 
         {/* Card da Pergunta */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
+        <div className="card-modern mb-6">
           <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-blue-100 border-b border-blue-200">
             <div className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-blue-600" />
@@ -565,7 +569,7 @@ function NovoTreinamentoPageContent() {
 
         {/* Componente de Seleção de Campos */}
         {loadingMetadata ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+          <div className="card-modern p-6 mb-6">
             <div className="flex items-center gap-2 text-gray-500">
               <Loader2 className="w-5 h-5 animate-spin" />
               <span>Carregando metadados...</span>
@@ -587,7 +591,7 @@ function NovoTreinamentoPageContent() {
             
             {/* Card de Opções - Linha separada */}
             <div className="grid grid-cols-1 gap-4 mb-6 items-stretch">
-              <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col h-full">
+              <div className="card-modern p-5 flex flex-col h-full">
                 <div className="flex items-center gap-2 mb-4">
                   <Settings className="w-5 h-5 text-orange-600" />
                   <h3 className="text-lg font-semibold text-gray-900">Opções</h3>
@@ -635,7 +639,7 @@ function NovoTreinamentoPageContent() {
             </div>
             
             {/* Preview DAX - Fundo Branco (abaixo dos cards) */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+            <div className="card-modern p-5 mb-6">
               <div className="flex items-center gap-2 mb-4">
                 <Code className="w-5 h-5 text-gray-600" />
                 <h3 className="text-lg font-semibold text-gray-900">Preview do DAX</h3>
@@ -646,13 +650,13 @@ function NovoTreinamentoPageContent() {
             </div>
           </>
         ) : (
-          <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+          <div className="card-modern p-6 mb-6">
             <p className="text-gray-500 text-center">Selecione um dataset para começar</p>
           </div>
         )}
 
         {/* DAX Gerado e Botões - Abaixo dos cards */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm mb-6">
+        <div className="card-modern overflow-hidden mb-6">
           <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
             <span className="text-sm font-semibold text-gray-700">DAX Gerado</span>
             <div className="flex items-center gap-2">
@@ -782,6 +786,7 @@ function NovoTreinamentoPageContent() {
             </div>
           )}
       </div>
+      </FeatureGate>
     </MainLayout>
   );
 }

@@ -1,5 +1,6 @@
 // src/lib/whatsapp/messaging.ts
 import createLogger from '@/lib/logger';
+import { getDeveloperIdForGroup, resolveWhatsAppForGroup } from '@/lib/shared-resources';
 
 const log = createLogger('WhatsApp');
 
@@ -173,6 +174,13 @@ export async function getInstanceForAuthorizedNumber(authorizedNumber: any, supa
       .maybeSingle();
 
     if (groupInstance) return groupInstance;
+
+    // 3. Fallback: instância compartilhada do developer (herança)
+    const developerId = await getDeveloperIdForGroup(authorizedNumber.company_group_id);
+    if (developerId) {
+      const shared = await resolveWhatsAppForGroup(authorizedNumber.company_group_id, developerId);
+      if (shared) return shared;
+    }
   }
 
   log.error('Nenhuma instância encontrada', { groupId: authorizedNumber?.company_group_id });

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
+import FeatureGate from '@/components/ui/FeatureGate';
 import PermissionGuard from '@/components/assistente-ia/PermissionGuard';
 import { useMenu } from '@/contexts/MenuContext';
 import { Sparkles, Send, Save, X } from 'lucide-react';
@@ -558,7 +559,9 @@ function EditarExemploContent() {
 export default function EditarExemploPage() {
   return (
     <MainLayout>
-      <EditarExemploContent />
+      <FeatureGate feature="ai">
+        <EditarExemploContent />
+      </FeatureGate>
     </MainLayout>
   );
 }

@@ -1,13 +1,8 @@
 {
   "crons": [
-    {
-      "path": "/api/alertas/cron",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/whatsapp/webhook/process-queue",
-      "schedule": "*/2 * * * *"
-    }
+    {"path": "/api/alertas/cron", "schedule": "* * * * *"},
+    {"path": "/api/whatsapp/webhook/process-queue", "schedule": "*/2 * * * *"},
+    {"path": "/api/powerbi/refresh-alerts/cron", "schedule": "*/10 * * * *"}
   ],
   "buildCommand": "npm install && npm run build"
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
+import FeatureGate from '@/components/ui/FeatureGate';
 import Button from '@/components/ui/Button';
 import { useToast } from '@/contexts/ToastContext';
 import { useMenu } from '@/contexts/MenuContext';
@@ -472,7 +473,7 @@ function InstanciasContent() {
             <LoadingSpinner size={32} />
           </div>
         ) : filteredInstances.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div className="card-modern p-12 text-center">
             <Smartphone className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhuma instância</h3>
             <p className="text-gray-500 mb-4">Conecte sua primeira instância WhatsApp</p>
@@ -483,7 +484,7 @@ function InstanciasContent() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredInstances.map((instance) => (
-              <div key={instance.id} className="bg-white rounded-xl border border-gray-200 p-5">
+              <div key={instance.id} className="card-modern p-5">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
@@ -815,7 +816,9 @@ function InstanciasContent() {
 export default function InstanciasPage() {
   return (
     <MainLayout>
-      <InstanciasContent />
+      <FeatureGate feature="whatsapp">
+        <InstanciasContent />
+      </FeatureGate>
     </MainLayout>
   );
 }

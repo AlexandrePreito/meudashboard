@@ -5,6 +5,8 @@ import {
   useContext,
   useState,
   useEffect,
+  useCallback,
+  useRef,
   type ReactNode,
 } from 'react';
 
@@ -46,6 +48,9 @@ interface MenuContextType {
   setUser: (user: UserData | null) => void;
   developer: DeveloperInfo | null;
   setDeveloper: (developer: DeveloperInfo | null) => void;
+  groups: CompanyGroup[];
+  setGroups: (groups: CompanyGroup[]) => void;
+  loadGroups: () => Promise<void>;
 }
 
 // Cria o contexto
@@ -88,8 +93,9 @@ export function MenuProvider({ children }: MenuProviderProps) {
   });
   const [user, setUser] = useState<UserData | null>(null);
   const [developer, setDeveloper] = useState<DeveloperInfo | null>(null);
+  const [groups, setGroups] = useState<CompanyGroup[]>([]);
 
-  // Função para setar grupo e salvar no localStorage
+  // Função para setar grupo e salvar no localStorage (declarada antes de loadGroups para uso interno)
   function setActiveGroup(group: CompanyGroup | null) {
     setActiveGroupState(group);
     if (typeof window !== 'undefined') {
@@ -100,6 +106,97 @@ export function MenuProvider({ children }: MenuProviderProps) {
       }
     }
   }
+
+  const loadGroups = useCallback(async () => {
+    const u = user;
+    if (!u?.id) return;
+    try {
+      const res = await fetch('/api/user/groups', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        const freshGroups = (data.groups || []) as CompanyGroup[];
+        setGroups(freshGroups);
+        if (data.developer) setDeveloper(data.developer);
+        if (freshGroups.length > 0) {
+          setActiveGroupState((current) => {
+            let next: CompanyGroup | null;
+            if (current) {
+              const updated = freshGroups.find((g) => g.id === current.id);
+              if (updated) {
+                next = JSON.stringify(updated) !== JSON.stringify(current) ? updated : current;
+              } else {
+                if (typeof window !== 'undefined') {
+                  localStorage.removeItem('active-group');
+                  localStorage.removeItem('selected-group-ids');
+                }
+                if (u.is_master) {
+                  const saved = typeof window !== 'undefined' ? localStorage.getItem('active-group') : null;
+                  if (saved) {
+                    try {
+                      const parsed = JSON.parse(saved);
+                      const found = freshGroups.find((g) => g.id === parsed.id);
+                      next = found || null;
+                    } catch {
+                      next = null;
+                    }
+                  } else {
+                    next = null;
+                  }
+                } else {
+                  next = freshGroups[0];
+                }
+              }
+            } else {
+              if (u.is_master) {
+                const saved = typeof window !== 'undefined' ? localStorage.getItem('active-group') : null;
+                if (saved) {
+                  try {
+                    const parsed = JSON.parse(saved);
+                    const found = freshGroups.find((g) => g.id === parsed.id);
+                    next = found || null;
+                  } catch {
+                    next = null;
+                  }
+                } else {
+                  next = null;
+                }
+              } else {
+                next = freshGroups[0];
+              }
+            }
+            if (typeof window !== 'undefined' && next) {
+              localStorage.setItem('active-group', JSON.stringify(next));
+            } else if (typeof window !== 'undefined' && !next) {
+              localStorage.removeItem('active-group');
+            }
+            return next;
+          });
+        } else {
+          if (typeof window !== 'undefined' && !u.is_master) {
+            localStorage.removeItem('active-group');
+            localStorage.removeItem('selected-group-ids');
+          }
+          setActiveGroupState(null);
+        }
+      } else {
+        if (res.status !== 401 && res.status !== 403) {
+          setGroups([]);
+          setActiveGroupState(null);
+        }
+      }
+    } catch {
+      setGroups([]);
+      setActiveGroupState(null);
+    }
+  }, [user?.id, user?.is_master]);
+
+  const loadedUserIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!user?.id || loadedUserIdRef.current === user.id) return;
+    loadedUserIdRef.current = user.id;
+    setGroups([]);
+    loadGroups();
+  }, [user?.id, loadGroups]);
 
   // Função para setar grupos selecionados e salvar no localStorage
   function setSelectedGroupIdsState(ids: string[]) {
@@ -122,6 +219,9 @@ export function MenuProvider({ children }: MenuProviderProps) {
         setUser,
         developer,
         setDeveloper,
+        groups,
+        setGroups,
+        loadGroups,
       }}
     >
       {children}

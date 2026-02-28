@@ -15,6 +15,7 @@ import {
   Copy,
   Database
 } from 'lucide-react';
+import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
 
 interface Connection {
   id: string;
@@ -57,6 +58,7 @@ function RelatoriosContent() {
   const [editingReport, setEditingReport] = useState<Report | null>(null);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [pbiReports, setPbiReports] = useState<PowerBIReport[]>([]);
   const [loadingPbiData, setLoadingPbiData] = useState(false);
@@ -73,6 +75,10 @@ function RelatoriosContent() {
   useEffect(() => {
     checkAccessAndLoad();
   }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm]);
 
   useEffect(() => {
     // Só carregar dados se já verificou o acesso e tem permissão
@@ -391,7 +397,7 @@ function RelatoriosContent() {
         )}
 
         {reports.length === 0 ? (
-          <div className="bg-white rounded-2xl p-12 text-center border border-gray-100">
+          <div className="card-modern p-12 text-center">
             <FileText size={48} className="mx-auto text-gray-300 mb-4" />
             <h2 className="text-lg font-medium text-gray-900 mb-2">Nenhum relatório</h2>
             <p className="text-gray-500 mb-4">Cadastre seu primeiro relatório do Power BI</p>
@@ -402,21 +408,22 @@ function RelatoriosContent() {
             )}
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-100">
+          <>
+          <div className="overflow-hidden bg-white">
+            <table className="w-full table-modern">
+              <thead>
                 <tr>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Nome</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Report ID</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Dataset ID</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Conexão</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Grupo</th>
-                  <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Ações</th>
+                  <th>Nome</th>
+                  <th>Report ID</th>
+                  <th>Dataset ID</th>
+                  <th>Conexão</th>
+                  <th>Grupo</th>
+                  <th className="text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
-                {reports
-                  .filter(report => {
+              <tbody>
+                {(() => {
+                  const filteredReports = reports.filter(report => {
                     if (!searchTerm) return true;
                     const term = searchTerm.toLowerCase();
                     return (
@@ -425,22 +432,23 @@ function RelatoriosContent() {
                       report.dataset_id.toLowerCase().includes(term) ||
                       report.connection?.name.toLowerCase().includes(term)
                     );
-                  })
-                  .map((report) => (
-                  <tr key={report.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
+                  });
+                  const paginatedReports = filteredReports.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+                  return paginatedReports.map((report) => (
+                  <tr key={report.id}>
+                    <td>
                       <div className="font-medium text-gray-900">{report.name}</div>
                       {report.default_page && (
                         <div className="text-sm text-gray-500">Página: {report.default_page}</div>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 font-mono">{report.report_id}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600 font-mono">{report.dataset_id}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{report.connection?.name}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
+                    <td className="text-sm text-gray-600 font-mono">{report.report_id}</td>
+                    <td className="text-sm text-gray-600 font-mono">{report.dataset_id}</td>
+                    <td className="text-sm text-gray-600">{report.connection?.name}</td>
+                    <td className="text-sm text-gray-600">
                       {report.connection?.company_group?.name || '-'}
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="text-right">
                       <button
                         onClick={() => openModal(report)}
                         className="p-2 rounded-lg mr-1 text-gray-600 hover:bg-gray-100"
@@ -464,10 +472,20 @@ function RelatoriosContent() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                  ));
+                })()}
               </tbody>
             </table>
           </div>
+          <div className="mt-4">
+            <Pagination
+              totalItems={reports.filter(r => !searchTerm || [r.name, r.report_id, r.dataset_id, r.connection?.name].some(x => x?.toLowerCase().includes(searchTerm.toLowerCase()))).length}
+              currentPage={page}
+              onPageChange={setPage}
+              pageSize={PAGE_SIZE}
+            />
+          </div>
+          </>
         )}
       </div>
 

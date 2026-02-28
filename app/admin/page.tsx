@@ -2,285 +2,254 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import MainLayout from '@/components/layout/MainLayout';
 import {
-  Users,
   Building2,
-  Code,
-  Crown,
-  MessageSquare,
-  Sparkles,
-  Bell,
-  TrendingUp,
-  Activity,
+  FolderPlus,
+  Users,
+  LayoutDashboard,
+  Lock,
   Loader2,
-  ArrowUpRight,
-  Server
+  ChevronRight,
+  UserPlus,
 } from 'lucide-react';
-import Link from 'next/link';
 
-interface DashboardStats {
-  totalDevelopers: number;
-  totalGroups: number;
-  totalUsers: number;
-  totalPlans: number;
-  todayWhatsapp: number;
-  todayAI: number;
-  todayAlerts: number;
-  monthWhatsapp: number;
-  monthAI: number;
-  monthAlerts: number;
-  topDevelopers: {
+interface AdminDashboardStats {
+  stats: {
+    developers: number;
+    groups: number;
+    users: number;
+    screens: number;
+  };
+  plans: Record<string, number>;
+  newDevelopersLast7Days: number;
+  recentDevelopers: Array<{
     id: string;
     name: string;
+    logo_url?: string | null;
+    plan_name: string;
     groups_count: number;
-    users_count: number;
-  }[];
-  recentGroups: {
-    id: string;
-    name: string;
-    developer_name: string;
     created_at: string;
-  }[];
+  }>;
 }
 
-export default function AdminDashboardPage() {
+function formatDate(dateStr: string) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+export default function AdminPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<DashboardStats>({
-    totalDevelopers: 0,
-    totalGroups: 0,
-    totalUsers: 0,
-    totalPlans: 0,
-    todayWhatsapp: 0,
-    todayAI: 0,
-    todayAlerts: 0,
-    monthWhatsapp: 0,
-    monthAI: 0,
-    monthAlerts: 0,
-    topDevelopers: [],
-    recentGroups: []
-  });
+  const [data, setData] = useState<AdminDashboardStats | null>(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    loadStats();
-  }, []);
-
-  async function loadStats() {
-    try {
-      setLoading(true);
-      const res = await fetch('/api/admin/stats');
-      
-      if (res.status === 403) {
-        router.push('/dashboard');
-        return;
-      }
-
-      if (res.ok) {
-        const data = await res.json();
-        setStats(data);
-      }
-    } catch (error) {
-      console.error('Erro ao carregar estatisticas:', error);
-    } finally {
-      setLoading(false);
-    }
-  }
+    fetch('/api/admin/dashboard-stats', { credentials: 'include' })
+      .then((res) => {
+        if (res.status === 401) {
+          router.push('/login');
+          return null;
+        }
+        if (res.status === 403) {
+          router.push('/dashboard');
+          return null;
+        }
+        return res.json();
+      })
+      .then((json) => {
+        if (json && !json.error) setData(json);
+        else if (json?.error) setError(json.error);
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [router]);
 
   if (loading) {
     return (
       <MainLayout>
-        <div className="flex items-center justify-center h-96">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <div className="flex items-center justify-center min-h-[50vh]">
+          <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
         </div>
       </MainLayout>
     );
   }
 
+  if (error || !data) {
+    return (
+      <MainLayout>
+        <div className="text-center py-12">
+          <p className="text-gray-600">{error || 'Erro ao carregar dados'}</p>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  const { stats, plans, newDevelopersLast7Days, recentDevelopers } = data;
+  const planEntries = Object.entries(plans);
+
   return (
     <MainLayout>
       <div className="space-y-6">
-        {/* Header */}
+        {/* Header compacto */}
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Painel Administrativo</h1>
-          <p className="text-gray-500 mt-1">Visao geral do sistema</p>
-        </div>
-
-        {/* Cards Principais */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Link href="/admin/desenvolvedores" className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                  <Code className="w-6 h-6 text-purple-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Desenvolvedores</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.totalDevelopers}</p>
-                </div>
-              </div>
-              <ArrowUpRight className="w-5 h-5 text-gray-400" />
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center">
+              <Lock className="w-5 h-5 text-slate-600" />
             </div>
-          </Link>
-
-          <Link href="/admin/grupos" className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                  <Building2 className="w-6 h-6 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Grupos</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.totalGroups}</p>
-                </div>
-              </div>
-              <ArrowUpRight className="w-5 h-5 text-gray-400" />
-            </div>
-          </Link>
-
-          <Link href="/admin/usuarios" className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                  <Users className="w-6 h-6 text-green-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Usuarios</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.totalUsers}</p>
-                </div>
-              </div>
-              <ArrowUpRight className="w-5 h-5 text-gray-400" />
-            </div>
-          </Link>
-
-          <Link href="/admin/planos" className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
-                  <Crown className="w-6 h-6 text-amber-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Planos Ativos</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.totalPlans}</p>
-                </div>
-              </div>
-              <ArrowUpRight className="w-5 h-5 text-gray-400" />
-            </div>
-          </Link>
-        </div>
-
-        {/* Consumo */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Consumo Hoje */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Activity className="w-5 h-5 text-blue-600" />
-              Consumo Hoje
-            </h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-green-50 rounded-lg">
-                <MessageSquare className="w-6 h-6 text-green-600 mx-auto mb-2" />
-                <p className="text-2xl font-bold text-gray-900">{stats.todayWhatsapp.toLocaleString()}</p>
-                <p className="text-xs text-gray-500">WhatsApp</p>
-              </div>
-              <div className="text-center p-4 bg-purple-50 rounded-lg">
-                <Sparkles className="w-6 h-6 text-purple-600 mx-auto mb-2" />
-                <p className="text-2xl font-bold text-gray-900">{stats.todayAI.toLocaleString()}</p>
-                <p className="text-xs text-gray-500">Creditos IA</p>
-              </div>
-              <div className="text-center p-4 bg-yellow-50 rounded-lg">
-                <Bell className="w-6 h-6 text-yellow-600 mx-auto mb-2" />
-                <p className="text-2xl font-bold text-gray-900">{stats.todayAlerts.toLocaleString()}</p>
-                <p className="text-xs text-gray-500">Alertas</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Consumo Mes */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-green-600" />
-              Consumo Este Mes
-            </h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-green-50 rounded-lg">
-                <MessageSquare className="w-6 h-6 text-green-600 mx-auto mb-2" />
-                <p className="text-2xl font-bold text-gray-900">{stats.monthWhatsapp.toLocaleString()}</p>
-                <p className="text-xs text-gray-500">WhatsApp</p>
-              </div>
-              <div className="text-center p-4 bg-purple-50 rounded-lg">
-                <Sparkles className="w-6 h-6 text-purple-600 mx-auto mb-2" />
-                <p className="text-2xl font-bold text-gray-900">{stats.monthAI.toLocaleString()}</p>
-                <p className="text-xs text-gray-500">Creditos IA</p>
-              </div>
-              <div className="text-center p-4 bg-yellow-50 rounded-lg">
-                <Bell className="w-6 h-6 text-yellow-600 mx-auto mb-2" />
-                <p className="text-2xl font-bold text-gray-900">{stats.monthAlerts.toLocaleString()}</p>
-                <p className="text-xs text-gray-500">Alertas</p>
-              </div>
+            <div>
+              <h1 className="text-xl font-bold text-slate-900">Painel Master</h1>
+              <p className="text-sm text-slate-500">Visão geral da plataforma</p>
             </div>
           </div>
         </div>
 
-        {/* Top Desenvolvedores e Grupos Recentes */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Top Desenvolvedores */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Top Desenvolvedores</h3>
-              <Link href="/admin/desenvolvedores" className="text-sm text-blue-600 hover:underline">
-                Ver todos
-              </Link>
-            </div>
-            {stats.topDevelopers.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">Nenhum desenvolvedor cadastrado</p>
-            ) : (
-              <div className="space-y-3">
-                {stats.topDevelopers.map((dev, idx) => (
-                  <div key={dev.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <span className="w-6 h-6 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-sm font-medium">
-                        {idx + 1}
-                      </span>
-                      <div>
-                        <p className="font-medium text-gray-900">{dev.name}</p>
-                        <p className="text-xs text-gray-500">{dev.groups_count} grupos • {dev.users_count} usuarios</p>
+        {/* Cards de métricas */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard icon={<Building2 className="w-5 h-5" />} value={stats.developers} label="Desenvolvedores" color="blue" />
+          <StatCard icon={<FolderPlus className="w-5 h-5" />} value={stats.groups} label="Grupos" color="indigo" />
+          <StatCard icon={<Users className="w-5 h-5" />} value={stats.users} label="Usuários" color="violet" />
+          <StatCard icon={<LayoutDashboard className="w-5 h-5" />} value={stats.screens} label="Telas" color="cyan" />
+        </div>
+
+        {/* Planos + Novos cadastros */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+            <h2 className="text-sm font-semibold text-slate-700 mb-4">Planos</h2>
+            <ul className="space-y-2">
+              {planEntries.length === 0 ? (
+                <li className="text-sm text-gray-500">Nenhum dado</li>
+              ) : (
+                planEntries.map(([name, count]) => (
+                  <li key={name} className="flex items-center gap-2">
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        name.toLowerCase() === 'free' ? 'bg-amber-500' : 'bg-green-500'
+                      }`}
+                    />
+                    <span className="text-sm text-gray-700">{count} {name}</span>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+            <h2 className="text-sm font-semibold text-slate-700 mb-4">Novos Cadastros</h2>
+            <p className="text-2xl font-bold text-gray-900">+{newDevelopersLast7Days}</p>
+            <p className="text-sm text-gray-500 mt-1">developers nos últimos 7 dias</p>
+          </div>
+        </div>
+
+        {/* Developers recentes */}
+        <div>
+          <h2 className="text-sm font-semibold text-slate-700 mb-3">Desenvolvedores Recentes</h2>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <ul className="divide-y divide-gray-100">
+              {recentDevelopers.length === 0 ? (
+                <li className="p-8 text-center text-gray-500">
+                  Nenhum desenvolvedor cadastrado
+                </li>
+              ) : (
+                recentDevelopers.map((dev) => (
+                  <li key={dev.id}>
+                    <Link
+                      href="/admin/desenvolvedores"
+                      className="flex items-center justify-between px-5 py-4 hover:bg-slate-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        {dev.logo_url ? (
+                          <img
+                            src={dev.logo_url}
+                            alt={dev.name}
+                            className="w-10 h-10 rounded-xl object-contain bg-white border border-gray-100"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
+                            <Building2 className="w-5 h-5 text-slate-500" />
+                          </div>
+                        )}
+                        <div>
+                          <p className="font-medium text-gray-900 flex items-center gap-2">
+                            {dev.name}
+                            {dev.plan_name && (
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  dev.plan_name === 'Free'
+                                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                }`}
+                              >
+                                {dev.plan_name}
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {dev.groups_count} grupos · {formatDate(dev.created_at)}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                      <div className="flex items-center gap-2">
+                        <ChevronRight className="w-5 h-5 text-gray-400" />
+                      </div>
+                    </Link>
+                  </li>
+                ))
+              )}
+            </ul>
           </div>
+        </div>
 
-          {/* Grupos Recentes */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Grupos Recentes</h3>
-              <Link href="/admin/grupos" className="text-sm text-blue-600 hover:underline">
-                Ver todos
-              </Link>
-            </div>
-            {stats.recentGroups.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">Nenhum grupo cadastrado</p>
-            ) : (
-              <div className="space-y-3">
-                {stats.recentGroups.map((group) => (
-                  <div key={group.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="font-medium text-gray-900">{group.name}</p>
-                      <p className="text-xs text-gray-500">Dev: {group.developer_name}</p>
-                    </div>
-                    <span className="text-xs text-gray-400">
-                      {new Date(group.created_at).toLocaleDateString('pt-BR')}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+        {/* Ações rápidas */}
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/admin/desenvolvedores"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors"
+          >
+            <UserPlus className="w-4 h-4" />
+            Gerenciar desenvolvedores
+          </Link>
+          <Link
+            href="/admin/grupos"
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-200 text-slate-700 text-sm font-medium rounded-xl hover:bg-slate-50 transition-colors"
+          >
+            <FolderPlus className="w-4 h-4" />
+            Gerenciar grupos
+          </Link>
         </div>
       </div>
     </MainLayout>
+  );
+}
+
+const statColors: Record<string, string> = {
+  blue: 'bg-blue-100 text-blue-600',
+  indigo: 'bg-indigo-100 text-indigo-600',
+  violet: 'bg-violet-100 text-violet-600',
+  cyan: 'bg-cyan-100 text-cyan-600',
+};
+
+function StatCard({
+  icon,
+  value,
+  label,
+  color = 'blue',
+}: {
+  icon: React.ReactNode;
+  value: number;
+  label: string;
+  color?: keyof typeof statColors;
+}) {
+  const c = statColors[color] || statColors.blue;
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow">
+      <div className={`w-9 h-9 rounded-lg ${c} flex items-center justify-center`}>
+        {icon}
+      </div>
+      <p className="text-2xl font-bold text-slate-900 mt-2">{value}</p>
+      <p className="text-sm text-slate-500">{label}</p>
+    </div>
   );
 }

@@ -288,12 +288,24 @@ export async function GET(request: Request) {
       let status = lastTransaction?.status || 'Unknown';
       if (status === 'Success') status = 'Completed';
 
+      const startTime = lastTransaction?.startTime;
+      const endTime = lastTransaction?.endTime;
+      let duration: string | undefined;
+      if (startTime && endTime) {
+        const start = new Date(startTime).getTime();
+        const end = new Date(endTime).getTime();
+        const secs = Math.round((end - start) / 1000);
+        duration = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
+      }
+
       return NextResponse.json({
         type: 'dataflow',
         dataflow_id: dataflowId,
         status: status,
-        startTime: lastTransaction?.startTime,
-        endTime: lastTransaction?.endTime,
+        startTime,
+        endTime,
+        lastRefresh: endTime || startTime,
+        duration,
         refreshType: lastTransaction?.refreshType
       });
     }
@@ -313,17 +325,37 @@ export async function GET(request: Request) {
       const statusData = await statusResponse.json();
       const lastRefresh = statusData.value?.[0];
 
-      // Mapear status do dataset
-      let status = lastRefresh?.status || 'Unknown';
-      // "Unknown" no dataset geralmente significa em andamento
-      if (status === 'Unknown') status = 'InProgress';
+      const status = lastRefresh?.status || 'Unknown';
+      const startTime = lastRefresh?.startTime;
+      const endTime = lastRefresh?.endTime;
+      let duration: string | undefined;
+      if (startTime && endTime) {
+        const start = new Date(startTime).getTime();
+        const end = new Date(endTime).getTime();
+        const secs = Math.round((end - start) / 1000);
+        duration = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
+      }
+
+      let error: string | undefined;
+      if (status === 'Failed' && lastRefresh?.serviceExceptionJson) {
+        try {
+          const parsed = typeof lastRefresh.serviceExceptionJson === 'string'
+            ? JSON.parse(lastRefresh.serviceExceptionJson) : lastRefresh.serviceExceptionJson;
+          error = parsed?.error?.message || parsed?.message || 'Erro desconhecido';
+        } catch {
+          error = 'Erro na atualização';
+        }
+      }
 
       return NextResponse.json({
         type: 'dataset',
         dataset_id: datasetId,
         status: status,
-        startTime: lastRefresh?.startTime,
-        endTime: lastRefresh?.endTime,
+        startTime,
+        endTime,
+        lastRefresh: endTime || startTime,
+        duration,
+        error,
         serviceExceptionJson: lastRefresh?.serviceExceptionJson
       });
     }

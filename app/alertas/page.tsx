@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
+import FeatureGate from '@/components/ui/FeatureGate';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
 import { useToast } from '@/contexts/ToastContext';
@@ -25,6 +26,7 @@ import {
   X,
   Copy
 } from 'lucide-react';
+import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
 
 interface Alert {
   id: string;
@@ -79,6 +81,7 @@ function AlertasContent() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
   const [triggeringId, setTriggeringId] = useState<string | null>(null);
   const [cloningId, setCloningId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string>('user');
@@ -280,6 +283,10 @@ function AlertasContent() {
       a.description?.toLowerCase().includes(term)
     );
   });
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm]);
+  const paginatedAlerts = filteredAlerts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const stats = {
     total: alerts.length,
@@ -317,7 +324,7 @@ function AlertasContent() {
 
         {/* Cards de Estatísticas */}
         <div className="grid grid-cols-4 gap-4">
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="card-modern p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
                 <Bell className="text-blue-600" size={20} />
@@ -328,7 +335,7 @@ function AlertasContent() {
               </div>
             </div>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="card-modern p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
                 <CheckCircle className="text-green-600" size={20} />
@@ -339,7 +346,7 @@ function AlertasContent() {
               </div>
             </div>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="card-modern p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
                 <XCircle className="text-gray-600" size={20} />
@@ -350,7 +357,7 @@ function AlertasContent() {
               </div>
             </div>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="card-modern p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
                 <MessageSquare className="text-green-600" size={20} />
@@ -381,7 +388,7 @@ function AlertasContent() {
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
         ) : filteredAlerts.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div className="card-modern p-12 text-center">
             <Bell className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum alerta</h3>
             <p className="text-gray-500 mb-4">Crie alertas para monitorar seus dados automaticamente</p>
@@ -392,124 +399,129 @@ function AlertasContent() {
             </Link>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Status</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Alerta</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Tipo</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Condição</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Frequência</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Última Verificação</th>
-                  <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredAlerts.map((alertItem) => (
-                  <tr key={alertItem.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => toggleEnabled(alertItem)}
-                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                          alertItem.is_enabled
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-gray-100 text-gray-600'
-                        }`}
-                      >
-                        {alertItem.is_enabled ? <Play size={12} /> : <Pause size={12} />}
-                        {alertItem.is_enabled ? 'Ativo' : 'Inativo'}
-                      </button>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div>
-                        <p className="font-medium text-gray-900">{alertItem.name}</p>
-                        {alertItem.description && (
-                          <p className="text-sm text-gray-500 truncate max-w-xs">{alertItem.description}</p>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                        alertTypeColors[alertItem.alert_type] || 'bg-gray-100 text-gray-600'
-                      }`}>
-                        <AlertTriangle size={12} />
-                        {alertTypeLabels[alertItem.alert_type] || alertItem.alert_type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      {alertItem.condition ? (
-                        <span>
-                          {conditionLabels[alertItem.condition] || alertItem.condition} {formatThreshold(alertItem.threshold)}
-                        </span>
-                      ) : (
-                        '-'
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Calendar size={14} />
-                        {frequencyLabels[alertItem.check_frequency || ''] || alertItem.check_frequency || '-'}
-                        {alertItem.check_times && alertItem.check_times.length > 0 && (
-                          <span className="text-gray-400">
-                            ({alertItem.check_times.join(', ')})
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      <div className="flex items-center gap-1">
-                        <Clock size={14} />
-                        {formatDate(alertItem.last_checked_at)}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => triggerAlert(alertItem)}
-                          disabled={triggeringId === alertItem.id || !alertItem.is_enabled}
-                          className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
-                          title="Disparar agora"
-                        >
-                          {triggeringId === alertItem.id ? (
-                            <Loader2 size={16} className="animate-spin" />
-                          ) : (
-                            <Send size={16} />
-                          )}
-                        </button>
-                        <button
-                          onClick={() => cloneAlert(alertItem)}
-                          disabled={cloningId === alertItem.id}
-                          className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50"
-                          title="Clonar alerta"
-                        >
-                          {cloningId === alertItem.id ? (
-                            <Loader2 size={16} className="animate-spin" />
-                          ) : (
-                            <Copy size={16} />
-                          )}
-                        </button>
-                        <Link
-                          href={`/alertas/${alertItem.id}`}
-                          className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="Editar"
-                        >
-                          <Edit size={16} />
-                        </Link>
-                        <button
-                          onClick={() => handleDelete(alertItem.id, alertItem.name)}
-                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Excluir"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
+          <>
+            <div className="overflow-hidden">
+              <table className="w-full table-modern">
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Alerta</th>
+                    <th>Tipo</th>
+                    <th>Condição</th>
+                    <th>Frequência</th>
+                    <th>Última Verificação</th>
+                    <th className="text-right">Ações</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {paginatedAlerts.map((alertItem) => (
+                    <tr key={alertItem.id}>
+                      <td>
+                        <button
+                          onClick={() => toggleEnabled(alertItem)}
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                            alertItem.is_enabled
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {alertItem.is_enabled ? <Play size={12} /> : <Pause size={12} />}
+                          {alertItem.is_enabled ? 'Ativo' : 'Inativo'}
+                        </button>
+                      </td>
+                      <td>
+                        <div>
+                          <p className="font-medium text-gray-900">{alertItem.name}</p>
+                          {alertItem.description && (
+                            <p className="text-sm text-gray-500 truncate max-w-xs">{alertItem.description}</p>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                          alertTypeColors[alertItem.alert_type] || 'bg-gray-100 text-gray-600'
+                        }`}>
+                          <AlertTriangle size={12} />
+                          {alertTypeLabels[alertItem.alert_type] || alertItem.alert_type}
+                        </span>
+                      </td>
+                      <td className="text-sm text-gray-600">
+                        {alertItem.condition ? (
+                          <span>
+                            {conditionLabels[alertItem.condition] || alertItem.condition} {formatThreshold(alertItem.threshold)}
+                          </span>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <Calendar size={14} />
+                          {frequencyLabels[alertItem.check_frequency || ''] || alertItem.check_frequency || '-'}
+                          {alertItem.check_times && alertItem.check_times.length > 0 && (
+                            <span className="text-gray-400">
+                              ({alertItem.check_times.join(', ')})
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="text-sm text-gray-500">
+                        <div className="flex items-center gap-1">
+                          <Clock size={14} />
+                          {formatDate(alertItem.last_checked_at)}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => triggerAlert(alertItem)}
+                            disabled={triggeringId === alertItem.id || !alertItem.is_enabled}
+                            className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
+                            title="Disparar agora"
+                          >
+                            {triggeringId === alertItem.id ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : (
+                              <Send size={16} />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => cloneAlert(alertItem)}
+                            disabled={cloningId === alertItem.id}
+                            className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50"
+                            title="Clonar alerta"
+                          >
+                            {cloningId === alertItem.id ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : (
+                              <Copy size={16} />
+                            )}
+                          </button>
+                          <Link
+                            href={`/alertas/${alertItem.id}`}
+                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Editar"
+                          >
+                            <Edit size={16} />
+                          </Link>
+                          <button
+                            onClick={() => handleDelete(alertItem.id, alertItem.name)}
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Excluir"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-4">
+              <Pagination totalItems={filteredAlerts.length} currentPage={page} onPageChange={setPage} pageSize={PAGE_SIZE} />
+            </div>
+          </>
         )}
       </div>
 
@@ -583,7 +595,9 @@ function AlertasContent() {
 export default function AlertasPage() {
   return (
     <MainLayout>
-      <AlertasContent />
+      <FeatureGate feature="alerts">
+        <AlertasContent />
+      </FeatureGate>
     </MainLayout>
   );
 }

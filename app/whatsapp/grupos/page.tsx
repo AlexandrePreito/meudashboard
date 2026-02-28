@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
+import FeatureGate from '@/components/ui/FeatureGate';
 import Button from '@/components/ui/Button';
 import DatasetSelector from '@/components/whatsapp/DatasetSelector';
 import { useMenu } from '@/contexts/MenuContext';
@@ -317,7 +318,7 @@ function GruposContent() {
             <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
           </div>
         ) : filteredGroups.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div className="card-modern p-12 text-center">
             <UsersRound className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum grupo autorizado</h3>
             <p className="text-gray-500 mb-4">Autorize grupos do WhatsApp para interagir com o sistema</p>
@@ -328,7 +329,7 @@ function GruposContent() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredGroups.map((group) => (
-              <div key={group.id} className="bg-white rounded-xl border border-gray-200 p-5">
+              <div key={group.id} className="card-modern p-5">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
                     <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
@@ -532,7 +533,9 @@ function GruposContent() {
 export default function GruposPage() {
   return (
     <MainLayout>
-      <GruposContent />
+      <FeatureGate feature="whatsapp">
+        <GruposContent />
+      </FeatureGate>
     </MainLayout>
   );
 }

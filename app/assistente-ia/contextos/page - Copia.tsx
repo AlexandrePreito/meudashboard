@@ -398,7 +398,7 @@ function ContextosContent() {
           </div>
 
           {/* Seleção de Dataset */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="card-modern p-5">
             <label className="block text-sm font-medium text-gray-700 mb-2">Dataset</label>
             <select
               value={selectedDataset}
@@ -420,7 +420,7 @@ function ContextosContent() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Documentação Chat */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <div className="card-modern p-5">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3 flex-1">
                     <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
@@ -491,7 +491,7 @@ function ContextosContent() {
               </div>
 
               {/* Base de DAX */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <div className="card-modern p-5">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3 flex-1">
                     <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">

@@ -17,6 +17,7 @@ import {
   Code,
   Trash2
 } from 'lucide-react';
+import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
 
 interface User {
   id: string;
@@ -36,6 +37,7 @@ export default function AdminUsuariosPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState<string>('all');
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     loadUsers();
@@ -139,6 +141,10 @@ export default function AdminUsuariosPage() {
     
     return matchesSearch;
   });
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, filterRole]);
+  const paginatedUsers = filteredUsers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <MainLayout>
@@ -150,7 +156,7 @@ export default function AdminUsuariosPage() {
         </div>
 
         {/* Filtros */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="card-modern p-4">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -180,29 +186,29 @@ export default function AdminUsuariosPage() {
 
         {/* Estatisticas */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+          <div className="card-modern p-4 text-center">
             <p className="text-2xl font-bold text-gray-900">{users.length}</p>
             <p className="text-sm text-gray-500">Total</p>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+          <div className="card-modern p-4 text-center">
             <p className="text-2xl font-bold text-amber-600">
               {users.filter(u => u.is_master).length}
             </p>
             <p className="text-sm text-gray-500">Masters</p>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+          <div className="card-modern p-4 text-center">
             <p className="text-2xl font-bold text-purple-600">
               {users.filter(u => u.is_developer).length}
             </p>
             <p className="text-sm text-gray-500">Devs</p>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+          <div className="card-modern p-4 text-center">
             <p className="text-2xl font-bold text-blue-600">
               {users.filter(u => u.role === 'admin').length}
             </p>
             <p className="text-sm text-gray-500">Admins</p>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+          <div className="card-modern p-4 text-center">
             <p className="text-2xl font-bold text-green-600">
               {users.filter(u => u.is_active !== false).length}
             </p>
@@ -211,7 +217,7 @@ export default function AdminUsuariosPage() {
         </div>
 
         {/* Lista */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <Loader2 className="w-8 h-8 animate-spin text-green-600" />
@@ -222,22 +228,23 @@ export default function AdminUsuariosPage() {
               <p>Nenhum usuario encontrado</p>
             </div>
           ) : (
+            <>
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
+              <table className="w-full table-modern">
+                <thead>
                   <tr>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Usuario</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Perfil</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Grupos</th>
-                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Status</th>
-                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Criado em</th>
-                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Acoes</th>
+                    <th>Usuario</th>
+                    <th>Perfil</th>
+                    <th>Grupos</th>
+                    <th className="text-center">Status</th>
+                    <th className="text-center">Criado em</th>
+                    <th className="text-center">Acoes</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {filteredUsers.map((user) => (
-                    <tr key={user.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
+                <tbody>
+                  {paginatedUsers.map((user) => (
+                    <tr key={user.id}>
+                      <td>
                         <div>
                           <p className="font-medium text-gray-900">{user.full_name || 'Sem nome'}</p>
                           <p className="text-sm text-gray-500 flex items-center gap-1">
@@ -294,6 +301,10 @@ export default function AdminUsuariosPage() {
                 </tbody>
               </table>
             </div>
+            <div className="mt-4">
+              <Pagination totalItems={filteredUsers.length} currentPage={page} onPageChange={setPage} pageSize={PAGE_SIZE} />
+            </div>
+            </>
           )}
         </div>
       </div>

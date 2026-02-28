@@ -2,32 +2,65 @@
 
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
-import Button from '@/components/ui/Button';
 import { useToast } from '@/contexts/ToastContext';
-import { Building2, Palette, Image, Save, Loader2, Upload } from 'lucide-react';
+import { User, Globe, Shield, CreditCard, Loader2 } from 'lucide-react';
 
-interface DeveloperProfile {
+import TabPerfil from './components/TabPerfil';
+import TabSubdominio from './components/TabSubdominio';
+import TabSeguranca from './components/TabSeguranca';
+import TabPlano from './components/TabPlano';
+
+type TabId = 'perfil' | 'subdominio' | 'seguranca' | 'plano';
+
+interface DeveloperData {
   id: string;
   name: string;
+  email?: string;
+  phone?: string;
   logo_url: string | null;
   primary_color: string | null;
+  subdomain: string | null;
+  subdomain_enabled: boolean;
+  subdomain_approved: boolean;
+  subdomain_allowed?: boolean;
+  landing_title: string | null;
+  landing_description: string | null;
+  landing_background_url: string | null;
 }
+
+const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
+  { id: 'perfil', label: 'Perfil', icon: <User size={18} /> },
+  { id: 'subdominio', label: 'Subdomínio', icon: <Globe size={18} /> },
+  { id: 'seguranca', label: 'Segurança', icon: <Shield size={18} /> },
+  { id: 'plano', label: 'Plano', icon: <CreditCard size={18} /> },
+];
 
 export default function DevPerfilPage() {
   const toast = useToast();
+  const [activeTab, setActiveTab] = useState<TabId>('perfil');
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  const [profile, setProfile] = useState<DeveloperProfile | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
+  const [developer, setDeveloper] = useState<DeveloperData | null>(null);
+
+  const [subdomainState, setSubdomainState] = useState({
+    subdomain: '',
+    subdomain_enabled: false,
+    subdomain_approved: false,
+    landing_title: '',
+    landing_description: '',
+    landing_background_url: '',
     logo_url: '',
-    primary_color: '#0ea5e9'
+    primary_color: '#3b82f6',
+  });
+
+  const [quotas, setQuotas] = useState({
+    groups: { used: 0, limit: 1 },
+    viewers: { used: 0, limit: 10 },
+    dashboards: { used: 0, limit: 5 },
   });
 
   useEffect(() => {
     loadProfile();
+    loadQuotas();
   }, []);
 
   async function loadProfile() {
@@ -35,13 +68,18 @@ export default function DevPerfilPage() {
       const res = await fetch('/api/dev/profile');
       if (res.ok) {
         const data = await res.json();
-        setProfile(data.developer);
-        setFormData({
-          name: data.developer.name || '',
-          logo_url: data.developer.logo_url || '',
-          primary_color: data.developer.primary_color || '#0ea5e9'
+        const dev = data.developer;
+        setDeveloper(dev);
+        setSubdomainState({
+          subdomain: dev.subdomain || '',
+          subdomain_enabled: !!dev.subdomain_enabled,
+          subdomain_approved: !!dev.subdomain_approved,
+          landing_title: dev.landing_title || '',
+          landing_description: dev.landing_description || '',
+          landing_background_url: dev.landing_background_url || '',
+          logo_url: dev.logo_url || '',
+          primary_color: dev.primary_color || '#3b82f6',
         });
-        setLogoPreview(data.developer.logo_url || null);
       }
     } catch (error) {
       console.error('Erro ao carregar perfil:', error);
@@ -51,58 +89,21 @@ export default function DevPerfilPage() {
     }
   }
 
-  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploading(true);
+  async function loadQuotas() {
     try {
-      const formDataUpload = new FormData();
-      formDataUpload.append('file', file);
-      formDataUpload.append('type', 'developer');
-
-      const res = await fetch('/api/upload/logo', {
-        method: 'POST',
-        body: formDataUpload
-      });
-
+      const res = await fetch('/api/dev/dashboard-stats');
       if (res.ok) {
         const data = await res.json();
-        setFormData({ ...formData, logo_url: data.url });
-        setLogoPreview(data.url);
-        toast.success('Logo enviada com sucesso!');
-      } else {
-        const data = await res.json();
-        toast.error(data.error || 'Erro no upload');
+        const stats = data.stats || {};
+        const limits = data.limits || {};
+        setQuotas({
+          groups: { used: stats.groups ?? 0, limit: limits.maxGroups ?? 1 },
+          viewers: { used: stats.users ?? 0, limit: limits.maxUsers ?? 10 },
+          dashboards: { used: stats.screens ?? 0, limit: limits.maxScreens ?? 5 },
+        });
       }
-    } catch (err) {
-      toast.error('Erro ao fazer upload');
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function handleSave() {
-    setSaving(true);
-    try {
-      const res = await fetch('/api/dev/profile', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-
-      if (res.ok) {
-        toast.success('Perfil atualizado com sucesso!');
-        // Recarregar pagina para atualizar header
-        window.location.reload();
-      } else {
-        const data = await res.json();
-        toast.error(data.error || 'Erro ao salvar');
-      }
-    } catch (error) {
-      toast.error('Erro ao salvar perfil');
-    } finally {
-      setSaving(false);
+    } catch {
+      // Silencioso — cotas são complementares
     }
   }
 
@@ -110,135 +111,65 @@ export default function DevPerfilPage() {
     return (
       <MainLayout>
         <div className="flex items-center justify-center min-h-[60vh]">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+            <p className="text-sm text-gray-400">Carregando perfil...</p>
+          </div>
         </div>
       </MainLayout>
     );
   }
 
+  if (!developer) return null;
+
   return (
     <MainLayout>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Perfil do Desenvolvedor</h1>
-            <p className="text-gray-500 mt-1">Configure a identidade visual da sua software house</p>
-          </div>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Meu Perfil</h1>
+          <p className="text-gray-500 mt-1">Gerencie suas informações, subdomínio e segurança</p>
         </div>
 
-        {/* Formulario */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-6">
-          {/* Nome */}
-          <div>
-            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-              <Building2 size={16} />
-              Nome da Empresa
-            </label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Minha Software House"
+        <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-all ${
+                activeTab === tab.id
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-500 hover:text-gray-700 border-b-2 border-transparent'
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div>
+          {activeTab === 'perfil' && (
+            <TabPerfil
+              profile={{
+                name: developer.name,
+                email: developer.email || '',
+                phone: developer.phone,
+                logo_url: developer.logo_url || undefined,
+              }}
+              onSaved={() => loadProfile()}
             />
-          </div>
-
-          {/* Logo Upload */}
-          <div>
-            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-              <Image size={16} />
-              Logo da Empresa
-            </label>
-            <div className="flex items-center gap-4">
-              <div className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden bg-gray-50">
-                {logoPreview ? (
-                  <img src={logoPreview} alt="Logo" className="w-full h-full object-contain" />
-                ) : (
-                  <Building2 size={24} className="text-gray-400" />
-                )}
-              </div>
-              <div>
-                <label className="cursor-pointer">
-                  <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
-                    {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-                    {uploading ? 'Enviando...' : 'Escolher imagem'}
-                  </div>
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/svg+xml"
-                    onChange={handleLogoUpload}
-                    disabled={uploading}
-                    className="hidden"
-                  />
-                </label>
-                <p className="text-xs text-gray-500 mt-1">JPG, PNG, WebP ou SVG. Max 2MB.</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Cor Primaria */}
-          <div>
-            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-              <Palette size={16} />
-              Cor Primaria
-            </label>
-            <div className="flex items-center gap-4">
-              <input
-                type="color"
-                value={formData.primary_color}
-                onChange={(e) => setFormData({ ...formData, primary_color: e.target.value })}
-                className="w-12 h-12 rounded-lg border border-gray-300 cursor-pointer"
-              />
-              <input
-                type="text"
-                value={formData.primary_color}
-                onChange={(e) => setFormData({ ...formData, primary_color: e.target.value })}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
-                placeholder="#0ea5e9"
-              />
-            </div>
-            <p className="text-xs text-gray-500 mt-2">
-              Esta cor sera usada no header e elementos de destaque
-            </p>
-          </div>
-
-          {/* Preview */}
-          <div className="border-t pt-6">
-            <p className="text-sm font-medium text-gray-700 mb-3">Preview do Header:</p>
-            <div 
-              className="flex items-center gap-3 p-4 rounded-lg"
-              style={{ backgroundColor: formData.primary_color + '10' }}
-            >
-              {logoPreview ? (
-                <img src={logoPreview} alt="Logo" className="h-8 w-auto" />
-              ) : (
-                <div 
-                  className="w-8 h-8 rounded-lg flex items-center justify-center"
-                  style={{ backgroundColor: formData.primary_color }}
-                >
-                  <Building2 size={16} className="text-white" />
-                </div>
-              )}
-              <span 
-                className="text-lg font-bold"
-                style={{ color: formData.primary_color }}
-              >
-                {formData.name || 'Minha Software House'}
-              </span>
-            </div>
-          </div>
-
-          {/* Botao Salvar */}
-          <div className="flex justify-end pt-4">
-            <Button
-              onClick={handleSave}
-              disabled={saving}
-              icon={saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-            >
-              {saving ? 'Salvando...' : 'Salvar'}
-            </Button>
-          </div>
+          )}
+          {activeTab === 'subdominio' && (
+            <TabSubdominio
+              data={subdomainState}
+              developerName={developer.name}
+              subdomainAllowed={developer.subdomain_allowed}
+              onChange={setSubdomainState}
+              onSaved={() => loadProfile()}
+            />
+          )}
+          {activeTab === 'seguranca' && <TabSeguranca />}
+          {activeTab === 'plano' && <TabPlano quotas={quotas} />}
         </div>
       </div>
     </MainLayout>

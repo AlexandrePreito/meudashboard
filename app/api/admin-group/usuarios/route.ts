@@ -80,9 +80,37 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Telas do grupo: powerbi_dashboard_screens + powerbi_screen_users
+    const { data: groupScreens } = await supabase
+      .from('powerbi_dashboard_screens')
+      .select('id, title')
+      .eq('company_group_id', groupId);
+    const screenIdToTitle = new Map<string, string>();
+    groupScreens?.forEach((s: { id: string; title?: string }) => {
+      screenIdToTitle.set(s.id, s.title || s.id);
+    });
+    const groupScreenIds = groupScreens?.map((s: { id: string }) => s.id) || [];
+
+    let screenUsers: { screen_id: string; user_id: string }[] | null = null;
+    if (groupScreenIds.length > 0) {
+      const r = await supabase
+        .from('powerbi_screen_users')
+        .select('screen_id, user_id')
+        .in('user_id', userIds)
+        .in('screen_id', groupScreenIds);
+      screenUsers = r.data;
+    }
+    const userScreenIdsMap = new Map<string, string[]>();
+    screenUsers?.forEach((r: { screen_id: string; user_id: string }) => {
+      const list = userScreenIdsMap.get(r.user_id) || [];
+      if (!list.includes(r.screen_id)) list.push(r.screen_id);
+      userScreenIdsMap.set(r.user_id, list);
+    });
+
     // Formatar dados
     const users = memberships.map(m => {
       const userData = usersMap.get(m.user_id);
+      const screenIds = userScreenIdsMap.get(m.user_id) || [];
       return {
         id: userData?.id || m.user_id,
         email: userData?.email || '',
@@ -95,6 +123,8 @@ export async function GET(request: NextRequest) {
         can_use_ai: m.can_use_ai ?? false,
         can_refresh: m.can_refresh ?? false,
         created_at: userData?.created_at || m.created_at,
+        screen_ids: screenIds,
+        screen_titles: screenIds.map((sid: string) => screenIdToTitle.get(sid) || sid),
       };
     });
 

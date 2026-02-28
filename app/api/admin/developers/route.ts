@@ -22,22 +22,31 @@ export async function GET(request: NextRequest) {
 
     const supabase = getSupabase();
 
+    // Buscar developers com plan_id (sem join para evitar FK ambígua)
     const { data: developers, error } = await supabase
       .from('developers')
-      .select(`
-        *,
-        plans:plan_id (name)
-      `)
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    // Buscar contagens
+    // Buscar planos por ID (apenas os referenciados)
+    const planIds = [...new Set((developers || []).map((d) => d.plan_id).filter(Boolean))];
+    let planMap: Record<string, { name: string }> = {};
+    if (planIds.length > 0) {
+      const { data: plansById } = await supabase
+        .from('developer_plans')
+        .select('id, name')
+        .in('id', planIds);
+      planMap = Object.fromEntries((plansById || []).map((p) => [String(p.id), p]));
+    }
+
+    // Buscar contagens (user_group_membership para usuários)
     const developersWithCounts = await Promise.all(
       (developers || []).map(async (dev) => {
         const { count: groupsCount } = await supabase
           .from('company_groups')
-          .select('*', { count: 'exact', head: true })
+          .select('id', { count: 'exact', head: true })
           .eq('developer_id', dev.id);
 
         const { data: groups } = await supabase
@@ -47,24 +56,37 @@ export async function GET(request: NextRequest) {
 
         let usersCount = 0;
         if (groups && groups.length > 0) {
-          const groupIds = groups.map(g => g.id);
+          const groupIds = groups.map((g) => g.id);
           const { count } = await supabase
-            .from('user_groups')
-            .select('*', { count: 'exact', head: true })
-            .in('group_id', groupIds);
+            .from('user_group_membership')
+            .select('id', { count: 'exact', head: true })
+            .in('company_group_id', groupIds)
+            .eq('is_active', true);
           usersCount = count || 0;
         }
 
+        const plan = dev.plan_id ? planMap[String(dev.plan_id)] : null;
         return {
           ...dev,
-          plan_name: dev.plans?.name || null,
+          plan_name: plan?.name || 'Free',
+          plan_id: dev.plan_id,
           groups_count: groupsCount || 0,
           users_count: usersCount
         };
       })
     );
 
-    return NextResponse.json({ developers: developersWithCounts });
+    // Planos disponíveis (ativos) para selects no UI
+    const { data: plans } = await supabase
+      .from('developer_plans')
+      .select('id, name, max_companies, max_users, max_powerbi_screens, max_whatsapp_messages_per_month, max_ai_alerts_per_month, max_ai_questions_per_day, ai_enabled')
+      .eq('is_active', true)
+      .order('display_order', { ascending: true });
+
+    return NextResponse.json({
+      developers: developersWithCounts,
+      plans: plans || []
+    });
   } catch (error: any) {
     console.error('Erro ao listar desenvolvedores:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

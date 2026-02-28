@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import ScreenOrderModal from '@/components/admin/ScreenOrderModal';
+import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
 
 interface User {
   id: string;
@@ -21,6 +22,8 @@ interface User {
   can_use_ai: boolean;
   can_refresh: boolean;
   created_at: string;
+  screen_ids?: string[];
+  screen_titles?: string[];
 }
 
 export default function AdminUsuariosPage() {
@@ -31,6 +34,7 @@ export default function AdminUsuariosPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
@@ -116,6 +120,10 @@ export default function AdminUsuariosPage() {
     u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
     u.email?.toLowerCase().includes(search.toLowerCase())
   );
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+  const paginatedUsers = filteredUsers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const getRoleBadge = (role: string) => {
     const colors: any = {
@@ -161,7 +169,7 @@ export default function AdminUsuariosPage() {
         </div>
 
       {/* Search */}
-      <div className="bg-white rounded-xl border-2 border-gray-100 p-4">
+      <div className="card-modern p-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input
@@ -183,7 +191,7 @@ export default function AdminUsuariosPage() {
           </div>
         </div>
       ) : filteredUsers.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-xl border-2 border-gray-100">
+        <div className="text-center py-12 p-8 card-modern">
           <Users className="w-16 h-16 text-gray-200 mx-auto mb-4" />
           <p className="text-gray-500 font-medium">Nenhum usuário encontrado</p>
           <p className="text-sm text-gray-400 mt-1">
@@ -191,29 +199,22 @@ export default function AdminUsuariosPage() {
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border-2 border-gray-100 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Usuário
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Função
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Ações
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
+        <>
+        <div className="overflow-x-auto">
+          <table className="w-full table-modern">
+            <thead>
+              <tr>
+                <th>Usuário</th>
+                <th>Função</th>
+                <th>Telas</th>
+                <th className="text-center">Status</th>
+                <th className="text-center">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedUsers.map((user) => (
+                <tr key={user.id}>
+                  <td>
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
                           <span className="text-blue-600 font-semibold text-sm">
@@ -226,10 +227,32 @@ export default function AdminUsuariosPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td>
                       {getRoleBadge(user.role)}
                     </td>
-                    <td className="px-6 py-4 text-center">
+                    <td>
+                      {user.screen_titles && user.screen_titles.length > 0 ? (
+                        user.screen_titles.length <= 3 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {user.screen_titles.map((t) => (
+                              <span key={t} className="inline-flex px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700">
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span
+                            className="inline-flex px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700"
+                            title={user.screen_titles.join(', ')}
+                          >
+                            {user.screen_titles.length} telas
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-gray-400 text-sm">—</span>
+                      )}
+                    </td>
+                    <td className="text-center">
                       {user.is_active ? (
                         <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-medium">
                           <UserCheck className="w-3 h-3" />
@@ -242,7 +265,7 @@ export default function AdminUsuariosPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td>
                       <div className="flex items-center justify-center gap-2">
                         <button
                           onClick={() => openOrderModal(user)}
@@ -279,7 +302,10 @@ export default function AdminUsuariosPage() {
               </tbody>
             </table>
           </div>
-        </div>
+          <div className="mt-4">
+            <Pagination totalItems={filteredUsers.length} currentPage={page} onPageChange={setPage} pageSize={PAGE_SIZE} />
+          </div>
+        </>
       )}
 
         {/* Modal de Ordem */}

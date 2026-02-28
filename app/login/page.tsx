@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Eye, EyeOff, LogIn } from 'lucide-react';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import { useSubdomain } from '@/hooks/useSubdomain';
 
 // Componente de barras animadas
 function AnimatedBars() {
@@ -78,12 +79,15 @@ function AnimatedLineChart() {
 
 export default function LoginPage() {
   const router = useRouter();
+  const { developerInfo, isSubdomain } = useSubdomain();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
+
+  const primaryColor = isSubdomain && developerInfo?.primary_color ? developerInfo.primary_color : undefined;
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -209,7 +213,22 @@ export default function LoginPage() {
         </div>
 
         {/* Lado direito - Formulário */}
-        <div className={`w-full lg:w-1/2 flex items-center justify-center p-8 bg-white ${transitioning ? 'form-transition' : ''}`}>
+        <div className={`w-full lg:w-1/2 flex flex-col items-center justify-center p-8 bg-white ${transitioning ? 'form-transition' : ''}`}>
+          {isSubdomain && developerInfo && (
+            <div className="mb-6 flex flex-col items-center">
+              {developerInfo.logo_url ? (
+                <img src={developerInfo.logo_url} alt={developerInfo.name} className="h-12 w-auto object-contain mb-2" />
+              ) : (
+                <div
+                  className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-lg font-bold mb-2"
+                  style={{ backgroundColor: primaryColor || '#3B82F6' }}
+                >
+                  {developerInfo.name?.charAt(0)?.toUpperCase()}
+                </div>
+              )}
+              <span className="text-sm text-gray-500">{developerInfo.name}</span>
+            </div>
+          )}
           <div className="w-full max-w-md">
             {/* Header */}
             <div className="mb-8">
@@ -277,7 +296,8 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-slate-900 text-white py-3.5 px-4 rounded-xl font-medium hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 disabled:bg-slate-400 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                className="w-full text-white py-3.5 px-4 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                style={primaryColor ? { backgroundColor: primaryColor } : { backgroundColor: '#0f172a' }}
               >
                 {loading ? (
                   <>
@@ -293,8 +313,20 @@ export default function LoginPage() {
               </button>
             </form>
 
+            {/* Link para cadastro — esconder em subdomínio (cadastro só no domínio principal) */}
+            {!isSubdomain && (
+              <div className="mt-6 text-center">
+                <p className="text-sm text-gray-500">
+                  Não tem conta?{' '}
+                  <Link href="/cadastro" className="text-blue-600 hover:text-blue-700 font-medium transition-colors">
+                    Criar conta grátis
+                  </Link>
+                </p>
+              </div>
+            )}
+
             {/* Footer discreto */}
-            <div className="mt-12 pt-6 border-t border-gray-100">
+            <div className="mt-6 pt-6 border-t border-gray-100">
               <p className="text-center text-xs text-gray-400">
                 Ambiente seguro com criptografia de dados
               </p>

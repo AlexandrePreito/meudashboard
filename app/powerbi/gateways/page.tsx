@@ -201,7 +201,7 @@ export default function GatewaysPage() {
 
         {/* Cards de Resumo */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+          <div className="card-modern p-5">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Total</p>
@@ -213,7 +213,7 @@ export default function GatewaysPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+          <div className="card-modern p-5">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Online</p>
@@ -225,7 +225,7 @@ export default function GatewaysPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+          <div className="card-modern p-5">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Offline</p>
@@ -237,7 +237,7 @@ export default function GatewaysPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+          <div className="card-modern p-5">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Parcial</p>
@@ -256,7 +256,7 @@ export default function GatewaysPage() {
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
         ) : error ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+          <div className="card-modern p-8 text-center">
             <XCircle className="w-12 h-12 text-red-300 mx-auto mb-4" />
             <p className="text-gray-500">{error}</p>
             <Button onClick={loadData}>
@@ -264,7 +264,7 @@ export default function GatewaysPage() {
             </Button>
           </div>
         ) : gateways.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div className="card-modern p-12 text-center">
             <Server className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum gateway encontrado</h3>
             <p className="text-gray-500">Configure gateways no Power BI para monitorá-los aqui.</p>
@@ -275,7 +275,7 @@ export default function GatewaysPage() {
               const isExpanded = expandedGateway === gateway.id;
               
               return (
-                <div key={gateway.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                <div key={gateway.id} className="card-modern overflow-hidden">
                   {/* Header do Gateway */}
                   <div
                     className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors"

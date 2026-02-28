@@ -19,17 +19,48 @@
   }
 }
 
-/* Botões com cor do tema */
+/* Botões padronizados (FASE 6) */
 .btn-primary {
+  @apply rounded-lg px-4 py-2 text-sm font-medium transition-colors duration-150 focus:ring-2 focus:ring-blue-500/20;
   background-color: var(--color-primary);
   color: white;
-  transition: background-color 0.2s;
 }
-.btn-primary:hover {
+.btn-primary:hover:not(:disabled) {
   background-color: var(--color-primary-hover);
 }
 .btn-primary:disabled {
   opacity: 0.5;
+}
+.btn-secondary {
+  @apply bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg px-4 py-2 text-sm font-medium transition-colors duration-150 focus:ring-2 focus:ring-blue-500/20;
+}
+.btn-danger {
+  @apply bg-red-50 hover:bg-red-100 text-red-600 rounded-lg px-4 py-2 text-sm font-medium transition-colors duration-150 focus:ring-2 focus:ring-blue-500/20;
+}
+.btn-ghost {
+  @apply hover:bg-gray-100 text-gray-600 rounded-lg p-2 transition-colors duration-150 focus:ring-2 focus:ring-blue-500/20;
+}
+
+/* Tabelas modernas (FASE 6) */
+.table-modern {
+  @apply rounded-xl overflow-hidden shadow-sm border border-gray-100;
+}
+.table-modern thead th {
+  @apply px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500;
+}
+.table-modern tbody tr {
+  @apply divide-y divide-gray-100 hover:bg-gray-50 transition-colors;
+}
+.table-modern tbody td {
+  @apply px-4 py-3;
+}
+
+/* Cards modernos (FASE 6) */
+.card-modern {
+  @apply bg-white rounded-xl border border-gray-100 shadow-sm transition-all;
+}
+.card-modern-clickable:hover {
+  @apply shadow-md border-gray-200;
 }
 
 /* Texto com cor do tema */

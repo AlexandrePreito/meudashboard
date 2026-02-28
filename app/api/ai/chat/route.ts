@@ -9,14 +9,16 @@ import {
 } from '@/lib/assistente-ia/documentation-parser';
 import { executeDaxQuery } from '@/lib/ai/dax-engine';
 import { identifyQuestionIntent, getWorkingQueries, saveQueryResult, isFailureResponse, identifyFailureReason } from '@/lib/ai/learning';
+import { resolveAIContextForGroup, getDeveloperIdForGroup } from '@/lib/shared-resources';
 
-// Função para buscar contexto do modelo (com fallbacks por connection, dataset e grupo)
+// Função para buscar contexto do modelo (com fallbacks por connection, dataset, grupo e developer)
 async function getModelContext(
-  supabase: any, 
-  connectionId: string, 
+  supabase: any,
+  connectionId: string,
   userQuestion?: string,
   datasetId?: string | null,
-  companyGroupId?: string | null
+  companyGroupId?: string | null,
+  developerId?: string | null
 ): Promise<string | null> {
   try {
     let context = null;
@@ -29,7 +31,7 @@ async function getModelContext(
       .eq('is_active', true)
       .limit(1)
       .maybeSingle();
-    
+
     context = ctx1;
 
     // 2. Fallback: por dataset_id + company_group_id (como WhatsApp e treinamento salvam)
@@ -42,11 +44,17 @@ async function getModelContext(
         .eq('is_active', true)
         .limit(1)
         .maybeSingle();
-      
+
       context = ctx2;
     }
 
-    // 3. Fallback: só por dataset_id
+    // 3. Fallback: herança do developer (recursos compartilhados)
+    if (!context && datasetId && companyGroupId && developerId) {
+      const resolved = await resolveAIContextForGroup(companyGroupId, developerId, datasetId);
+      if (resolved) context = resolved;
+    }
+
+    // 4. Fallback: só por dataset_id
     if (!context && datasetId) {
       const { data: ctx3 } = await supabase
         .from('ai_model_contexts')
@@ -55,7 +63,7 @@ async function getModelContext(
         .eq('is_active', true)
         .limit(1)
         .maybeSingle();
-      
+
       context = ctx3;
     }
 
@@ -189,8 +197,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Grupo não encontrado' }, { status: 400 });
     }
 
-    // Buscar contexto do modelo (com fallbacks por connection, dataset e grupo)
-    const modelContext = connectionId ? await getModelContext(supabase, connectionId, message, datasetId, companyGroupId) : null;
+    const developerId = companyGroupId ? await getDeveloperIdForGroup(companyGroupId) : null;
+
+    // Buscar contexto do modelo (com fallbacks por connection, dataset, grupo e developer)
+    const modelContext = connectionId ? await getModelContext(supabase, connectionId, message, datasetId, companyGroupId, developerId) : null;
 
     // Validar limite diário de mensagens do developer
     const { data: developerData } = await supabase

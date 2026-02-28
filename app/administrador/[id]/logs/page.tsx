@@ -303,7 +303,7 @@ export default function AdminLogsPage() {
         </div>
 
         {/* Filtros */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="card-modern p-6">
           <div className="flex items-center gap-2 mb-4">
             <Filter className="w-5 h-5 text-gray-500" />
             <h2 className="text-lg font-semibold text-gray-900">Filtros</h2>
@@ -409,7 +409,7 @@ export default function AdminLogsPage() {
             </div>
           </div>
         ) : logs.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div className="card-modern p-12 text-center">
             <FileText className="w-16 h-16 text-gray-200 mx-auto mb-4" />
             <p className="text-gray-500 font-medium">Nenhum log encontrado</p>
             <p className="text-sm text-gray-400 mt-1">
@@ -420,10 +420,10 @@ export default function AdminLogsPage() {
           </div>
         ) : (
           <>
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+                <table className="w-full table-modern">
+                  <thead>
                     <tr>
                       <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Usuário
@@ -506,7 +506,7 @@ export default function AdminLogsPage() {
 
             {/* Paginação */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between bg-white rounded-xl border border-gray-200 px-6 py-4">
+              <div className="flex items-center justify-between card-modern px-6 py-4">
                 <div className="text-sm text-gray-600">
                   Página {page} de {totalPages} ({total} registros)
                 </div>
@@ -531,7 +531,7 @@ export default function AdminLogsPage() {
 
             {/* Resumo de Sessões */}
             {sessionGroups.length > 0 && (
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="card-modern p-6">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                   <Clock className="w-5 h-5 text-blue-600" />
                   Tempo de Sessão por Usuário

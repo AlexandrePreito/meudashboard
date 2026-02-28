@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
+import FeatureGate from '@/components/ui/FeatureGate';
 import Button from '@/components/ui/Button';
 import { useMenu } from '@/contexts/MenuContext';
 import { 
@@ -332,20 +333,19 @@ function HistoricoContent() {
         </div>
 
         {/* Table */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Data/Hora</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Alerta</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Valor</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Tipo</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Status</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Enviados</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
+        <div className="overflow-x-auto">
+          <table className="w-full table-modern">
+            <thead>
+              <tr>
+                <th>Data/Hora</th>
+                <th>Alerta</th>
+                <th>Valor</th>
+                <th>Tipo</th>
+                <th>Status</th>
+                <th>Enviados</th>
+              </tr>
+            </thead>
+            <tbody>
                 {loading ? (
                   <tr>
                     <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
@@ -421,7 +421,6 @@ function HistoricoContent() {
                 )}
               </tbody>
             </table>
-          </div>
 
           {/* Pagination */}
           {totalPages > 1 && (
@@ -699,7 +698,9 @@ function HistoricoContent() {
 export default function HistoricoAlertasPage() {
   return (
     <MainLayout>
-      <HistoricoContent />
+      <FeatureGate feature="alerts">
+        <HistoricoContent />
+      </FeatureGate>
     </MainLayout>
   );
 }

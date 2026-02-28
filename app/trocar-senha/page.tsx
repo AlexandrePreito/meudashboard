@@ -76,7 +76,7 @@ export default function TrocarSenhaPage() {
           <p className="text-gray-500 text-sm mt-1">Digite sua senha atual e escolha uma nova</p>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+        <div className="card-modern p-6 space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Senha Atual</label>
             <div className="relative">

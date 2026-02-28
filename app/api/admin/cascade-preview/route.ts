@@ -8,6 +8,9 @@ export async function GET(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Nao autorizado' }, { status: 401 });
     }
+    if (!user.is_master) {
+      return NextResponse.json({ error: 'Acesso restrito ao master' }, { status: 403 });
+    }
 
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type');

@@ -14,6 +14,7 @@ import { executeDaxQuery } from '@/lib/ai/dax-engine';
 import { sendWhatsAppMessage, sendWhatsAppAudio, sendTypingIndicator, getInstanceForAuthorizedNumber } from '@/lib/whatsapp/messaging';
 import { generateAudio, downloadWhatsAppAudio, transcribeAudio } from '@/lib/whatsapp/audio';
 import { identifyQuestionIntent, getWorkingQueries, saveQueryResult, isFailureResponse, identifyFailureReason } from '@/lib/ai/learning';
+import { getDeveloperIdForGroup, resolveAIContextForGroup } from '@/lib/shared-resources';
 
 // ============================================
 // FUNÇÃO PARA SALVAR MENSAGEM NA FILA
@@ -383,7 +384,8 @@ export async function POST(request: Request) {
       datasetId
     });
 
-    // Buscar contexto específico
+    // Buscar contexto específico (grupo ou herança do developer)
+    const developerId = await getDeveloperIdForGroup(authorizedNumber.company_group_id);
     let aiContext = null;
     if (sessionResult.session.context_id) {
       const { data: ctx } = await supabase
@@ -401,6 +403,13 @@ export async function POST(request: Request) {
         .eq('is_active', true)
         .maybeSingle();
       aiContext = ctx;
+      if (!aiContext && developerId) {
+        aiContext = await resolveAIContextForGroup(
+          authorizedNumber.company_group_id,
+          developerId,
+          datasetId
+        );
+      }
     }
 
     // ========== INTERPRETAR ESCOLHA DE OPÇÕES 1, 2, 3 ==========
@@ -476,45 +485,80 @@ export async function POST(request: Request) {
       }
     }
 
-    // Fallback: buscar por dataset_id e company_group_id se não encontrou
+    // Fallback: buscar por dataset_id e company_group_id ou herança do developer
     if (!modelContext && datasetId) {
-      const { data: fallbackContext } = await supabase
-        .from('ai_model_contexts')
-        .select('context_content, section_base, section_medidas, connection_id, dataset_id')
-        .eq('dataset_id', datasetId)
-        .eq('company_group_id', authorizedNumber.company_group_id)
-        .eq('is_active', true)
-        .limit(1)
-        .maybeSingle();
-
-      if (fallbackContext) {
-        if (fallbackContext.section_base && fallbackContext.section_medidas) {
-          // Tentar usar contexto otimizado do fallback
+      const fallbackResolved = await resolveAIContextForGroup(
+        authorizedNumber.company_group_id,
+        developerId,
+        datasetId
+      );
+      if (fallbackResolved) {
+        const fc = fallbackResolved;
+        if (fc.section_base && fc.section_medidas) {
           const parsed: ParsedDocumentation = {
-            raw: fallbackContext.context_content || '',
-            base: fallbackContext.section_base,
-            medidas: fallbackContext.section_medidas,
-            tabelas: null,
-            queries: null,
-            exemplos: null,
+            raw: (fc.context_content as string) || '',
+            base: fc.section_base as string,
+            medidas: fc.section_medidas as any,
+            tabelas: (fc.section_tabelas as any) || null,
+            queries: (fc.section_queries as any) || null,
+            exemplos: (fc.section_exemplos as any) || null,
             errors: [],
             metadata: {
               hasBase: true,
               hasMedidas: true,
-              hasTabelas: false,
-              hasQueries: false,
-              hasExemplos: false,
-              totalMedidas: fallbackContext.section_medidas?.length || 0,
-              totalTabelas: 0,
-              totalQueries: 0,
-              totalExemplos: 0
+              hasTabelas: !!fc.section_tabelas,
+              hasQueries: !!fc.section_queries,
+              hasExemplos: !!fc.section_exemplos,
+              totalMedidas: (fc.section_medidas as any)?.length || 0,
+              totalTabelas: (fc.section_tabelas as any)?.length || 0,
+              totalQueries: (fc.section_queries as any)?.length || 0,
+              totalExemplos: (fc.section_exemplos as any)?.length || 0
             }
           };
           modelContext = generateOptimizedContext(parsed, processedMessage);
-          console.log(`[Webhook] Contexto otimizado (fallback): ${modelContext.length} chars`);
+          console.log(`[Webhook] Contexto otimizado (herança developer): ${modelContext.length} chars`);
         } else {
-          modelContext = fallbackContext.context_content || '';
-          console.log(`[Webhook] Contexto bruto (fallback): ${modelContext.length} chars`);
+          modelContext = (fc.context_content as string) || '';
+          console.log(`[Webhook] Contexto bruto (herança developer): ${modelContext.length} chars`);
+        }
+      } else {
+        const { data: fallbackContext } = await supabase
+          .from('ai_model_contexts')
+          .select('context_content, section_base, section_medidas, connection_id, dataset_id')
+          .eq('dataset_id', datasetId)
+          .eq('company_group_id', authorizedNumber.company_group_id)
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle();
+
+        if (fallbackContext) {
+          if (fallbackContext.section_base && fallbackContext.section_medidas) {
+            const parsed: ParsedDocumentation = {
+              raw: fallbackContext.context_content || '',
+              base: fallbackContext.section_base,
+              medidas: fallbackContext.section_medidas,
+              tabelas: null,
+              queries: null,
+              exemplos: null,
+              errors: [],
+              metadata: {
+                hasBase: true,
+                hasMedidas: true,
+                hasTabelas: false,
+                hasQueries: false,
+                hasExemplos: false,
+                totalMedidas: fallbackContext.section_medidas?.length || 0,
+                totalTabelas: 0,
+                totalQueries: 0,
+                totalExemplos: 0
+              }
+            };
+            modelContext = generateOptimizedContext(parsed, processedMessage);
+            console.log(`[Webhook] Contexto otimizado (fallback): ${modelContext.length} chars`);
+          } else {
+            modelContext = fallbackContext.context_content || '';
+            console.log(`[Webhook] Contexto bruto (fallback): ${modelContext.length} chars`);
+          }
         }
       }
     }
@@ -552,7 +596,9 @@ export async function POST(request: Request) {
       processedMessage,
       connectionId,
       datasetId,
-      5
+      5,
+      authorizedNumber.company_group_id,
+      developerId
     );
     const queryContextStr = formatQueryContextForPrompt(queryContext);
 

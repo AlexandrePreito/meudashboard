@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
 import { useMenu } from '@/contexts/MenuContext';
+import { useRefreshContextOptional } from '@/contexts/RefreshContext';
 import { 
   GripVertical,
   Play,
@@ -22,7 +23,10 @@ import {
   ChevronDown,
   Trash2,
   Plus,
-  X
+  X,
+  Bell,
+  BellRing,
+  Phone
 } from 'lucide-react';
 
 interface RefreshItem {
@@ -35,6 +39,8 @@ interface RefreshItem {
   order: number;
   status?: 'idle' | 'refreshing' | 'success' | 'error';
   lastRefresh?: string;
+  lastRefreshStatus?: 'Completed' | 'Failed' | 'Unknown' | 'InProgress' | 'Success' | null;
+  lastRefreshDuration?: string;
   errorMessage?: string;
 }
 
@@ -44,6 +50,15 @@ function OrdemAtualizacaoContent() {
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
+  const [refreshProgress, setRefreshProgress] = useState({
+    active: false,
+    current: 0,
+    total: 0,
+    currentName: '',
+    completed: 0,
+    failed: 0,
+    succeeded: 0,
+  });
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [showItemScheduleModal, setShowItemScheduleModal] = useState(false);
   const [selectedItemForSchedule, setSelectedItemForSchedule] = useState<RefreshItem | null>(null);
@@ -59,8 +74,24 @@ function OrdemAtualizacaoContent() {
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [userRole, setUserRole] = useState<string>('user');
   const [accessDenied, setAccessDenied] = useState(false);
+  const [showAlertModal, setShowAlertModal] = useState(false);
+  const [selectedAlertItem, setSelectedAlertItem] = useState<RefreshItem | null>(null);
+  const [alertConfig, setAlertConfig] = useState({
+    is_enabled: true,
+    alert_on_error: true,
+    alert_on_delay: false,
+    alert_daily_report: false,
+    expected_refresh_time: '08:00',
+    daily_report_time: '07:00',
+    whatsapp_numbers: '',
+  });
+  const [refreshAlerts, setRefreshAlerts] = useState<Record<string, any>>({});
+  const [savingAlert, setSavingAlert] = useState(false);
+  const [dailyUsage, setDailyUsage] = useState({ used: 0, limit: 10, remaining: 10 });
+  const [phoneNumbers, setPhoneNumbers] = useState<string[]>(['']);
 
   const { activeGroup } = useMenu();
+  const refreshContext = useRefreshContextOptional();
 
   const diasSemana = [
     { value: 0, label: 'Dom' },
@@ -97,6 +128,9 @@ function OrdemAtualizacaoContent() {
         if (activeGroup?.id) {
           loadItems();
           loadSchedules();
+          loadRefreshAlerts();
+        } else {
+          setLoading(false);
         }
       } else {
         setAccessDenied(true);
@@ -109,16 +143,57 @@ function OrdemAtualizacaoContent() {
     }
   }
 
+  async function loadItemsStatus(loadedItems: RefreshItem[]) {
+    const updatedItems = await Promise.all(
+      loadedItems.map(async (item) => {
+        try {
+          const itemId = item.type === 'dataset' ? item.dataset_id : item.dataflow_id;
+          if (!itemId || !item.connection_id) return { ...item, lastRefreshStatus: null };
+          const res = await fetch(
+            `/api/powerbi/item-details?type=${item.type}&id=${itemId}&connection_id=${item.connection_id}`
+          );
+          if (res.ok) {
+            const data = await res.json();
+            const firstRefresh = data.refreshHistory?.[0];
+            if (firstRefresh) {
+              const lastRefreshStatus = firstRefresh.status || null;
+              const lastRefresh = firstRefresh.endTime || firstRefresh.startTime || null;
+              let lastRefreshDuration: string | undefined;
+              if (firstRefresh.startTime && firstRefresh.endTime) {
+                const start = new Date(firstRefresh.startTime).getTime();
+                const end = new Date(firstRefresh.endTime).getTime();
+                const secs = Math.round((end - start) / 1000);
+                lastRefreshDuration = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
+              }
+              return {
+                ...item,
+                lastRefreshStatus,
+                lastRefresh,
+                lastRefreshDuration,
+              };
+            }
+          }
+        } catch (error) {
+          console.error(`Erro ao buscar status de ${item.name}:`, error);
+        }
+        return { ...item, lastRefreshStatus: null };
+      })
+    );
+    setItems(updatedItems);
+  }
+
   async function loadItems() {
     setLoading(true);
     try {
       const res = await fetch(`/api/powerbi/refresh-order?group_id=${activeGroup?.id}`);
       if (res.ok) {
         const data = await res.json();
-        setItems((data.items || []).map((item: RefreshItem) => ({
+        const loadedItems = (data.items || []).map((item: RefreshItem) => ({
           ...item,
-          status: 'idle'
-        })));
+          status: 'idle' as const
+        }));
+        setItems(loadedItems);
+        loadItemsStatus(loadedItems);
       }
     } catch (error) {
       console.error('Erro ao carregar itens:', error);
@@ -143,6 +218,127 @@ function OrdemAtualizacaoContent() {
     } catch (error) {
       console.error('Erro ao carregar agendamentos:', error);
     }
+  }
+
+  async function loadRefreshAlerts() {
+    if (!activeGroup?.id) return;
+    try {
+      const res = await fetch(`/api/powerbi/refresh-alerts?group_id=${activeGroup.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        const alertsMap: Record<string, any> = {};
+        (data.alerts || []).forEach((a: any) => {
+          const key = `${a.item_type}-${a.dataset_id || a.dataflow_id}`;
+          alertsMap[key] = a;
+        });
+        setRefreshAlerts(alertsMap);
+        if (data.daily_usage) setDailyUsage(data.daily_usage);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar alertas de refresh:', error);
+    }
+  }
+
+  function openAlertModal(item: RefreshItem) {
+    const itemId = item.type === 'dataset' ? item.dataset_id : item.dataflow_id;
+    const key = `${item.type}-${itemId}`;
+    const existing = refreshAlerts[key];
+
+    const numbers = (existing?.whatsapp_numbers || '')
+      .split(',')
+      .map((n: string) => n.trim())
+      .filter(Boolean);
+    setPhoneNumbers(numbers.length > 0 ? numbers : ['']);
+
+    setSelectedAlertItem(item);
+    setAlertConfig({
+      is_enabled: existing?.is_enabled ?? true,
+      alert_on_error: existing?.alert_on_error ?? true,
+      alert_on_delay: existing?.alert_on_delay ?? false,
+      alert_daily_report: existing?.alert_daily_report ?? false,
+      expected_refresh_time: existing?.expected_refresh_time || '08:00',
+      daily_report_time: existing?.daily_report_time || '07:00',
+      whatsapp_numbers: existing?.whatsapp_numbers || '',
+    });
+    setShowAlertModal(true);
+  }
+
+  function addPhoneNumber() {
+    setPhoneNumbers(prev => [...prev, '']);
+  }
+
+  function removePhoneNumber(index: number) {
+    setPhoneNumbers(prev => prev.filter((_, i) => i !== index));
+  }
+
+  function updatePhoneNumber(index: number, value: string) {
+    setPhoneNumbers(prev => prev.map((n, i) => i === index ? value : n));
+  }
+
+  async function saveRefreshAlert() {
+    if (!selectedAlertItem || !activeGroup?.id) return;
+    const numbers = phoneNumbers.map(n => n.trim()).filter(Boolean);
+    if (numbers.length === 0) {
+      alert('Informe pelo menos um número de WhatsApp');
+      return;
+    }
+
+    setSavingAlert(true);
+    try {
+      const res = await fetch('/api/powerbi/refresh-alerts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_group_id: activeGroup.id,
+          refresh_order_item_id: selectedAlertItem.id,
+          item_name: selectedAlertItem.name,
+          item_type: selectedAlertItem.type,
+          dataset_id: selectedAlertItem.type === 'dataset' ? selectedAlertItem.dataset_id : null,
+          dataflow_id: selectedAlertItem.type === 'dataflow' ? selectedAlertItem.dataflow_id : null,
+          connection_id: selectedAlertItem.connection_id,
+          ...alertConfig,
+          whatsapp_numbers: numbers.join(', '),
+        })
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Erro ao salvar');
+      }
+
+      await loadRefreshAlerts();
+      setShowAlertModal(false);
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setSavingAlert(false);
+    }
+  }
+
+  async function removeRefreshAlert() {
+    if (!selectedAlertItem) return;
+    const itemId = selectedAlertItem.type === 'dataset' ? selectedAlertItem.dataset_id : selectedAlertItem.dataflow_id;
+    const key = `${selectedAlertItem.type}-${itemId}`;
+    const existing = refreshAlerts[key];
+    if (!existing) return;
+
+    if (!confirm('Remover monitoramento deste item?')) return;
+
+    try {
+      const res = await fetch(`/api/powerbi/refresh-alerts?id=${existing.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        await loadRefreshAlerts();
+        setShowAlertModal(false);
+      }
+    } catch (error) {
+      console.error('Erro ao remover alerta:', error);
+    }
+  }
+
+  function hasActiveAlert(item: RefreshItem): boolean {
+    const itemId = item.type === 'dataset' ? item.dataset_id : item.dataflow_id;
+    const key = `${item.type}-${itemId}`;
+    return !!refreshAlerts[key]?.is_enabled;
   }
 
   async function saveOrder() {
@@ -216,15 +412,13 @@ function OrdemAtualizacaoContent() {
           // Status possíveis: Unknown, Completed, Failed, Disabled, InProgress
           if (status === 'Completed' || status === 'Success') {
             setItems(prev => prev.map((it, i) =>
-              i === index ? { ...it, status: 'success' as const } : it
+              i === index ? {
+                ...it,
+                status: 'success' as const,
+                lastRefreshStatus: 'Completed' as const,
+                lastRefresh: statusData.endTime || statusData.startTime || new Date().toISOString()
+              } : it
             ));
-            
-            setTimeout(() => {
-              setItems(prev => prev.map((it, i) =>
-                i === index ? { ...it, status: 'idle' as const } : it
-              ));
-            }, 3000);
-            
             return true;
           }
           
@@ -243,29 +437,26 @@ function OrdemAtualizacaoContent() {
       
       // Timeout - consideramos sucesso parcial (o refresh foi disparado mas demorou muito)
       setItems(prev => prev.map((it, i) =>
-        i === index ? { ...it, status: 'success' as const } : it
+        i === index ? {
+          ...it,
+          status: 'success' as const,
+          lastRefreshStatus: 'Completed' as const,
+          lastRefresh: new Date().toISOString()
+        } : it
       ));
-      
-      setTimeout(() => {
-        setItems(prev => prev.map((it, i) =>
-          i === index ? { ...it, status: 'idle' as const } : it
-        ));
-      }, 3000);
-      
       return true;
 
     } catch (error: any) {
       console.error(`Erro ao atualizar ${item.name}:`, error);
       setItems(prev => prev.map((it, i) =>
-        i === index ? { ...it, status: 'error' as const, errorMessage: error.message } : it
+        i === index ? {
+          ...it,
+          status: 'error' as const,
+          lastRefreshStatus: 'Failed' as const,
+          lastRefresh: new Date().toISOString(),
+          errorMessage: error.message
+        } : it
       ));
-
-      setTimeout(() => {
-        setItems(prev => prev.map((it, i) =>
-          i === index ? { ...it, status: 'idle' as const, errorMessage: undefined } : it
-        ));
-      }, 5000);
-
       return false;
     }
   }
@@ -273,15 +464,57 @@ function OrdemAtualizacaoContent() {
   async function refreshAllInOrder() {
     if (refreshingAll || items.length === 0) return;
     setRefreshingAll(true);
-    
+    setRefreshProgress({
+      active: true,
+      current: 0,
+      total: items.length,
+      currentName: items[0]?.name || '',
+      completed: 0,
+      failed: 0,
+      succeeded: 0,
+    });
+
+    let succeeded = 0;
+    let failed = 0;
+
     for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      setRefreshProgress(prev => ({
+        ...prev,
+        current: i,
+        currentName: item?.name || '',
+      }));
+
+      refreshContext?.addRefresh({
+        screenId: item.id,
+        screenName: item.name,
+        status: 'refreshing',
+        startedAt: new Date(),
+      });
+
       const success = await refreshItem(i);
-      // Se falhou, podemos continuar ou parar - vamos continuar
-      if (!success) {
-        console.log(`Item ${i} falhou, continuando para o próximo...`);
+
+      refreshContext?.updateRefresh(item.id, success ? 'success' : 'error');
+
+      if (success) {
+        succeeded++;
+      } else {
+        failed++;
       }
+
+      setRefreshProgress(prev => ({
+        ...prev,
+        completed: i + 1,
+        succeeded,
+        failed,
+      }));
     }
-    
+
+    setRefreshProgress(prev => ({
+      ...prev,
+      active: false,
+      completed: items.length,
+    }));
     setRefreshingAll(false);
   }
 
@@ -452,19 +685,6 @@ function OrdemAtualizacaoContent() {
     }
   }
 
-  function getStatusIcon(status?: string) {
-    switch (status) {
-      case 'refreshing':
-        return <Loader2 size={18} className="animate-spin text-blue-500" />;
-      case 'success':
-        return <CheckCircle size={18} className="text-green-500" />;
-      case 'error':
-        return <XCircle size={18} className="text-red-500" />;
-      default:
-        return null;
-    }
-  }
-
   function getTypeIcon(type: string) {
     return type === 'dataflow' 
       ? <Database size={18} className="text-purple-500" />
@@ -475,14 +695,6 @@ function OrdemAtualizacaoContent() {
     return type === 'dataflow' ? 'Fluxo de Dados' : 'Modelo Semântico';
   }
 
-  if (loading && !activeGroup) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-      </div>
-    );
-  }
-
   if (accessDenied) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
@@ -490,6 +702,21 @@ function OrdemAtualizacaoContent() {
         <h2 className="text-xl font-semibold text-gray-700 mb-2">Acesso restrito</h2>
         <p className="text-gray-500 mb-4">Este modulo nao esta disponivel para seu perfil.</p>
         <p className="text-sm text-gray-400">Apenas administradores podem acessar.</p>
+      </div>
+    );
+  }
+
+  if (!activeGroup?.id) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="w-16 h-16 rounded-2xl bg-amber-100 flex items-center justify-center mb-4">
+          <AlertCircle className="w-8 h-8 text-amber-600" />
+        </div>
+        <h2 className="text-xl font-semibold text-gray-700 mb-2">Selecione um grupo</h2>
+        <p className="text-gray-500 mb-4 text-center max-w-sm">
+          Escolha um grupo na barra superior para visualizar e gerenciar a ordem de atualização dos datasets e dataflows.
+        </p>
+        <p className="text-sm text-gray-400">A opção &quot;Todos&quot; não é válida para esta tela.</p>
       </div>
     );
   }
@@ -523,8 +750,100 @@ function OrdemAtualizacaoContent() {
         </div>
       </div>
 
+      {/* Cards de Resumo */}
+      {!loading && items.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+              <Database size={20} className="text-blue-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-gray-900">{items.length}</p>
+              <p className="text-xs text-gray-500">Total de itens</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+              <CheckCircle size={20} className="text-green-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-green-600">
+                {items.filter(i => i.lastRefreshStatus === 'Completed' || i.lastRefreshStatus === 'Success').length}
+              </p>
+              <p className="text-xs text-gray-500">Atualizados</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
+              <XCircle size={20} className="text-red-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-red-600">
+                {items.filter(i => i.lastRefreshStatus === 'Failed').length}
+              </p>
+              <p className="text-xs text-gray-500">Com erro</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
+              <Clock size={20} className="text-gray-500" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-gray-500">
+                {items.filter(i => !i.lastRefreshStatus || i.lastRefreshStatus === 'Unknown').length}
+              </p>
+              <p className="text-xs text-gray-500">Sem info</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Barra de Progresso */}
+      {(refreshingAll || refreshProgress.active) && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Loader2 size={18} className="animate-spin text-blue-600" />
+              <span className="font-medium text-gray-900">
+                Atualizando: {refreshProgress.currentName}
+              </span>
+            </div>
+            <span className="text-sm text-gray-500">
+              {refreshProgress.completed} de {refreshProgress.total}
+            </span>
+          </div>
+
+          <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-500 ease-out bg-gradient-to-r from-blue-500 to-blue-600"
+              style={{
+                width: `${refreshProgress.total > 0
+                  ? (refreshProgress.completed / refreshProgress.total) * 100
+                  : 0}%`
+              }}
+            />
+          </div>
+
+          <div className="flex items-center gap-4 text-xs text-gray-500">
+            {refreshProgress.succeeded > 0 && (
+              <span className="flex items-center gap-1 text-green-600">
+                <CheckCircle size={14} /> {refreshProgress.succeeded} concluídos
+              </span>
+            )}
+            {refreshProgress.failed > 0 && (
+              <span className="flex items-center gap-1 text-red-600">
+                <XCircle size={14} /> {refreshProgress.failed} com erro
+              </span>
+            )}
+            <span className="flex items-center gap-1">
+              <Clock size={14} /> {Math.max(0, refreshProgress.total - refreshProgress.completed)} restantes
+            </span>
+          </div>
+        </div>
+      )}
+
       {activeGroup?.id && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="card-modern overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <RefreshCw size={20} className="text-gray-500" />
@@ -580,16 +899,70 @@ function OrdemAtualizacaoContent() {
                     <p className="text-xs text-gray-500 font-mono truncate">{item.dataset_id || item.dataflow_id}</p>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {getStatusIcon(item.status)}
-                    {item.status === 'error' && item.errorMessage && (
-                      <span className="text-xs text-red-500 max-w-[150px] truncate" title={item.errorMessage}>
-                        {item.errorMessage}
-                      </span>
+                  <div className="flex items-center gap-2 min-w-[180px]">
+                    {item.lastRefreshStatus === 'Completed' || item.lastRefreshStatus === 'Success' ? (
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle size={16} className="text-green-500" />
+                        <div>
+                          <p className="text-xs font-medium text-green-600">Atualizado</p>
+                          {item.lastRefresh && (
+                            <p className="text-[10px] text-gray-400">{formatDateTime(item.lastRefresh)}</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : item.lastRefreshStatus === 'Failed' ? (
+                      <div className="flex items-center gap-1.5">
+                        <XCircle size={16} className="text-red-500" />
+                        <div>
+                          <p className="text-xs font-medium text-red-600">Erro</p>
+                          {item.lastRefresh && (
+                            <p className="text-[10px] text-gray-400">{formatDateTime(item.lastRefresh)}</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : item.lastRefreshStatus === 'InProgress' ? (
+                      <div className="flex items-center gap-1.5">
+                        <Loader2 size={16} className="text-blue-500 animate-spin" />
+                        <p className="text-xs font-medium text-blue-600">Atualizando...</p>
+                      </div>
+                    ) : item.status === 'refreshing' ? (
+                      <div className="flex items-center gap-1.5">
+                        <Loader2 size={16} className="text-blue-500 animate-spin" />
+                        <p className="text-xs font-medium text-blue-600">Atualizando...</p>
+                      </div>
+                    ) : item.status === 'success' ? (
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle size={16} className="text-green-500" />
+                        <p className="text-xs font-medium text-green-600">Concluído</p>
+                      </div>
+                    ) : item.status === 'error' ? (
+                      <div className="flex items-center gap-1.5">
+                        <XCircle size={16} className="text-red-500" />
+                        <p className="text-xs font-medium text-red-600" title={item.errorMessage}>Falhou</p>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <Clock size={16} className="text-gray-300" />
+                        <p className="text-xs text-gray-400">Sem info</p>
+                      </div>
                     )}
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openAlertModal(item);
+                      }}
+                      className={`p-1.5 rounded-lg transition-all ${
+                        hasActiveAlert(item)
+                          ? 'text-amber-500 bg-amber-50 hover:bg-amber-100'
+                          : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                      }`}
+                      title={hasActiveAlert(item) ? 'Monitoramento ativo' : 'Configurar monitoramento'}
+                    >
+                      {hasActiveAlert(item) ? <BellRing size={16} /> : <Bell size={16} />}
+                    </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -742,6 +1115,196 @@ function OrdemAtualizacaoContent() {
               <Button onClick={saveItemSchedule}>
                 Salvar Agendamento
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Alerta de Refresh */}
+      {showAlertModal && selectedAlertItem && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-100">
+            {/* Header */}
+            <div className="px-6 py-5 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+                    <BellRing className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">Monitoramento</h3>
+                    <p className="text-sm text-gray-600 mt-0.5">{selectedAlertItem.name}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowAlertModal(false)}
+                  className="p-2 hover:bg-white/60 rounded-lg transition-colors"
+                >
+                  <X size={20} className="text-gray-500" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
+              {/* Badge limite diário */}
+              <div className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-3 border border-slate-100">
+                <span className="text-sm text-slate-600">Alertas hoje</span>
+                <span className={`text-sm font-bold px-2.5 py-0.5 rounded-lg ${
+                  dailyUsage.remaining <= 2 ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                }`}>
+                  {dailyUsage.used}/{dailyUsage.limit}
+                </span>
+              </div>
+
+              {/* Números WhatsApp */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                  <Phone size={16} className="text-green-600" />
+                  Números WhatsApp
+                </label>
+                <div className="space-y-2">
+                  {phoneNumbers.map((num, index) => (
+                    <div key={index} className="flex gap-2">
+                      <input
+                        type="tel"
+                        value={num}
+                        onChange={(e) => updatePhoneNumber(index, e.target.value)}
+                        placeholder="5511999999999"
+                        className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none transition-shadow"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removePhoneNumber(index)}
+                        disabled={phoneNumbers.length === 1}
+                        className="p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-gray-400"
+                        title="Remover"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={addPhoneNumber}
+                    className="flex items-center gap-2 w-full py-2.5 px-4 border-2 border-dashed border-gray-200 rounded-xl text-sm font-medium text-gray-500 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50/50 transition-colors"
+                  >
+                    <Plus size={18} />
+                    Adicionar número
+                  </button>
+                </div>
+              </div>
+
+              {/* Tipos de Alerta */}
+              <div>
+                <p className="text-sm font-semibold text-gray-800 mb-3">Alertar quando:</p>
+                <div className="space-y-2">
+                  <label className="flex items-start gap-3 p-4 rounded-xl border border-gray-200 hover:border-blue-200 hover:bg-blue-50/30 transition-all cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={alertConfig.alert_on_error}
+                      onChange={(e) => setAlertConfig(prev => ({ ...prev, alert_on_error: e.target.checked }))}
+                      className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium text-gray-900">❌ Erro na atualização</span>
+                      <p className="text-xs text-gray-500 mt-0.5">Notifica quando a atualização falhar</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-3 p-4 rounded-xl border border-gray-200 hover:border-blue-200 hover:bg-blue-50/30 transition-all cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={alertConfig.alert_on_delay}
+                      onChange={(e) => setAlertConfig(prev => ({ ...prev, alert_on_delay: e.target.checked }))}
+                      className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium text-gray-900">⏰ Não atualizou no horário</span>
+                      <p className="text-xs text-gray-500 mt-0.5">Notifica se não atualizou até o horário esperado</p>
+                      {alertConfig.alert_on_delay && (
+                        <div className="mt-3 flex items-center gap-2">
+                          <span className="text-xs text-gray-500">Horário esperado:</span>
+                          <input
+                            type="time"
+                            value={alertConfig.expected_refresh_time}
+                            onChange={(e) => setAlertConfig(prev => ({ ...prev, expected_refresh_time: e.target.value }))}
+                            className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-3 p-4 rounded-xl border border-gray-200 hover:border-blue-200 hover:bg-blue-50/30 transition-all cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={alertConfig.alert_daily_report}
+                      onChange={(e) => setAlertConfig(prev => ({ ...prev, alert_daily_report: e.target.checked }))}
+                      className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium text-gray-900">📋 Relatório diário</span>
+                      <p className="text-xs text-gray-500 mt-0.5">Resumo de status enviado todo dia</p>
+                      {alertConfig.alert_daily_report && (
+                        <div className="mt-3 flex items-center gap-2">
+                          <span className="text-xs text-gray-500">Horário do relatório:</span>
+                          <input
+                            type="time"
+                            value={alertConfig.daily_report_time}
+                            onChange={(e) => setAlertConfig(prev => ({ ...prev, daily_report_time: e.target.value }))}
+                            className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Toggle Ativo */}
+              <div className="flex items-center justify-between py-3 px-4 bg-gray-50 rounded-xl">
+                <span className="text-sm font-medium text-gray-700">Monitoramento ativo</span>
+                <button
+                  type="button"
+                  onClick={() => setAlertConfig(prev => ({ ...prev, is_enabled: !prev.is_enabled }))}
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                    alertConfig.is_enabled ? 'bg-blue-600' : 'bg-gray-300'
+                  }`}
+                >
+                  <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
+                    alertConfig.is_enabled ? 'translate-x-6' : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+              <div>
+                {refreshAlerts[`${selectedAlertItem.type}-${selectedAlertItem.type === 'dataset' ? selectedAlertItem.dataset_id : selectedAlertItem.dataflow_id}`] && (
+                  <button
+                    onClick={removeRefreshAlert}
+                    className="text-xs text-red-500 hover:text-red-600 underline"
+                  >
+                    Remover monitoramento
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowAlertModal(false)}
+                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={saveRefreshAlert}
+                  disabled={savingAlert}
+                  className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                >
+                  {savingAlert && <Loader2 size={14} className="animate-spin" />}
+                  Salvar
+                </button>
+              </div>
             </div>
           </div>
         </div>

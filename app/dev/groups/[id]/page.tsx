@@ -33,6 +33,7 @@ import {
   MessageCircle,
   MonitorPlay
 } from 'lucide-react';
+import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
 
 interface Group {
   id: string;
@@ -150,6 +151,7 @@ export default function GroupDetailPage({ params }: RouteParams) {
   
   const [users, setUsers] = useState<User[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
+  const [pageUsers, setPageUsers] = useState(1);
   
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -672,7 +674,7 @@ export default function GroupDetailPage({ params }: RouteParams) {
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Uso de Recursos</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
             {/* Usuários */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="card-modern p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Users className="w-4 h-4 text-indigo-600" />
                 <span className="text-sm font-medium text-gray-700">Usuários</span>
@@ -691,7 +693,7 @@ export default function GroupDetailPage({ params }: RouteParams) {
             </div>
 
             {/* Telas */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="card-modern p-4">
               <div className="flex items-center gap-2 mb-2">
                 <MonitorPlay className="w-4 h-4 text-purple-600" />
                 <span className="text-sm font-medium text-gray-700">Telas</span>
@@ -710,7 +712,7 @@ export default function GroupDetailPage({ params }: RouteParams) {
             </div>
 
             {/* Alertas */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="card-modern p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Bell className="w-4 h-4 text-red-600" />
                 <span className="text-sm font-medium text-gray-700">Alertas</span>
@@ -729,7 +731,7 @@ export default function GroupDetailPage({ params }: RouteParams) {
             </div>
 
             {/* WhatsApp/dia */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="card-modern p-4">
               <div className="flex items-center gap-2 mb-2">
                 <MessageCircle className="w-4 h-4 text-green-600" />
                 <span className="text-sm font-medium text-gray-700">WhatsApp/dia</span>
@@ -748,7 +750,7 @@ export default function GroupDetailPage({ params }: RouteParams) {
             </div>
 
             {/* Atualizações/dia */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="card-modern p-4">
               <div className="flex items-center gap-2 mb-2">
                 <RefreshCw className="w-4 h-4 text-orange-600" />
                 <span className="text-sm font-medium text-gray-700">Atualizações/dia</span>
@@ -769,7 +771,7 @@ export default function GroupDetailPage({ params }: RouteParams) {
         </div>
 
         {/* Usuários do Grupo */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="card-modern p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900">Usuários do Grupo</h2>
             <button
@@ -790,9 +792,10 @@ export default function GroupDetailPage({ params }: RouteParams) {
               Nenhum usuário ativo cadastrado neste grupo
             </div>
           ) : (
+            <>
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
+              <table className="w-full table-modern">
+                <thead>
                   <tr>
                     <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Nome</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Email</th>
@@ -802,7 +805,7 @@ export default function GroupDetailPage({ params }: RouteParams) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {users.filter(u => u.is_active).map((userMembership) => (
+                  {users.filter(u => u.is_active).slice((pageUsers - 1) * PAGE_SIZE, pageUsers * PAGE_SIZE).map((userMembership) => (
                     <tr key={userMembership.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
                         <span className="font-medium text-gray-900">
@@ -861,11 +864,17 @@ export default function GroupDetailPage({ params }: RouteParams) {
                 </tbody>
               </table>
             </div>
+            {users.filter(u => u.is_active).length > PAGE_SIZE && (
+              <div className="mt-4">
+                <Pagination totalItems={users.filter(u => u.is_active).length} currentPage={pageUsers} onPageChange={setPageUsers} pageSize={PAGE_SIZE} />
+              </div>
+            )}
+            </>
           )}
         </div>
 
         {/* Telas Power BI */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="card-modern p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900">Telas Power BI</h2>
             <button

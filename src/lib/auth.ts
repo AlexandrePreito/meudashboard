@@ -35,7 +35,7 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
   }
 }
 
-export async function setAuthCookie(token: string): Promise<void> {
+export async function setAuthCookie(token: string, options?: { domain?: string }): Promise<void> {
   try {
     const cookieStore = await cookies();
     const isProduction = process.env.NODE_ENV === 'production';
@@ -54,7 +54,7 @@ export async function setAuthCookie(token: string): Promise<void> {
       path: '/',
     };
     if (isProduction) {
-      cookieOptions.domain = '.meudashboard.org';
+      cookieOptions.domain = options?.domain ?? '.meudashboard.org';
     }
     cookieStore.set('auth-token', token, cookieOptions);
   } catch (error) {

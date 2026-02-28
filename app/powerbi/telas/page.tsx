@@ -28,8 +28,12 @@ import {
   Truck,
   Factory,
   LucideIcon,
-  Database
+  Database,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle
 } from 'lucide-react';
+import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
 
 interface Report {
   id: string;
@@ -114,6 +118,14 @@ function TelasContent() {
   const [accessDenied, setAccessDenied] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [screenToDelete, setScreenToDelete] = useState<Screen | null>(null);
+  const [healthSummary, setHealthSummary] = useState<{
+    healthPercentage: number;
+    total: number;
+    updated: number;
+    failed: number;
+    stale: number;
+  } | null>(null);
+  const [page, setPage] = useState(1);
   
   const [form, setForm] = useState({
     report_id: '',
@@ -142,6 +154,22 @@ function TelasContent() {
       setAvailablePages([]);
     }
   }, [form.report_id, showModal]);
+
+  const filteredScreens = screens.filter(screen => {
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      const matchesSearch =
+        screen.title.toLowerCase().includes(term) ||
+        screen.report?.name.toLowerCase().includes(term);
+      if (!matchesSearch) return false;
+    }
+    if (filterGroup && screen.company_group?.name !== filterGroup) return false;
+    return true;
+  });
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, filterGroup]);
+  const paginatedScreens = filteredScreens.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   async function checkAccessAndLoad() {
     try {
@@ -179,11 +207,15 @@ function TelasContent() {
       const screensUrl = currentGroup
         ? `/api/powerbi/screens?group_id=${currentGroup.id}`
         : '/api/powerbi/screens';
+      const healthUrl = currentGroup
+        ? `/api/powerbi/health?group_id=${currentGroup.id}`
+        : '/api/powerbi/health';
       
-      const [screensRes, reportsRes, usersRes] = await Promise.all([
+      const [screensRes, reportsRes, usersRes, healthRes] = await Promise.all([
         fetch(screensUrl),
         fetch('/api/powerbi/reports'),
-        fetch('/api/config/users')
+        fetch('/api/config/users'),
+        fetch(healthUrl)
       ]);
 
       if (screensRes.ok) {
@@ -198,12 +230,14 @@ function TelasContent() {
 
       if (usersRes.ok) {
         const data = await usersRes.json();
-        console.log('DEBUG - users loaded:', data);
-        console.log('DEBUG - Total de usuários carregados:', data.users?.length || 0);
-        console.log('DEBUG - Usuários:', data.users);
         setUsers(data.users || []);
+      }
+
+      if (healthRes.ok) {
+        const data = await healthRes.json();
+        setHealthSummary(data.summary || null);
       } else {
-        console.log('DEBUG - users error:', usersRes.status, await usersRes.text());
+        setHealthSummary(null);
       }
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
@@ -278,9 +312,6 @@ function TelasContent() {
         allowed_users: []
       });
     }
-    console.log('DEBUG - editingScreen:', screen);
-    console.log('DEBUG - users:', users);
-    console.log('DEBUG - screenGroupId:', screen?.company_group?.id);
     setUserSearchTerm('');
     setShowModal(true);
   }
@@ -468,7 +499,7 @@ function TelasContent() {
         )}
 
         {screens.length === 0 ? (
-          <div className="bg-white rounded-2xl p-12 text-center border border-gray-100">
+          <div className="card-modern p-12 text-center">
             <Layers size={48} className="mx-auto text-gray-300 mb-4" />
             <h2 className="text-lg font-medium text-gray-900 mb-2">Nenhuma tela</h2>
             <p className="text-gray-500 mb-4">Crie sua primeira tela para os usuários</p>
@@ -479,39 +510,22 @@ function TelasContent() {
             )}
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-100">
+          <>
+          <div className="overflow-hidden bg-white">
+            <table className="w-full table-modern">
+              <thead>
                 <tr>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Tela</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Relatório</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Grupo</th>
-                  <th className="text-center px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                  <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Ações</th>
+                  <th>Tela</th>
+                  <th>Relatório</th>
+                  <th>Grupo</th>
+                  <th className="text-center">Status</th>
+                  <th className="text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
-                {screens
-                  .filter(screen => {
-                    // Filtro de busca
-                    if (searchTerm) {
-                      const term = searchTerm.toLowerCase();
-                      const matchesSearch = 
-                        screen.title.toLowerCase().includes(term) ||
-                        screen.report?.name.toLowerCase().includes(term);
-                      if (!matchesSearch) return false;
-                    }
-                    
-                    // Filtro de grupo
-                    if (filterGroup && screen.company_group?.name !== filterGroup) {
-                      return false;
-                    }
-                    
-                    return true;
-                  })
-                  .map((screen) => (
-                  <tr key={screen.id} className={`hover:bg-gray-50 ${!screen.is_active ? 'opacity-50' : ''}`}>
-                    <td className="px-6 py-4">
+              <tbody>
+                {paginatedScreens.map((screen) => (
+                  <tr key={screen.id} className={!screen.is_active ? 'opacity-50' : ''}>
+                    <td>
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-blue-100 rounded-lg">
                           {renderIcon(screen.icon, 18, 'text-blue-600')}
@@ -519,9 +533,9 @@ function TelasContent() {
                         <div className="font-medium text-gray-900">{screen.title}</div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{screen.report?.name}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{screen.company_group?.name}</td>
-                    <td className="px-6 py-4 text-center">
+                    <td className="text-sm text-gray-600">{screen.report?.name}</td>
+                    <td className="text-sm text-gray-600">{screen.company_group?.name}</td>
+                    <td className="text-center">
                       <button
                         onClick={() => toggleActive(screen)}
                         className={`p-1.5 rounded-lg transition-colors ${
@@ -534,7 +548,7 @@ function TelasContent() {
                         {screen.is_active ? <Eye size={16} /> : <EyeOff size={16} />}
                       </button>
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="text-right">
                       <button
                         onClick={() => openModal(screen)}
                         className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg mr-1"
@@ -562,12 +576,21 @@ function TelasContent() {
               </tbody>
             </table>
           </div>
+          <div className="mt-4">
+            <Pagination
+              totalItems={filteredScreens.length}
+              currentPage={page}
+              onPageChange={setPage}
+              pageSize={PAGE_SIZE}
+            />
+          </div>
+          </>
         )}
       </div>
 
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+          <div className="card-modern w-full max-w-lg max-h-[90vh] flex flex-col">
             {/* Header fixo */}
             <div className="p-6 border-b border-gray-200 flex-shrink-0">
               <h2 className="text-xl font-bold text-gray-900">

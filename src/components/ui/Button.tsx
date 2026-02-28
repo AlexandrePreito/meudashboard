@@ -29,9 +29,9 @@ export default function Button({
   
   const variants = {
     primary: 'btn-primary',
-    secondary: 'bg-gray-100 text-gray-700 hover:bg-gray-200',
-    danger: 'bg-red-600 text-white hover:bg-red-700',
-    ghost: 'text-gray-600 hover:bg-gray-100'
+    secondary: 'btn-secondary',
+    danger: 'btn-danger',
+    ghost: 'btn-ghost'
   };
   
   // No mobile com ícone: quadrado (p-2/p-2.5/p-3). No desktop ou sem ícone: retangular

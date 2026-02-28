@@ -67,7 +67,7 @@ export default function DevRelatoriosPage() {
   const [previousPeriodTotal, setPreviousPeriodTotal] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedSession, setSelectedSession] = useState<any>(null);
-  const itemsPerPage = 30;
+  const itemsPerPage = 20;
 
   useEffect(() => {
     loadGroups();
@@ -233,7 +233,7 @@ export default function DevRelatoriosPage() {
         </div>
 
         {/* Filtros */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="card-modern p-4">
           <div className="flex items-center gap-2 mb-4">
             <Filter className="w-5 h-5 text-gray-500" />
             <span className="font-medium text-gray-700">Filtros</span>
@@ -326,7 +326,7 @@ export default function DevRelatoriosPage() {
             {/* Cards de Resumo */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Total de Acessos */}
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="card-modern p-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
@@ -353,7 +353,7 @@ export default function DevRelatoriosPage() {
               </div>
 
               {/* Grupos Ativos */}
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="card-modern p-6">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
                     <Building2 className="w-6 h-6 text-purple-600" />
@@ -366,7 +366,7 @@ export default function DevRelatoriosPage() {
               </div>
 
               {/* Usuários Ativos */}
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="card-modern p-6">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
                     <Users className="w-6 h-6 text-green-600" />
@@ -380,7 +380,7 @@ export default function DevRelatoriosPage() {
             </div>
 
             {/* Gráfico de Acessos por Dia */}
-            <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="card-modern p-6">
               <div className="flex items-center gap-2 mb-6">
                 <BarChart3 className="w-5 h-5 text-gray-500" />
                 <h2 className="text-lg font-semibold text-gray-900">Acessos por Dia</h2>
@@ -479,7 +479,7 @@ export default function DevRelatoriosPage() {
             {/* Grid de Tabelas */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Acessos por Grupo */}
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="card-modern p-6">
                 <div className="flex items-center gap-2 mb-4">
                   <Building2 className="w-5 h-5 text-purple-600" />
                   <h2 className="text-lg font-semibold text-gray-900">Acessos por Grupo</h2>
@@ -521,7 +521,7 @@ export default function DevRelatoriosPage() {
               </div>
 
               {/* Sessões de Usuários */}
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="card-modern p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <Users className="w-5 h-5 text-green-600" />
@@ -537,8 +537,8 @@ export default function DevRelatoriosPage() {
                 ) : (
                   <>
                     <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50 border-b border-gray-200">
+                      <table className="w-full text-sm table-modern">
+                        <thead>
                           <tr>
                             <th className="px-3 py-2 text-left font-medium text-gray-700">Usuário</th>
                             <th className="px-3 py-2 text-left font-medium text-gray-700">Data/Hora</th>

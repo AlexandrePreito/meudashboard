@@ -19,8 +19,13 @@ import {
   Upload,
   Image,
   Palette,
-  Copy
+  Copy,
+  Lock,
+  Sparkles,
+  Bell,
+  MessageCircle
 } from 'lucide-react';
+import { useFeatures } from '@/hooks/useFeatures';
 
 interface Group {
   id: string;
@@ -117,6 +122,8 @@ export default function DevGroupsPage() {
   const [deleteConfirmGroup, setDeleteConfirmGroup] = useState<Group | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  const { isFree, features } = useFeatures();
+
   useEffect(() => {
     loadGroups();
   }, []);
@@ -146,7 +153,14 @@ export default function DevGroupsPage() {
 
   function openNewGroup() {
     setEditingGroup(null);
-    setFormData(initialFormData);
+    setFormData({
+      ...initialFormData,
+      quota_users: features?.features?.max_users ?? 15,
+      quota_screens: features?.features?.max_screens ?? 15,
+      quota_alerts: isFree ? 0 : 10,
+      quota_whatsapp_per_day: isFree ? 0 : 100,
+      quota_ai_credits_per_day: isFree ? 0 : 100,
+    });
     setError('');
     setLogoPreview(null);
     setShowModal(true);
@@ -287,7 +301,12 @@ export default function DevGroupsPage() {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
       
-      const payload = {
+      // Plano Free: forçar cotas premium para 0 antes de enviar
+      const quotaAlerts = isFree ? 0 : formData.quota_alerts;
+      const quotaWhatsappPerDay = isFree ? 0 : formData.quota_whatsapp_per_day;
+      const quotaAiCreditsPerDay = isFree ? 0 : formData.quota_ai_credits_per_day;
+      
+      const payload: Record<string, unknown> = {
         name: formData.name.trim(),
         slug,
         document: formData.document.replace(/[^\d]/g, ''),
@@ -305,14 +324,20 @@ export default function DevGroupsPage() {
         address_zip: formData.address_zip.replace(/[^\d]/g, ''),
         quota_users: formData.quota_users,
         quota_screens: formData.quota_screens,
-        quota_alerts: formData.quota_alerts,
-        quota_whatsapp_per_day: formData.quota_whatsapp_per_day,
-        quota_ai_credits_per_day: formData.quota_ai_credits_per_day,
+        quota_alerts: quotaAlerts,
+        quota_whatsapp_per_day: quotaWhatsappPerDay,
+        quota_ai_credits_per_day: quotaAiCreditsPerDay,
         logo_url: formData.logo_url.trim(),
         primary_color: formData.primary_color,
         use_developer_logo: formData.use_developer_logo,
         use_developer_colors: formData.use_developer_colors,
       };
+      if (isFree) {
+        payload.use_developer_logo = true;
+        payload.use_developer_colors = true;
+        delete payload.logo_url;
+        delete payload.primary_color;
+      }
       
       const url = editingGroup 
         ? `/api/dev/groups/${editingGroup.id}`
@@ -434,6 +459,24 @@ export default function DevGroupsPage() {
     (group.document && group.document.includes(searchTerm.replace(/[^\d]/g, '')))
   );
 
+  // Totais e disponíveis agregados dos grupos
+  const totals = groups.reduce(
+    (acc, g) => ({
+      users: acc.users + (g.users_count || 0),
+      usersQuota: acc.usersQuota + (g.quota_users || 0),
+      screens: acc.screens + (g.screens_count || 0),
+      screensQuota: acc.screensQuota + (g.quota_screens || 0),
+      alerts: acc.alerts + (g.alerts_count || 0),
+      alertsQuota: acc.alertsQuota + (g.quota_alerts || 0),
+      whatsappQuota: acc.whatsappQuota + (g.quota_whatsapp_per_day || 0),
+      aiQuota: acc.aiQuota + (g.quota_ai_credits_per_day || 0),
+    }),
+    { users: 0, usersQuota: 0, screens: 0, screensQuota: 0, alerts: 0, alertsQuota: 0, whatsappQuota: 0, aiQuota: 0 }
+  );
+  const availableUsers = totals.usersQuota - totals.users;
+  const availableScreens = totals.screensQuota - totals.screens;
+  const availableAlerts = totals.alertsQuota - totals.alerts;
+
   if (loading) {
     return (
       <MainLayout>
@@ -478,9 +521,78 @@ export default function DevGroupsPage() {
           </div>
         )}
 
+        {/* Cards de Resumo */}
+        {groups.length > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                <Building2 size={20} className="text-blue-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900">{groups.length}</p>
+                <p className="text-xs text-gray-500">Grupos</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+                <Users size={20} className="text-indigo-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900">
+                  {totals.users}{totals.usersQuota > 0 ? ` / ${totals.usersQuota}` : ''}
+                </p>
+                <p className="text-xs text-gray-500">Usuários</p>
+                <p className="text-[10px] text-gray-400">{totals.usersQuota > 0 ? `${availableUsers} disponível` : '—'}</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                <Monitor size={20} className="text-purple-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900">
+                  {totals.screens}{totals.screensQuota > 0 ? ` / ${totals.screensQuota}` : ''}
+                </p>
+                <p className="text-xs text-gray-500">Telas</p>
+                <p className="text-[10px] text-gray-400">{totals.screensQuota > 0 ? `${availableScreens} disponível` : '—'}</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
+                <Bell size={20} className="text-red-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900">
+                  {totals.alerts}{totals.alertsQuota > 0 ? ` / ${totals.alertsQuota}` : ''}
+                </p>
+                <p className="text-xs text-gray-500">Alertas</p>
+                <p className="text-[10px] text-gray-400">{totals.alertsQuota > 0 ? `${availableAlerts} disponível` : '—'}</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+                <MessageCircle size={20} className="text-green-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900">{totals.whatsappQuota}</p>
+                <p className="text-xs text-gray-500">WhatsApp/dia</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                <Sparkles size={20} className="text-amber-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900">{totals.aiQuota}</p>
+                <p className="text-xs text-gray-500">IA/dia</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Empty State */}
         {groups.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div className="card-modern p-12 text-center">
             <Building2 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
               Nenhum grupo cadastrado
@@ -497,46 +609,46 @@ export default function DevGroupsPage() {
             </button>
           </div>
         ) : filteredGroups.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+          <div className="card-modern p-8 text-center">
             <p className="text-gray-500">Nenhum grupo encontrado</p>
           </div>
         ) : (
           /* Grid de Cards */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {filteredGroups.map((group) => (
               <div
                 key={group.id}
-                className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-lg transition-shadow"
+                className="card-modern p-4 hover:shadow-lg transition-shadow"
               >
                 {/* Header do Card */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
                     {group.logo_url ? (
-                      <div className="w-16 h-16 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                      <div className="w-10 h-10 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center flex-shrink-0 overflow-hidden">
                         <img
                           src={group.logo_url}
                           alt={group.name}
-                          className="max-w-full max-h-full object-contain p-1"
+                          className="max-w-full max-h-full object-contain p-0.5"
                         />
                       </div>
                     ) : (
-                      <div className="w-16 h-16 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                        <Building2 className="w-6 h-6 text-blue-600" />
+                      <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                        <Building2 className="w-5 h-5 text-blue-600" />
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-900 truncate">
+                      <h3 className="text-sm font-semibold text-gray-900 truncate">
                         {group.name}
                       </h3>
                       {group.document && (
-                        <p className="text-sm text-gray-500 truncate">
+                        <p className="text-xs text-gray-500 truncate">
                           {group.document.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')}
                         </p>
                       )}
                     </div>
                   </div>
                   <span
-                    className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                    className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
                       group.status === 'active'
                         ? 'bg-green-100 text-green-800'
                         : group.status === 'suspended'
@@ -549,19 +661,19 @@ export default function DevGroupsPage() {
                 </div>
 
                 {/* Info do Card */}
-                <div className="space-y-2 mb-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Users className="w-4 h-4" />
+                <div className="space-y-1.5 mb-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5 text-gray-600">
+                      <Users className="w-3.5 h-3.5" />
                       <span>Usuários</span>
                     </div>
                     <span className="font-medium text-gray-900">
                       {group.users_count} / {group.quota_users || '∞'}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Monitor className="w-4 h-4" />
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5 text-gray-600">
+                      <Monitor className="w-3.5 h-3.5" />
                       <span>Telas</span>
                     </div>
                     <span className="font-medium text-gray-900">
@@ -571,35 +683,35 @@ export default function DevGroupsPage() {
                 </div>
 
                 {/* Ações */}
-                <div className="flex items-center justify-between gap-2 pt-4 border-t border-gray-100">
+                <div className="flex items-center justify-between gap-1.5 pt-3 border-t border-gray-100">
                   <button
                     onClick={() => router.push(`/dev/groups/${group.id}`)}
-                    className="flex items-center justify-center gap-2 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                    className="flex items-center justify-center gap-1.5 px-2 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                   >
-                    <LogIn className="w-4 h-4" />
+                    <LogIn className="w-3.5 h-3.5" />
                     Entrar
                   </button>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     <button
                       onClick={() => openEditGroup(group)}
-                      className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                      className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                       title="Editar"
                     >
-                      <Edit2 className="w-4 h-4" />
+                      <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => openCloneModal(group)}
-                      className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                       title="Clonar"
                     >
-                      <Copy className="w-4 h-4" />
+                      <Copy className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => openDeleteConfirm(group)}
-                      className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                       title="Excluir"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
@@ -864,40 +976,70 @@ export default function DevGroupsPage() {
                       className="w-full px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-semibold"
                     />
                   </div>
-                  <div className="bg-white rounded-lg p-4 border border-blue-100">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Alertas</label>
+                  {/* Alertas — bloqueado no plano Free */}
+                  <div className="bg-white rounded-lg p-4 border border-blue-100 relative">
+                    <label className={`block text-xs font-medium mb-1 ${isFree ? 'text-gray-400' : 'text-gray-500'}`}>Alertas</label>
                     <input
                       type="number"
-                      value={formData.quota_alerts}
-                      onChange={(e) => setFormData({ ...formData, quota_alerts: parseInt(e.target.value) || 0 })}
+                      value={isFree ? 0 : formData.quota_alerts}
+                      onChange={isFree ? undefined : (e) => setFormData({ ...formData, quota_alerts: parseInt(e.target.value) || 0 })}
                       min={1}
-                      className="w-full px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-semibold"
+                      disabled={isFree}
+                      className={`w-full px-2 py-1.5 border border-gray-200 rounded-lg text-center font-semibold ${isFree ? 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60' : 'focus:outline-none focus:ring-2 focus:ring-blue-500'}`}
                     />
+                    {isFree && (
+                      <div className="absolute -top-1 -right-1">
+                        <span className="flex items-center gap-0.5 text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
+                          <Lock className="w-2.5 h-2.5" />
+                          Pro
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <div className="bg-white rounded-lg p-4 border border-blue-100">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">WhatsApp/dia</label>
+                  {/* WhatsApp/dia — bloqueado no plano Free */}
+                  <div className="bg-white rounded-lg p-4 border border-blue-100 relative">
+                    <label className={`block text-xs font-medium mb-1 ${isFree ? 'text-gray-400' : 'text-gray-500'}`}>WhatsApp/dia</label>
                     <input
                       type="number"
-                      value={formData.quota_whatsapp_per_day}
-                      onChange={(e) => setFormData({ ...formData, quota_whatsapp_per_day: parseInt(e.target.value) || 0 })}
+                      value={isFree ? 0 : formData.quota_whatsapp_per_day}
+                      onChange={isFree ? undefined : (e) => setFormData({ ...formData, quota_whatsapp_per_day: parseInt(e.target.value) || 0 })}
                       min={1}
-                      className="w-full px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-semibold"
+                      disabled={isFree}
+                      className={`w-full px-2 py-1.5 border border-gray-200 rounded-lg text-center font-semibold ${isFree ? 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60' : 'focus:outline-none focus:ring-2 focus:ring-blue-500'}`}
                     />
+                    {isFree && (
+                      <div className="absolute -top-1 -right-1">
+                        <span className="flex items-center gap-0.5 text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
+                          <Lock className="w-2.5 h-2.5" />
+                          Pro
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <div className="bg-white rounded-lg p-4 border border-blue-100">
-                    <label className="block text-xs font-medium text-gray-500 mb-1 whitespace-nowrap">IA/dia</label>
+                  {/* IA/dia — bloqueado no plano Free */}
+                  <div className="bg-white rounded-lg p-4 border border-blue-100 relative">
+                    <label className={`block text-xs font-medium mb-1 whitespace-nowrap ${isFree ? 'text-gray-400' : 'text-gray-500'}`}>IA/dia</label>
                     <input
                       type="number"
-                      value={formData.quota_ai_credits_per_day}
-                      onChange={(e) => setFormData({ ...formData, quota_ai_credits_per_day: parseInt(e.target.value) || 0 })}
+                      value={isFree ? 0 : formData.quota_ai_credits_per_day}
+                      onChange={isFree ? undefined : (e) => setFormData({ ...formData, quota_ai_credits_per_day: parseInt(e.target.value) || 0 })}
                       min={1}
-                      className="w-full px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-semibold"
+                      disabled={isFree}
+                      className={`w-full px-2 py-1.5 border border-gray-200 rounded-lg text-center font-semibold ${isFree ? 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60' : 'focus:outline-none focus:ring-2 focus:ring-blue-500'}`}
                     />
+                    {isFree && (
+                      <div className="absolute -top-1 -right-1">
+                        <span className="flex items-center gap-0.5 text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
+                          <Lock className="w-2.5 h-2.5" />
+                          Pro
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* SECAO 5: Personalizacao */}
+              {/* SECAO 5: Personalizacao Visual — bloqueada no plano Free */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-8 h-8 bg-pink-100 rounded-lg flex items-center justify-center">
@@ -905,95 +1047,111 @@ export default function DevGroupsPage() {
                   </div>
                   <h3 className="text-lg font-semibold text-gray-900">Personalizacao Visual</h3>
                 </div>
-                
-                {/* Opcao usar tema do desenvolvedor */}
-                <div className="p-4 bg-gray-50 rounded-lg space-y-3 mb-4">
-                  <p className="text-sm text-gray-600 mb-2">Escolha se este grupo usara a identidade visual da sua software house ou tera identidade propria:</p>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      id="use_developer_logo"
-                      checked={formData.use_developer_logo}
-                      onChange={(e) => setFormData({ ...formData, use_developer_logo: e.target.checked })}
-                      className="w-4 h-4 text-blue-600 rounded"
-                    />
-                    <label htmlFor="use_developer_logo" className="text-sm text-gray-700">
-                      Usar logo do desenvolvedor (sua software house)
-                    </label>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      id="use_developer_colors"
-                      checked={formData.use_developer_colors}
-                      onChange={(e) => setFormData({ ...formData, use_developer_colors: e.target.checked })}
-                      className="w-4 h-4 text-blue-600 rounded"
-                    />
-                    <label htmlFor="use_developer_colors" className="text-sm text-gray-700">
-                      Usar cores do desenvolvedor (sua software house)
-                    </label>
-                  </div>
-                </div>
 
-                {/* Logo e Cor do Grupo */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Logo do Grupo - so mostra se NAO usar do desenvolvedor */}
-                  {!formData.use_developer_logo && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Logo do Grupo</label>
-                      <div className="flex items-center gap-4">
-                        <div className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden bg-gray-50">
-                          {logoPreview ? (
-                            <img src={logoPreview} alt="Logo" className="w-full h-full object-contain" />
-                          ) : (
-                            <Image className="w-6 h-6 text-gray-400" />
-                          )}
-                        </div>
-                        <div>
-                          <label className="cursor-pointer">
-                            <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
-                              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                              {uploading ? 'Enviando...' : 'Escolher imagem'}
-                            </div>
-                            <input
-                              type="file"
-                              accept="image/jpeg,image/png,image/webp,image/svg+xml"
-                              onChange={handleLogoUpload}
-                              disabled={uploading}
-                              className="hidden"
-                            />
-                          </label>
-                          <p className="text-xs text-gray-500 mt-1">JPG, PNG, WebP ou SVG. Max 2MB.</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Cor do Grupo - so mostra se NAO usar do desenvolvedor */}
-                  {!formData.use_developer_colors && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Cor Primaria do Grupo
-                      </label>
+                {isFree ? (
+                  <div className="flex flex-col items-center justify-center py-4 gap-2 bg-blue-50/30 rounded-xl border border-blue-100">
+                    <Lock className="w-5 h-5 text-slate-400" />
+                    <p className="text-sm text-slate-500 text-center">Personalizacao visual disponivel no plano Pro</p>
+                    <a
+                      href="https://wa.me/5562982289559?text=Olá!%20Tenho%20interesse%20em%20fazer%20upgrade%20do%20meu%20plano%20no%20MeuDashboard."
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-1.5 rounded-lg transition-all mt-1"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Fazer upgrade
+                    </a>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-500 mb-3">
+                      Escolha se este grupo usara a identidade visual da sua software house ou tera identidade propria.
+                    </p>
+                    <div className="p-4 bg-gray-50 rounded-lg space-y-3 mb-4">
                       <div className="flex items-center gap-3">
                         <input
-                          type="color"
-                          value={formData.primary_color}
-                          onChange={(e) => setFormData({ ...formData, primary_color: e.target.value })}
-                          className="w-14 h-10 rounded-lg border border-gray-300 cursor-pointer"
-                          style={{ padding: 0 }}
+                          type="checkbox"
+                          id="use_developer_logo"
+                          checked={formData.use_developer_logo}
+                          onChange={(e) => setFormData({ ...formData, use_developer_logo: e.target.checked })}
+                          className="w-4 h-4 text-blue-600 rounded"
                         />
+                        <label htmlFor="use_developer_logo" className="text-sm text-gray-700">
+                          Usar logo do desenvolvedor (sua software house)
+                        </label>
+                      </div>
+                      <div className="flex items-center gap-3">
                         <input
-                          type="text"
-                          value={formData.primary_color}
-                          onChange={(e) => setFormData({ ...formData, primary_color: e.target.value })}
-                          className="flex-1 px-3 py-2 border border-gray-200 rounded-lg font-mono text-sm"
-                          placeholder="#3B82F6"
+                          type="checkbox"
+                          id="use_developer_colors"
+                          checked={formData.use_developer_colors}
+                          onChange={(e) => setFormData({ ...formData, use_developer_colors: e.target.checked })}
+                          className="w-4 h-4 text-blue-600 rounded"
                         />
+                        <label htmlFor="use_developer_colors" className="text-sm text-gray-700">
+                          Usar cores do desenvolvedor (sua software house)
+                        </label>
                       </div>
                     </div>
-                  )}
-                </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {!formData.use_developer_logo && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Logo do Grupo</label>
+                          <div className="flex items-center gap-4">
+                            <div className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden bg-gray-50">
+                              {logoPreview ? (
+                                <img src={logoPreview} alt="Logo" className="w-full h-full object-contain" />
+                              ) : (
+                                <Image className="w-6 h-6 text-gray-400" />
+                              )}
+                            </div>
+                            <div>
+                              <label className="cursor-pointer">
+                                <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+                                  {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                  {uploading ? 'Enviando...' : 'Escolher imagem'}
+                                </div>
+                                <input
+                                  type="file"
+                                  accept="image/jpeg,image/png,image/webp,image/svg+xml"
+                                  onChange={handleLogoUpload}
+                                  disabled={uploading}
+                                  className="hidden"
+                                />
+                              </label>
+                              <p className="text-xs text-gray-500 mt-1">JPG, PNG, WebP ou SVG. Max 2MB.</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {!formData.use_developer_colors && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Cor Primaria do Grupo
+                          </label>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="color"
+                              value={formData.primary_color}
+                              onChange={(e) => setFormData({ ...formData, primary_color: e.target.value })}
+                              className="w-14 h-10 rounded-lg border border-gray-300 cursor-pointer"
+                              style={{ padding: 0 }}
+                            />
+                            <input
+                              type="text"
+                              value={formData.primary_color}
+                              onChange={(e) => setFormData({ ...formData, primary_color: e.target.value })}
+                              className="flex-1 px-3 py-2 border border-gray-200 rounded-lg font-mono text-sm"
+                              placeholder="#3B82F6"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 

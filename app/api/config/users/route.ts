@@ -27,6 +27,7 @@ export async function GET(request: Request) {
     const supabase = createAdminClient();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const groupId = searchParams.get('group_id');
 
     // Se buscar por ID específico
     if (id) {
@@ -128,6 +129,46 @@ export async function GET(request: Request) {
           m.company_group?.id && adminGroupIds.includes(m.company_group.id)
         );
       });
+    }
+
+    // Se group_id foi passado, enriquecer cada usuário com screen_ids e screen_titles desse grupo
+    if (groupId && filteredUsers.length > 0) {
+      const userIdsInGroup = filteredUsers
+        .filter(u => u.memberships?.some((m: any) => m.company_group?.id === groupId))
+        .map(u => u.id);
+
+      const { data: groupScreens } = await supabase
+        .from('powerbi_dashboard_screens')
+        .select('id, title')
+        .eq('company_group_id', groupId);
+      const screenIdToTitle = new Map<string, string>();
+      groupScreens?.forEach((s: { id: string; title?: string }) => {
+        screenIdToTitle.set(s.id, s.title || s.id);
+      });
+      const groupScreenIds = groupScreens?.map((s: { id: string }) => s.id) || [];
+
+      let screenUsers: { screen_id: string; user_id: string }[] | null = null;
+      if (groupScreenIds.length > 0 && userIdsInGroup.length > 0) {
+        const r = await supabase
+          .from('powerbi_screen_users')
+          .select('screen_id, user_id')
+          .in('user_id', userIdsInGroup)
+          .in('screen_id', groupScreenIds);
+        screenUsers = r.data;
+      }
+
+      const userScreenIdsMap = new Map<string, string[]>();
+      screenUsers?.forEach((r: { screen_id: string; user_id: string }) => {
+        const list = userScreenIdsMap.get(r.user_id) || [];
+        if (!list.includes(r.screen_id)) list.push(r.screen_id);
+        userScreenIdsMap.set(r.user_id, list);
+      });
+
+      filteredUsers = filteredUsers.map(u => ({
+        ...u,
+        screen_ids: userScreenIdsMap.get(u.id) || [],
+        screen_titles: (userScreenIdsMap.get(u.id) || []).map((sid: string) => screenIdToTitle.get(sid) || sid),
+      }));
     }
 
     return NextResponse.json({ users: filteredUsers });

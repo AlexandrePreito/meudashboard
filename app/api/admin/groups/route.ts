@@ -28,7 +28,13 @@ export async function GET() {
         logo_url,
         status,
         developer_id,
-        created_at
+        created_at,
+        quota_users,
+        quota_screens,
+        quota_alerts,
+        quota_whatsapp_per_day,
+        quota_ai_credits_per_day,
+        quota_refreshes
       `)
       .order('name');
 

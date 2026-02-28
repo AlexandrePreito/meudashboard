@@ -2,23 +2,14 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { BarChart3, MessageSquare, Bell, Shield, ArrowRight, Brain } from 'lucide-react';
+import { BarChart3, MessageSquare, Bell, Shield, ArrowRight, Brain, RefreshCw, ChevronDown, Users, Building2, TrendingUp, Database, FileCheck, Zap, Sparkles } from 'lucide-react';
+import { useSubdomain } from '@/hooks/useSubdomain';
 
-// Componente do Asterisco Animado (gira TODA vez que rolar)
+// Componente do Asterisco Animado
 function AnimatedLogo({ size = 48, scrollY = 0, isInitialSpin = false }: { size?: number; scrollY?: number; isInitialSpin?: boolean }) {
-  const rotation = isInitialSpin ? 0 : scrollY * 0.5;
-
+  const rotation = isInitialSpin ? 0 : scrollY * 0.8;
   return (
-    <svg 
-      viewBox="0 0 100 100" 
-      width={size} 
-      height={size}
-      style={{ 
-        transform: `rotate(${rotation}deg)`,
-        transition: isInitialSpin ? 'none' : 'transform 0.1s ease-out',
-        animation: isInitialSpin ? 'initialSpin 2s cubic-bezier(0.25, 0.1, 0.25, 1) forwards' : 'none'
-      }}
-    >
+    <svg viewBox="0 0 100 100" width={size} height={size} style={{ transform: `rotate(${rotation}deg)`, transition: isInitialSpin ? 'none' : 'transform 0.05s linear', animation: isInitialSpin ? 'initialSpin 2s cubic-bezier(0.25, 0.1, 0.25, 1) forwards' : 'none' }}>
       <defs>
         <linearGradient id={`logoGrad${size}`} x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#06b6d4" />
@@ -35,7 +26,6 @@ function AnimatedLogo({ size = 48, scrollY = 0, isInitialSpin = false }: { size?
   );
 }
 
-// Logo estática
 function StaticLogo({ size = 48 }: { size?: number }) {
   return (
     <svg viewBox="0 0 100 100" width={size} height={size}>
@@ -55,8 +45,7 @@ function StaticLogo({ size = 48 }: { size?: number }) {
   );
 }
 
-// Nome da marca com M e D maiores
-function BrandName({ className = "", size = "text-xl" }: { className?: string; size?: string }) {
+function BrandName({ className = '', size = 'text-xl' }: { className?: string; size?: string }) {
   return (
     <span className={`brand-name ${size} ${className}`}>
       <span className="text-[1.2em]">M</span>eu<span className="text-[1.2em]">D</span>ashboard
@@ -64,13 +53,39 @@ function BrandName({ className = "", size = "text-xl" }: { className?: string; s
   );
 }
 
-// Card de Funcionalidade
-function FeatureCard({ icon: Icon, title, description, gradient = "from-cyan-500 to-blue-600" }: {
-  icon: any;
-  title: string;
-  description: string;
-  gradient?: string;
-}) {
+// Contador animado
+function AnimatedCounter({ end, suffix = '', duration = 2000 }: { end: number; suffix?: string; duration?: number }) {
+  const [count, setCount] = useState(0);
+  const [hasAnimated, setHasAnimated] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !hasAnimated) {
+          setHasAnimated(true);
+          const start = 0;
+          const startTime = Date.now();
+          const animate = () => {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const easeOut = 1 - Math.pow(1 - progress, 3);
+            setCount(Math.floor(start + (end - start) * easeOut));
+            if (progress < 1) requestAnimationFrame(animate);
+          };
+          requestAnimationFrame(animate);
+        }
+      },
+      { threshold: 0.3 }
+    );
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [end, duration, hasAnimated]);
+
+  return <span ref={ref}>{count}{suffix}</span>;
+}
+
+function FeatureCard({ icon: Icon, title, description, gradient = 'from-cyan-500 to-blue-600' }: { icon: any; title: string; description: string; gradient?: string }) {
   return (
     <div className="group bg-white rounded-2xl p-8 shadow-sm border border-slate-100 hover:shadow-xl hover:border-cyan-200 transition-all duration-300">
       <div className={`w-14 h-14 bg-gradient-to-br ${gradient} rounded-xl flex items-center justify-center mb-5 group-hover:scale-110 transition-transform`}>
@@ -82,47 +97,47 @@ function FeatureCard({ icon: Icon, title, description, gradient = "from-cyan-500
   );
 }
 
-// Gráfico de Barras Animado CONTINUAMENTE
+function ParaQuemCard({ icon: Icon, title, description, tag }: { icon: any; title: string; description: string; tag: string }) {
+  return (
+    <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 hover:shadow-lg hover:border-cyan-200 transition-all duration-300">
+      <span className="inline-block px-3 py-1.5 rounded-full text-xs font-medium bg-cyan-100 text-cyan-700 mb-4">{tag}</span>
+      <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl flex items-center justify-center mb-4">
+        <Icon className="w-6 h-6 text-white" />
+      </div>
+      <h3 className="text-lg font-semibold text-slate-900 mb-2">{title}</h3>
+      <p className="text-slate-600 text-sm">{description}</p>
+    </div>
+  );
+}
+
 function AnimatedBarChart({ isVisible }: { isVisible: boolean }) {
   const [heights, setHeights] = useState([40, 55, 45, 70, 50, 85, 65]);
-  
   useEffect(() => {
     if (!isVisible) return;
-    
     const interval = setInterval(() => {
       setHeights(prev => prev.map(h => {
         const change = (Math.random() - 0.5) * 20;
-        const newHeight = h + change;
-        return Math.max(25, Math.min(95, newHeight));
+        return Math.max(25, Math.min(95, h + change));
       }));
     }, 1500);
-    
     return () => clearInterval(interval);
   }, [isVisible]);
-  
   return (
     <div className="flex items-end justify-between h-32 gap-2">
       {heights.map((height, i) => (
-        <div
-          key={i}
-          className="flex-1 bg-gradient-to-t from-cyan-500 to-cyan-400/60 rounded-t transition-all duration-1000 ease-out"
-          style={{ height: isVisible ? `${height}%` : '10%' }}
-        />
+        <div key={i} className="flex-1 bg-gradient-to-t from-cyan-500 to-cyan-400/60 rounded-t transition-all duration-1000 ease-out" style={{ height: isVisible ? `${height}%` : '10%' }} />
       ))}
     </div>
   );
 }
 
-// Chat WhatsApp Animado - SEM ASPAS, última pergunta é "Como aumentar minhas vendas?"
 function AnimatedWhatsAppChat({ isVisible }: { isVisible: boolean }) {
   const [step, setStep] = useState(0);
-  
   useEffect(() => {
     if (!isVisible) return;
-    
-    if (step < 10) {
-      const delays = [500, 1500, 2500, 4000, 5000, 6500, 8000, 9500, 11000, 12500];
-      const timer = setTimeout(() => setStep(s => s + 1), delays[step] || 1000);
+    if (step < 8) {
+      const delays = [300, 500, 600, 1000, 1200, 1500, 1800, 2200];
+      const timer = setTimeout(() => setStep(s => s + 1), delays[step] || 800);
       return () => clearTimeout(timer);
     }
   }, [isVisible, step]);
@@ -135,18 +150,12 @@ function AnimatedWhatsAppChat({ isVisible }: { isVisible: boolean }) {
         </div>
         <span className="text-sm text-green-400 font-medium">WhatsApp IA</span>
       </div>
-      
       <div className="space-y-3 max-h-[450px] overflow-y-auto pr-2">
-        {/* Pergunta 1 - SEM ASPAS */}
         {step >= 1 && (
           <div className="flex justify-end animate-fadeIn">
-            <div className="bg-green-600/30 text-white/90 px-4 py-2 rounded-2xl rounded-tr-sm text-sm max-w-[85%]">
-              Qual foi o faturamento de dezembro?
-            </div>
+            <div className="bg-green-600/30 text-white/90 px-4 py-2 rounded-2xl rounded-tr-sm text-sm max-w-[85%]">Qual foi o faturamento de dezembro?</div>
           </div>
         )}
-        
-        {/* Digitando 1 */}
         {step === 2 && (
           <div className="flex items-center gap-1 px-2 py-2">
             <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -154,8 +163,6 @@ function AnimatedWhatsAppChat({ isVisible }: { isVisible: boolean }) {
             <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
           </div>
         )}
-        
-        {/* Resposta 1 */}
         {step >= 3 && (
           <div className="flex justify-start animate-fadeIn">
             <div className="bg-slate-700/50 text-white/90 px-4 py-3 rounded-2xl rounded-tl-sm text-sm max-w-[90%]">
@@ -165,57 +172,19 @@ function AnimatedWhatsAppChat({ isVisible }: { isVisible: boolean }) {
             </div>
           </div>
         )}
-        
-        {/* Pergunta 2 - SEM ASPAS */}
-        {step >= 4 && (
+        {step >= 5 && (
           <div className="flex justify-end animate-fadeIn">
-            <div className="bg-green-600/30 text-white/90 px-4 py-2 rounded-2xl rounded-tr-sm text-sm max-w-[85%]">
-              Quais os top 3 produtos?
-            </div>
+            <div className="bg-green-600/30 text-white/90 px-4 py-2 rounded-2xl rounded-tr-sm text-sm max-w-[85%]">Como aumentar minhas vendas?</div>
           </div>
         )}
-        
-        {/* Digitando 2 */}
-        {step === 5 && (
+        {step === 6 && (
           <div className="flex items-center gap-1 px-2 py-2">
             <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
             <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
             <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
           </div>
         )}
-        
-        {/* Resposta 2 */}
-        {step >= 6 && (
-          <div className="flex justify-start animate-fadeIn">
-            <div className="bg-slate-700/50 text-white/90 px-4 py-3 rounded-2xl rounded-tl-sm text-sm max-w-[90%]">
-              <p className="mb-2">🏆 <strong>Top 3 Produtos:</strong></p>
-              <p className="text-slate-300 text-sm">🥇 Monitor 27&quot; - R$ 45.200</p>
-              <p className="text-slate-300 text-sm">🥈 Notebook Pro - R$ 38.900</p>
-              <p className="text-slate-300 text-sm">🥉 Mouse Gamer - R$ 22.100</p>
-            </div>
-          </div>
-        )}
-        
-        {/* Pergunta 3 - COMO AUMENTAR MINHAS VENDAS (ÚLTIMA) - SEM ASPAS */}
         {step >= 7 && (
-          <div className="flex justify-end animate-fadeIn">
-            <div className="bg-green-600/30 text-white/90 px-4 py-2 rounded-2xl rounded-tr-sm text-sm max-w-[85%]">
-              Como aumentar minhas vendas?
-            </div>
-          </div>
-        )}
-        
-        {/* Digitando 3 */}
-        {step === 8 && (
-          <div className="flex items-center gap-1 px-2 py-2">
-            <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-            <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-            <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-          </div>
-        )}
-        
-        {/* Resposta 3 - Sugestões da IA */}
-        {step >= 9 && (
           <div className="flex justify-start animate-fadeIn">
             <div className="bg-slate-700/50 text-white/90 px-4 py-3 rounded-2xl rounded-tl-sm text-sm max-w-[90%]">
               <p className="mb-2">🎯 <strong>Sugestões para aumentar vendas:</strong></p>
@@ -230,19 +199,11 @@ function AnimatedWhatsAppChat({ isVisible }: { isVisible: boolean }) {
   );
 }
 
-// Passo com bolinhas IGUAIS
-function StepCard({ number, title, description, isLast = false }: {
-  number: number;
-  title: string;
-  description: string;
-  isLast?: boolean;
-}) {
+function StepCard({ number, title, description, isLast = false }: { number: number; title: string; description: string; isLast?: boolean }) {
   return (
     <div className="flex gap-4">
       <div className="flex flex-col items-center">
-        <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg">
-          {number}
-        </div>
+        <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg">{number}</div>
         {!isLast && <div className="w-0.5 h-full bg-gradient-to-b from-cyan-500 to-purple-500 mt-2 min-h-[60px]" />}
       </div>
       <div className="pb-8">
@@ -253,303 +214,302 @@ function StepCard({ number, title, description, isLast = false }: {
   );
 }
 
+const FAQ_ITEMS = [
+  { q: 'O que é o MeuDashboard?', a: 'O MeuDashboard é uma plataforma que hospeda seus dashboards Power BI e adiciona superpoderes: consulta de dados por WhatsApp com IA, alertas automáticos e controle de acesso por usuário.' },
+  { q: 'Preciso de cartão de crédito para começar?', a: 'Não. Você pode criar sua conta grátis e começar a usar sem informar cartão de crédito. Configuração em minutos.' },
+  { q: 'Como funciona a integração com WhatsApp?', a: 'Conectamos sua instância WhatsApp à nossa IA. Seus usuários perguntam em linguagem natural e recebem respostas com dados, gráficos e insights em segundos.' },
+  { q: 'Posso usar com meus clientes?', a: 'Sim! Ideal para software houses, consultorias de BI e gestores que precisam entregar dashboards para clientes com controle de acesso e suporte a múltiplos grupos.' },
+  { q: 'Quais são os planos disponíveis?', a: 'Ofertamos planos Free e Pro. O Free permite testes básicos. O Pro desbloqueia alertas, WhatsApp, IA e mais recursos. Consulte a página de planos.' },
+  { q: 'Como funciona o suporte?', a: 'O suporte é por WhatsApp e email. Temos documentação completa e equipe pronta para ajudar na configuração e migração.' },
+];
+
+function FAQAccordion() {
+  const [openIndex, setOpenIndex] = useState<number | null>(0);
+  return (
+    <div className="space-y-6">
+      {FAQ_ITEMS.map((item, i) => (
+        <div key={i} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <button
+            onClick={() => setOpenIndex(openIndex === i ? null : i)}
+            className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-slate-50 transition-colors"
+          >
+            <span className="font-semibold text-slate-900">{item.q}</span>
+            <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${openIndex === i ? 'rotate-180' : ''}`} />
+          </button>
+          {openIndex === i && (
+            <div className="px-6 pb-4 text-slate-600 text-sm">{item.a}</div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function LandingPage() {
+  const { developerInfo, loading, isSubdomain } = useSubdomain();
   const [scrollY, setScrollY] = useState(0);
+  const [navOpaque, setNavOpaque] = useState(false);
   const [isInitialSpin, setIsInitialSpin] = useState(true);
   const [dashboardVisible, setDashboardVisible] = useState(false);
   const dashboardRef = useRef<HTMLDivElement>(null);
-  
-  const whatsappLink = "https://wa.me/556282289559?text=Olá! Gostaria de saber mais sobre o MeuDashboard.";
 
-  // Detecta scroll para girar os asteriscos TODA vez
+  const whatsappLink = 'https://wa.me/556282289559?text=Olá! Gostaria de saber mais sobre o MeuDashboard.';
+
   useEffect(() => {
     const handleScroll = () => {
       setScrollY(window.scrollY);
+      setNavOpaque(window.scrollY > 50);
     };
-    
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Animação de entrada - gira e para após 2 segundos
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsInitialSpin(false);
-    }, 2000);
+    const timer = setTimeout(() => setIsInitialSpin(false), 2000);
     return () => clearTimeout(timer);
   }, []);
 
-  // Detecta quando o dashboard fica visível
+  const observerRef = useRef<IntersectionObserver | null>(null);
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setDashboardVisible(true);
-        }
-      },
-      { threshold: 0.3 }
-    );
-    
-    if (dashboardRef.current) {
-      observer.observe(dashboardRef.current);
+    if (loading || isSubdomain) return;
+    const setup = () => {
+      const el = dashboardRef.current;
+      if (!el) return false;
+      const observer = new IntersectionObserver(
+        ([entry]) => { if (entry.isIntersecting) setDashboardVisible(true); },
+        { threshold: 0.05, rootMargin: '100px' }
+      );
+      observer.observe(el);
+      observerRef.current = observer;
+      return true;
+    };
+    if (!setup()) {
+      const t = setTimeout(setup, 150);
+      return () => { clearTimeout(t); observerRef.current?.disconnect(); };
     }
-    
-    return () => observer.disconnect();
-  }, []);
+    return () => { observerRef.current?.disconnect(); observerRef.current = null; };
+  }, [loading, isSubdomain]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (isSubdomain && developerInfo) {
+    const { name, logo_url, primary_color, landing_title, landing_description, landing_background_url } = developerInfo;
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center relative p-4" style={{ backgroundColor: primary_color || '#3B82F6', backgroundImage: landing_background_url ? `url(${landing_background_url})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+        {landing_background_url && <div className="absolute inset-0 bg-black/50" />}
+        <div className="relative z-10 bg-white rounded-2xl shadow-2xl p-10 max-w-md w-full mx-4 text-center">
+          {logo_url ? <img src={logo_url} alt={name} className="h-16 mx-auto mb-6 object-contain" /> : <div className="h-16 w-16 rounded-xl mx-auto mb-6 flex items-center justify-center text-white text-2xl font-bold" style={{ backgroundColor: primary_color || '#3B82F6' }}>{name?.charAt(0)?.toUpperCase()}</div>}
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">{landing_title || name}</h1>
+          {landing_description && <p className="text-gray-500 mb-8">{landing_description}</p>}
+          <Link href="/login" className="block w-full py-3 px-6 rounded-xl text-white font-semibold text-lg transition-all hover:opacity-90 hover:shadow-lg text-center" style={{ backgroundColor: primary_color || '#3B82F6' }}>Entrar na conta</Link>
+          <p className="text-xs text-gray-400 mt-8">Powered by <span className="font-medium">MeuDashboard</span></p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isSubdomain && !developerInfo) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md text-center">
+          <h1 className="text-xl font-bold text-gray-900 mb-2">Subdomínio não encontrado</h1>
+          <p className="text-gray-500 mb-6">Este endereço não está configurado ou ainda não foi aprovado.</p>
+          <Link href="https://meudashboard.org" className="text-blue-600 hover:underline">Ir para MeuDashboard</Link>
+        </div>
+      </div>
+    );
+  }
+
+  const faqSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: FAQ_ITEMS.map(({ q, a }) => ({
+      '@type': 'Question',
+      name: q,
+      acceptedAnswer: { '@type': 'Answer', text: a },
+    })),
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            '@context': 'https://schema.org',
-            '@type': 'SoftwareApplication',
-            name: 'MeuDashboard',
-            description: 'Plataforma de gestão de dashboards e relatórios Power BI com integração de IA',
-            url: 'https://meudashboard.org',
-            applicationCategory: 'BusinessApplication',
-            operatingSystem: 'Web',
-            offers: {
-              '@type': 'Offer',
-              price: '0',
-              priceCurrency: 'BRL',
-            },
-            aggregateRating: {
-              '@type': 'AggregateRating',
-              ratingValue: '4.8',
-              ratingCount: '150',
-            },
-          }),
-        }}
-      />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'SoftwareApplication',
+        name: 'MeuDashboard',
+        description: 'Plataforma de dashboards Power BI com IA integrada. Consulte dados por WhatsApp, receba alertas automáticos e controle o acesso por usuário.',
+        url: 'https://meudashboard.org',
+        applicationCategory: 'BusinessApplication',
+        operatingSystem: 'Web',
+        offers: { '@type': 'Offer', price: '0', priceCurrency: 'BRL' },
+      }) }} />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700;800&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap');
-        
-        * {
-          font-family: 'Exo 2', system-ui, sans-serif;
-        }
-        
-        .brand-name {
-          font-family: 'Orbitron', 'Exo 2', sans-serif;
-          font-weight: 700;
-          letter-spacing: 0.02em;
-          color: #2563eb;
-        }
-        
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        
-        @keyframes initialSpin {
-          0% {
-            transform: rotate(0deg);
-          }
-          20% {
-            transform: rotate(360deg);
-          }
-          50% {
-            transform: rotate(600deg);
-          }
-          75% {
-            transform: rotate(700deg);
-          }
-          100% {
-            transform: rotate(720deg);
-          }
-        }
-        
-        .animate-fadeIn {
-          animation: fadeIn 0.4s ease-out forwards;
-        }
-        
-        @keyframes gradientFlow {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-        
-        .animated-gradient {
-          background: linear-gradient(135deg, #06b6d4, #3b82f6, #8b5cf6, #06b6d4);
-          background-size: 300% 300%;
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-          animation: gradientFlow 4s ease infinite;
-        }
-        
-        /* Scrollbar customizada para o chat */
-        .overflow-y-auto::-webkit-scrollbar {
-          width: 4px;
-        }
-        
-        .overflow-y-auto::-webkit-scrollbar-track {
-          background: rgba(148, 163, 184, 0.1);
-          border-radius: 10px;
-        }
-        
-        .overflow-y-auto::-webkit-scrollbar-thumb {
-          background: rgba(148, 163, 184, 0.3);
-          border-radius: 10px;
-        }
-        
-        .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-          background: rgba(148, 163, 184, 0.5);
-        }
+        * { font-family: 'Exo 2', system-ui, sans-serif; }
+        .brand-name { font-family: 'Orbitron', 'Exo 2', sans-serif; font-weight: 700; letter-spacing: 0.02em; color: #2563eb; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes initialSpin { 0% { transform: rotate(0deg); } 20% { transform: rotate(360deg); } 50% { transform: rotate(600deg); } 75% { transform: rotate(700deg); } 100% { transform: rotate(720deg); } }
+        .animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
+        @keyframes gradientFlow { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        .animated-gradient { background: linear-gradient(135deg, #06b6d4, #3b82f6, #8b5cf6, #06b6d4); background-size: 300% 300%; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; animation: gradientFlow 4s ease infinite; }
       `}</style>
-      
+
       {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md shadow-sm border-b border-slate-100">
+      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${navOpaque ? 'bg-white/95 backdrop-blur-md shadow-sm border-b border-slate-100' : 'bg-transparent'}`}>
         <div className="max-w-6xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <AnimatedLogo size={32} scrollY={scrollY} isInitialSpin={isInitialSpin} />
-              <BrandName size="text-xl" />
+              <Link href="/" className="flex items-center gap-3">
+                <AnimatedLogo size={32} scrollY={scrollY} isInitialSpin={isInitialSpin} />
+                <BrandName size="text-xl" />
+              </Link>
+            </div>
+            <div className="hidden md:flex items-center gap-6">
+              <a href="#funcionalidades" className="text-slate-600 hover:text-slate-900 text-sm font-medium">Funcionalidades</a>
+              <a href="#como-funciona" className="text-slate-600 hover:text-slate-900 text-sm font-medium">Como funciona</a>
+              <a href="#para-quem" className="text-slate-600 hover:text-slate-900 text-sm font-medium">Para quem</a>
+              <a href="#faq" className="text-slate-600 hover:text-slate-900 text-sm font-medium">FAQ</a>
             </div>
             <div className="flex items-center gap-3">
-              <Link href="/planos" className="px-4 py-2.5 border border-blue-600 text-blue-600 rounded-xl text-sm font-semibold hover:bg-blue-50 transition-all">
-                Ver Planos
-              </Link>
-              <Link href="/login" className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all">
-                Entrar
-              </Link>
+              <Link href="/login" className="text-slate-600 hover:text-slate-900 text-sm font-medium">Entrar</Link>
+              <Link href="/cadastro" className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all">Criar conta grátis</Link>
             </div>
           </div>
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16" style={{
-        background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)'
-      }}>
+      {/* Hero */}
+      <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16" style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)' }}>
         <div className="absolute top-40 left-20 w-96 h-96 bg-cyan-500/5 rounded-full blur-3xl" />
         <div className="absolute bottom-20 right-20 w-80 h-80 bg-purple-500/5 rounded-full blur-3xl" />
-        
         <div className="relative z-10 max-w-5xl mx-auto px-6 text-center">
-          {/* Logo animada principal */}
-          <div className="flex justify-center mb-10">
-            <AnimatedLogo size={90} scrollY={scrollY} isInitialSpin={isInitialSpin} />
-          </div>
-          
-          {/* Título */}
+          <div className="mb-6 flex justify-center"><AnimatedLogo size={80} scrollY={scrollY} isInitialSpin={isInitialSpin} /></div>
+          <span className="inline-block bg-cyan-100 text-cyan-700 px-4 py-1.5 rounded-full text-sm font-medium mb-6">Plataforma com IA integrada</span>
           <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-slate-900 mb-6 leading-tight">
-            <span className="animated-gradient">Eleve seu Dashboard</span>
+            Seus dashboards Power BI <br /><span className="animated-gradient">com Inteligência Artificial</span>
           </h1>
-          
           <p className="text-xl text-slate-600 mb-10 max-w-2xl mx-auto leading-relaxed">
-            Hospede seus dashboards Power BI em uma plataforma inteligente com IA que 
-            <strong className="text-slate-800"> analisa, interpreta e sugere</strong> ações baseadas nos seus dados.
+            Consulte dados por <strong className="text-slate-800">WhatsApp com IA</strong>, receba alertas automáticos e controle o acesso por usuário. Tudo em uma plataforma.
           </p>
-          
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <Link href="/login" className="group bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-8 py-4 rounded-2xl font-semibold text-lg hover:shadow-xl hover:shadow-cyan-500/25 transition-all duration-300 flex items-center gap-2">
-              Começar agora
+            <Link href="/cadastro" className="group bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-8 py-4 rounded-2xl font-semibold text-lg hover:shadow-xl hover:shadow-cyan-500/25 transition-all duration-300 flex items-center gap-2">
+              Começar grátis
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </Link>
-            
-            <a href={whatsappLink} target="_blank" rel="noopener noreferrer"
-              className="group bg-white text-slate-700 px-8 py-4 rounded-2xl font-semibold text-lg border border-slate-200 hover:border-slate-300 hover:shadow-lg transition-all duration-300 flex items-center gap-2">
+            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="group bg-white text-slate-700 px-8 py-4 rounded-2xl font-semibold text-lg border border-slate-200 hover:border-slate-300 hover:shadow-lg transition-all duration-300 flex items-center gap-2">
               <MessageSquare className="w-5 h-5 text-green-500" />
-              Falar conosco
+              Falar com especialista
             </a>
           </div>
-          
-          <div className="mt-12 inline-flex items-center gap-2 bg-white px-5 py-2.5 rounded-full border border-slate-200 shadow-sm">
-            <Brain className="w-5 h-5 text-purple-500" />
-            <span className="text-sm text-slate-600">Powered by <strong className="text-slate-900">Inteligência Artificial</strong></span>
+          <p className="mt-6 text-sm text-slate-500">Configuração em minutos. Sem cartão de crédito.</p>
+          <div className="mt-16 flex flex-col items-center gap-2 animate-bounce">
+            <span className="text-xs text-slate-400 uppercase tracking-wider">Role para explorar</span>
+            <div className="w-6 h-10 rounded-full border-2 border-slate-300 flex items-start justify-center p-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Funcionalidades */}
-      <section id="funcionalidades" className="py-24 px-6 bg-white">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-16">
-            <span className="inline-block bg-cyan-100 text-cyan-700 px-4 py-1.5 rounded-full text-sm font-medium mb-4">
-              Funcionalidades
-            </span>
-            <h2 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4">
-              Tudo que você precisa
-            </h2>
-            <p className="text-xl text-slate-600 max-w-2xl mx-auto">
-              Uma plataforma completa para gerenciar e compartilhar seus dashboards
-            </p>
+      {/* Social Proof */}
+      <section className="py-16 px-6 bg-white border-y border-slate-100">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            <div className="text-center">
+              <p className="text-3xl md:text-4xl font-bold text-slate-900"><AnimatedCounter end={500} suffix="+" /></p>
+              <p className="text-slate-600 text-sm mt-1">Dashboards ativos</p>
+            </div>
+            <div className="text-center">
+              <p className="text-3xl md:text-4xl font-bold text-slate-900"><AnimatedCounter end={2000} suffix="+" /></p>
+              <p className="text-slate-600 text-sm mt-1">Usuários</p>
+            </div>
+            <div className="text-center">
+              <p className="text-3xl md:text-4xl font-bold text-slate-900"><AnimatedCounter end={50} suffix="k+" /></p>
+              <p className="text-slate-600 text-sm mt-1">Consultas IA/mês</p>
+            </div>
+            <div className="text-center">
+              <p className="text-3xl md:text-4xl font-bold text-slate-900"><AnimatedCounter end={99} suffix="%" /></p>
+              <p className="text-slate-600 text-sm mt-1">Uptime</p>
+            </div>
           </div>
-          
-          <div className="grid md:grid-cols-2 gap-6">
-            <FeatureCard 
-              icon={BarChart3} 
-              title="Dashboards Power BI" 
-              description="Integre seus relatórios Power BI diretamente na plataforma com toda segurança, performance e acesso controlado por usuários."
-              gradient="from-blue-500 to-blue-600"
-            />
-            <FeatureCard 
-              icon={Brain} 
-              title="Assistente IA no WhatsApp" 
-              description="Consulte seus dados pelo WhatsApp. Nossa IA não só busca informações, mas analisa, interpreta padrões e sugere ações baseadas nos seus indicadores."
-              gradient="from-purple-500 to-purple-600"
-            />
-            <FeatureCard 
-              icon={Bell} 
-              title="Alertas e Agendamentos" 
-              description="Agende relatórios e receba alertas diretamente no WhatsApp. Defina horários, métricas críticas e seja notificado automaticamente."
-              gradient="from-amber-500 to-orange-500"
-            />
-            <FeatureCard 
-              icon={Shield} 
-              title="Segurança por Usuários" 
-              description="Cada usuário com acesso limitado às suas informações. Controle granular de permissões por pessoa, dashboard e dados consultáveis."
-              gradient="from-emerald-500 to-green-600"
-            />
+        </div>
+      </section>
+
+      {/* ============ BANNER PLANO GRÁTIS ============ */}
+      <section className="py-12 px-6 bg-gradient-to-r from-blue-600 via-blue-700 to-purple-700">
+        <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center shrink-0">
+              <Sparkles className="w-7 h-7 text-white" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-white">Comece grátis, sem compromisso</h3>
+              <p className="text-blue-100 text-sm mt-0.5">Crie sua conta e configure seus dashboards agora mesmo. Upgrade quando quiser.</p>
+            </div>
+          </div>
+          <Link
+            href="/cadastro"
+            className="bg-white text-blue-700 px-8 py-3.5 rounded-xl font-semibold text-base hover:bg-blue-50 transition-all shadow-lg whitespace-nowrap flex items-center gap-2"
+          >
+            Criar conta grátis
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
+      </section>
+
+      {/* Funcionalidades */}
+      <section id="funcionalidades" className="py-24 px-6 bg-slate-50">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-16">
+            <span className="inline-block bg-cyan-100 text-cyan-700 px-4 py-1.5 rounded-full text-sm font-medium mb-4">Funcionalidades</span>
+            <h2 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4">Tudo que você precisa</h2>
+            <p className="text-xl text-slate-600 max-w-2xl mx-auto">Uma plataforma completa para gerenciar e compartilhar seus dashboards</p>
+          </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <FeatureCard icon={BarChart3} title="Dashboards Power BI" description="Integre seus relatórios Power BI com embed seguro, performance e acesso controlado por usuários." gradient="from-blue-500 to-blue-600" />
+            <FeatureCard icon={Brain} title="IA no WhatsApp" description="Consulte dados pelo WhatsApp. A IA analisa, interpreta padrões e sugere ações baseadas nos seus indicadores." gradient="from-purple-500 to-purple-600" />
+            <FeatureCard icon={Bell} title="Alertas automáticos" description="Receba alertas no WhatsApp quando métricas ultrapassarem limites. Agendamentos e notificações em tempo real." gradient="from-amber-500 to-orange-500" />
+            <FeatureCard icon={Shield} title="Controle de acesso" description="Cada usuário com acesso limitado às suas informações. Permissões por pessoa, dashboard e dados." gradient="from-emerald-500 to-green-600" />
+            <FeatureCard icon={RefreshCw} title="Atualização monitorada" description="Monitore datasets e dataflows. Alertas de erro, atraso e relatório diário por WhatsApp." gradient="from-amber-500 to-amber-600" />
+            <FeatureCard icon={Database} title="Multi-tenant" description="Grupos de empresa isolados. Ideal para software houses e consultorias com múltiplos clientes." gradient="from-indigo-500 to-indigo-600" />
           </div>
         </div>
       </section>
 
       {/* Como Funciona */}
-      <section id="como-funciona" className="py-24 px-6 bg-slate-50">
+      <section id="como-funciona" className="py-24 px-6 bg-white">
         <div className="max-w-6xl mx-auto">
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             <div>
-              <span className="inline-block bg-purple-100 text-purple-700 px-4 py-1.5 rounded-full text-sm font-medium mb-4">
-                Como Funciona
-              </span>
-              <h2 className="text-4xl md:text-5xl font-bold text-slate-900 mb-8">
-                Simples de começar
+              <span className="inline-block bg-purple-100 text-purple-700 px-4 py-1.5 rounded-full text-sm font-medium mb-4">Como Funciona</span>
+              <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-slate-900 mb-8">
+                Configuração em{' '}
+                <span className="animated-gradient whitespace-nowrap">3 passos simples</span>
               </h2>
-              
               <div className="space-y-0">
-                <StepCard 
-                  number={1} 
-                  title="Mapeamos seu BI" 
-                  description="Conectamos ao seu Power BI e mapeamos todas as tabelas, métricas e relacionamentos do seu modelo de dados."
-                />
-                <StepCard 
-                  number={2} 
-                  title="Conectamos à nossa IA" 
-                  description="Nossa inteligência artificial aprende a estrutura dos seus dados para responder perguntas em linguagem natural."
-                />
-                <StepCard 
-                  number={3} 
-                  title="Você pergunta, a IA responde" 
-                  description="Acesse via web ou WhatsApp. Faça perguntas e receba análises, insights e sugestões em segundos."
-                  isLast={true}
-                />
+                <StepCard number={1} title="Conecte seu Power BI" description="Integre seus workspaces, datasets e relatórios. Configuração em minutos com Service Principal." />
+                <StepCard number={2} title="Configure usuários e telas" description="Defina quem acessa o quê. Crie telas personalizadas e controle permissões por grupo." />
+                <StepCard number={3} title="Ative IA e WhatsApp" description="Conecte o WhatsApp e deixe a IA responder perguntas em linguagem natural sobre seus dados." isLast={true} />
               </div>
+              <Link href="/cadastro" className="inline-flex items-center gap-2 mt-8 bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-700 transition-all">
+                Criar conta grátis
+                <ArrowRight className="w-5 h-5" />
+              </Link>
             </div>
-            
-            {/* Preview com animações */}
             <div className="relative" ref={dashboardRef}>
               <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-6 shadow-2xl">
                 <div className="space-y-4">
                   <div className="flex items-center gap-3 mb-4">
                     <StaticLogo size={24} />
-                    <span className="text-white text-lg brand-name">
-                      <span className="text-[1.2em]">M</span>eu<span className="text-[1.2em]">D</span>ashboard
-                    </span>
+                    <span className="text-white text-lg brand-name"><span className="text-[1.2em]">M</span>eu<span className="text-[1.2em]">D</span>ashboard</span>
                   </div>
-                  
                   <div className="grid grid-cols-2 gap-3">
                     <div className="bg-white/10 backdrop-blur rounded-xl p-4">
                       <p className="text-xs text-slate-400 mb-1">Faturamento</p>
@@ -560,85 +520,91 @@ export default function LandingPage() {
                       <p className="text-2xl font-bold text-green-400">+24%</p>
                     </div>
                   </div>
-                  
-                  {/* Gráfico de barras animando CONTINUAMENTE */}
                   <div className="bg-white/5 backdrop-blur rounded-xl p-4">
                     <p className="text-xs text-slate-400 mb-3">Vendas por Mês</p>
                     <AnimatedBarChart isVisible={dashboardVisible} />
                   </div>
-                  
-                  {/* Chat com 3 perguntas */}
                   <AnimatedWhatsAppChat isVisible={dashboardVisible} />
                 </div>
               </div>
-              
-              <div className="absolute -top-4 -right-4 w-24 h-24 bg-cyan-500/20 rounded-full blur-2xl" />
-              <div className="absolute -bottom-4 -left-4 w-32 h-32 bg-purple-500/20 rounded-full blur-2xl" />
             </div>
           </div>
         </div>
       </section>
 
-      {/* CTA Section - FUNDO CLARO */}
-      <section id="contato" className="py-24 px-6 bg-white">
-        <div className="max-w-4xl mx-auto">
-          <div className="relative bg-gradient-to-br from-slate-100 via-white to-slate-50 rounded-3xl p-12 text-center border border-slate-200 shadow-xl overflow-hidden">
-            <div className="absolute top-0 left-1/4 w-64 h-64 bg-cyan-500/5 rounded-full blur-3xl" />
-            <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-purple-500/5 rounded-full blur-3xl" />
-            
-            <div className="relative z-10">
-              {/* Asterisco + Título juntos */}
-              <div className="flex items-center justify-center gap-4 mb-6">
-                <AnimatedLogo size={48} scrollY={scrollY} isInitialSpin={isInitialSpin} />
-                <h2 className="text-3xl md:text-4xl font-bold text-slate-900">
-                  Pronto para elevar seu Dashboard?
-                </h2>
-              </div>
-              
-              <p className="text-lg text-slate-600 mb-8 max-w-xl mx-auto">
-                Entre em contato e descubra como a IA pode transformar a forma como sua empresa analisa dados.
-              </p>
-              
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <a href={whatsappLink} target="_blank" rel="noopener noreferrer"
-                  className="bg-green-500 hover:bg-green-600 text-white px-8 py-4 rounded-2xl font-semibold text-lg transition-all duration-300 flex items-center justify-center gap-3 hover:shadow-xl hover:shadow-green-500/20">
-                  <MessageSquare className="w-6 h-6" />
-                  Falar no WhatsApp
-                </a>
-                
-                <Link href="/login" className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-semibold text-lg transition-all duration-300 hover:shadow-xl">
-                  Acessar plataforma
-                </Link>
-              </div>
-            </div>
+      {/* Para Quem */}
+      <section id="para-quem" className="py-24 px-6 bg-slate-50">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-16">
+            <span className="inline-block bg-cyan-100 text-cyan-700 px-4 py-1.5 rounded-full text-sm font-medium mb-4">Para quem</span>
+            <h2 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4">Feito para o seu negócio</h2>
+            <p className="text-xl text-slate-600 max-w-2xl mx-auto">Seja qual for o seu perfil, o MeuDashboard se adapta</p>
           </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <ParaQuemCard icon={Building2} title="Software Houses" description="Entregue dashboards para clientes com white-label, controle de acesso e suporte a múltiplos grupos." tag="B2B" />
+            <ParaQuemCard icon={TrendingUp} title="Consultorias BI" description="Monitore datasets, alertas de refresh e entregue relatórios com IA integrada aos seus clientes." tag="Consultoria" />
+            <ParaQuemCard icon={Users} title="Gestores" description="Centralize KPIs, dashboards e alertas. Consulte dados por WhatsApp sem precisar abrir o Power BI." tag="Gestão" />
+            <ParaQuemCard icon={Database} title="Equipes de Dados" description="Controle de acesso granular, ordem de atualização e monitoramento de datasets e dataflows." tag="Data" />
+            <ParaQuemCard icon={FileCheck} title="Compliance" description="Auditoria de acesso, logs de uso e permissões por usuário. Rastreabilidade completa." tag="Governança" />
+            <ParaQuemCard icon={Zap} title="Startups e PMEs" description="Comece grátis, escale conforme cresce. Sem cartão de crédito para começar." tag="Growth" />
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section id="faq" className="py-24 px-6 bg-white">
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-16">
+            <span className="inline-block bg-cyan-100 text-cyan-700 px-4 py-1.5 rounded-full text-sm font-medium mb-4">FAQ</span>
+            <h2 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4">Perguntas frequentes</h2>
+          </div>
+          <FAQAccordion />
+        </div>
+      </section>
+
+      {/* CTA Final - Dark */}
+      <section className="py-24 px-6 bg-slate-900 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10" />
+        <div className="relative z-10 max-w-4xl mx-auto text-center">
+          <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">Pronto para começar?</h2>
+          <p className="text-xl text-slate-300 mb-10 max-w-xl mx-auto">Crie sua conta grátis e em minutos seus dashboards estarão com superpoderes.</p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link href="/cadastro" className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-semibold text-lg transition-all flex items-center justify-center gap-2">
+              Criar conta grátis
+              <ArrowRight className="w-5 h-5" />
+            </Link>
+            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="bg-green-500 hover:bg-green-600 text-white px-8 py-4 rounded-2xl font-semibold text-lg transition-all flex items-center justify-center gap-3">
+              <MessageSquare className="w-6 h-6" />
+              Falar no WhatsApp
+            </a>
+          </div>
+          <p className="mt-6 text-sm text-slate-400">Sem cartão de crédito</p>
         </div>
       </section>
 
       {/* Footer */}
       <footer className="bg-slate-50 border-t border-slate-200 py-12 px-6">
         <div className="max-w-6xl mx-auto">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="grid md:grid-cols-3 gap-8">
             <div className="flex items-center gap-3">
               <StaticLogo size={28} />
               <BrandName size="text-lg" />
             </div>
-            
-            <p className="text-sm text-slate-600">
-              Desenvolvido por <a href="https://vion.com.br" target="_blank" rel="noopener noreferrer" className="font-semibold hover:text-slate-900 transition-colors">vion.com.br</a>
-            </p>
-            
-            <p className="text-sm text-slate-400">
-              © 2026 MeuDashboard
-            </p>
+            <div>
+              <p className="text-slate-600 text-sm">Dashboards Power BI com IA integrada. Consulte dados por WhatsApp, receba alertas e controle o acesso.</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm text-slate-600">Desenvolvido por <a href="https://vion.com.br" target="_blank" rel="noopener noreferrer" className="font-semibold hover:text-slate-900">vion.com.br</a></p>
+              <p className="text-sm text-slate-400 mt-1">© 2026 MeuDashboard</p>
+            </div>
           </div>
         </div>
       </footer>
 
-      {/* WhatsApp Float Button */}
-      <a href={whatsappLink} target="_blank" rel="noopener noreferrer"
-        className="fixed bottom-6 right-6 z-50 bg-green-500 hover:bg-green-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110">
+      {/* WhatsApp Float */}
+      <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="fixed bottom-6 right-6 z-50 bg-green-500 hover:bg-green-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110 group" title="Fale conosco!">
         <MessageSquare className="w-6 h-6" />
+        <span className="absolute right-full mr-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-slate-900 text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Fale conosco!</span>
       </a>
     </div>
   );

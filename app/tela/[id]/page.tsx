@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
+import { useRefreshContextOptional } from '@/contexts/RefreshContext';
 import { 
   RefreshCw,
   Maximize2,
@@ -14,7 +15,10 @@ import {
   Download,
   Trash2,
   Asterisk,
-  Database
+  Database,
+  Loader2,
+  CheckCircle,
+  XCircle
 } from 'lucide-react';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
@@ -54,7 +58,21 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
   const [embedConfig, setEmbedConfig] = useState<EmbedConfig | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshingData, setRefreshingData] = useState(false);
-  const [refreshProgress, setRefreshProgress] = useState<string>('');
+  const [refreshStatus, setRefreshStatus] = useState<{
+    active: boolean;
+    progress: number;
+    message: string;
+    status: 'idle' | 'refreshing' | 'success' | 'error';
+    current?: number;
+    total?: number;
+    succeeded?: number;
+    failed?: number;
+  }>({
+    active: false,
+    progress: 0,
+    message: '',
+    status: 'idle',
+  });
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Chat states
@@ -67,6 +85,7 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [usageInfo, setUsageInfo] = useState<{ used: number; limit: number } | null>(null);
   const [userPermissions, setUserPermissions] = useState<{ can_use_ai: boolean; can_refresh: boolean }>({ can_use_ai: false, can_refresh: false });
+  const refreshContext = useRefreshContextOptional();
 
   async function fetchUserPermissions() {
     try {
@@ -351,27 +370,80 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
     }
   }
 
+  async function refreshSingleItem(item: { type: string; dataset_id?: string; dataflow_id?: string; connection_id?: string; name: string }): Promise<boolean> {
+    const itemId = item.type === 'dataflow' ? item.dataflow_id : item.dataset_id;
+    if (!itemId || !item.connection_id) return false;
+
+    const res = await fetch('/api/powerbi/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dataset_id: item.type === 'dataset' ? item.dataset_id : undefined,
+        dataflow_id: item.type === 'dataflow' ? item.dataflow_id : undefined,
+        connection_id: item.connection_id
+      })
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Erro ao atualizar');
+    }
+
+    const maxAttempts = 120;
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      attempts++;
+
+      const statusRes = await fetch(
+        `/api/powerbi/refresh?${item.type === 'dataset' ? 'dataset_id' : 'dataflow_id'}=${itemId}&connection_id=${item.connection_id}`
+      );
+
+      if (statusRes.ok) {
+        const data = await statusRes.json();
+        const status = data.status;
+
+        if (status === 'Completed' || status === 'Success') return true;
+        if (status === 'Failed' || status === 'Disabled') throw new Error(`Atualização falhou: ${status}`);
+      }
+    }
+
+    return true;
+  }
+
   async function handleRefreshData() {
     if (refreshingData) return;
-    
+
     setRefreshingData(true);
-    setRefreshProgress('Buscando ordem de atualização...');
+    setRefreshStatus({
+      active: true,
+      progress: 5,
+      message: 'Buscando ordem de atualização...',
+      status: 'refreshing',
+    });
+
+    refreshContext?.addRefresh({
+      screenId: id,
+      screenName: embedConfig?.screenTitle || 'Dashboard',
+      status: 'refreshing',
+      startedAt: new Date(),
+    });
 
     try {
-      // Buscar informações da tela para pegar o company_group_id
       const screenRes = await fetch(`/api/powerbi/screens/${id}`);
       if (!screenRes.ok) throw new Error('Erro ao buscar informações da tela');
-      
+
       const screenData = await screenRes.json();
       const groupId = screenData.screen?.company_group_id;
-      
+
       if (!groupId) throw new Error('Grupo não encontrado para esta tela');
 
-      // Buscar ordem de atualização
-      setRefreshProgress('Carregando itens para atualização...');
+      setRefreshStatus(prev => ({ ...prev, progress: 10, message: 'Carregando itens...' }));
+
       const orderRes = await fetch(`/api/powerbi/refresh-order?group_id=${groupId}`);
       if (!orderRes.ok) throw new Error('Erro ao buscar ordem de atualização');
-      
+
       const orderData = await orderRes.json();
       const items = orderData.items || [];
 
@@ -380,47 +452,65 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
         return;
       }
 
-      // Executar atualização de cada item na ordem
+      let succeeded = 0;
+      let failed = 0;
+
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
-        setRefreshProgress(`Atualizando ${i + 1}/${items.length}: ${item.name}`);
+        const progressPct = 10 + Math.round(((i + 1) / items.length) * 85);
+        setRefreshStatus(prev => ({
+          ...prev,
+          progress: progressPct,
+          message: `Atualizando ${i + 1}/${items.length}: ${item.name}`,
+          current: i + 1,
+          total: items.length,
+          succeeded,
+          failed,
+        }));
 
         try {
-          const itemId = item.type === 'dataflow' ? item.dataflow_id : item.dataset_id;
-          
-          const refreshRes = await fetch('/api/powerbi/refresh', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              [item.type === 'dataflow' ? 'dataflow_id' : 'dataset_id']: itemId,
-              connection_id: item.connection_id
-            })
-          });
-
-          if (!refreshRes.ok) {
-            const errorData = await refreshRes.json();
-            console.error(`Erro ao atualizar ${item.name}:`, errorData.error);
-            // Continua para o próximo item mesmo com erro
-          }
-
-          // Aguardar 2 segundos entre atualizações
-          if (i < items.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
-          }
+          const success = await refreshSingleItem(item);
+          if (success) succeeded++;
+          else failed++;
         } catch (err: any) {
           console.error(`Erro ao atualizar ${item.name}:`, err.message);
+          failed++;
         }
       }
 
-      setRefreshProgress('Atualização concluída!');
-      setTimeout(() => {
-        setRefreshProgress('');
-      }, 3000);
+      setRefreshStatus({
+        active: true,
+        progress: 100,
+        message: 'Atualização concluída!',
+        status: 'success',
+        current: items.length,
+        total: items.length,
+        succeeded,
+        failed,
+      });
 
+      refreshContext?.updateRefresh(id, 'success');
+
+      setTimeout(() => {
+        setRefreshStatus({ active: false, progress: 0, message: '', status: 'idle' });
+        handleRefresh();
+      }, 3000);
     } catch (err: any) {
       console.error('Erro ao atualizar dados:', err);
-      alert(err.message || 'Erro ao atualizar dados');
-      setRefreshProgress('');
+      setRefreshStatus({
+        active: true,
+        progress: 100,
+        message: err.message || 'Erro na atualização',
+        status: 'error',
+      });
+
+      refreshContext?.updateRefresh(id, 'error');
+
+      setTimeout(() => {
+        setRefreshStatus(prev =>
+          prev.status === 'error' ? { active: false, progress: 0, message: '', status: 'idle' } : prev
+        );
+      }, 5000);
     } finally {
       setRefreshingData(false);
     }
@@ -611,14 +701,6 @@ ${'='.repeat(50)}
 
   return (
     <MainLayout>
-      {/* Toast de progresso de atualização */}
-      {refreshProgress && (
-        <div className="fixed top-20 right-6 z-50 bg-blue-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-slide-down">
-          <LoadingSpinner size={18} />
-          <span className="text-sm font-medium">{refreshProgress}</span>
-        </div>
-      )}
-
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -634,7 +716,7 @@ ${'='.repeat(50)}
                 onClick={handleRefreshData}
                 disabled={refreshingData}
                 className="p-2 bg-white text-gray-600 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
-                title={refreshProgress || 'Atualizar Dados'}
+                title={refreshStatus.message || 'Atualizar Dados'}
               >
                 <Database size={18} className={refreshingData ? 'animate-pulse' : ''} />
               </button>
@@ -670,6 +752,65 @@ ${'='.repeat(50)}
             )}
           </div>
         </div>
+
+        {/* Barra de Progresso de Atualização */}
+        {refreshStatus.active && (
+          <div className={`rounded-xl border p-4 transition-all ${
+            refreshStatus.status === 'success'
+              ? 'bg-green-50 border-green-200'
+              : refreshStatus.status === 'error'
+                ? 'bg-red-50 border-red-200'
+                : 'bg-blue-50 border-blue-200'
+          }`}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                {refreshStatus.status === 'refreshing' && (
+                  <Loader2 size={16} className="animate-spin text-blue-600" />
+                )}
+                {refreshStatus.status === 'success' && (
+                  <CheckCircle size={16} className="text-green-600" />
+                )}
+                {refreshStatus.status === 'error' && (
+                  <XCircle size={16} className="text-red-600" />
+                )}
+                <span className={`text-sm font-medium ${
+                  refreshStatus.status === 'success' ? 'text-green-700'
+                    : refreshStatus.status === 'error' ? 'text-red-700'
+                      : 'text-blue-700'
+                }`}>
+                  {refreshStatus.message}
+                </span>
+              </div>
+              <span className="text-xs text-gray-500">{refreshStatus.progress}%</span>
+            </div>
+
+            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ease-out ${
+                  refreshStatus.status === 'success' ? 'bg-green-500'
+                    : refreshStatus.status === 'error' ? 'bg-red-500'
+                      : 'bg-blue-500'
+                }`}
+                style={{ width: `${refreshStatus.progress}%` }}
+              />
+            </div>
+
+            {refreshStatus.total !== undefined && refreshStatus.total > 0 && (
+              <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                {refreshStatus.succeeded !== undefined && refreshStatus.succeeded > 0 && (
+                  <span className="flex items-center gap-1 text-green-600">
+                    <CheckCircle size={14} /> {refreshStatus.succeeded} concluídos
+                  </span>
+                )}
+                {refreshStatus.failed !== undefined && refreshStatus.failed > 0 && (
+                  <span className="flex items-center gap-1 text-red-600">
+                    <XCircle size={14} /> {refreshStatus.failed} com erro
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Container do Dashboard */}
         <div className="h-[calc(100vh-16rem)] min-h-[600px]">

@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Trash2, Upload, MessageSquare, Database, Download } from 'lucide-react';
+import { X, Trash2, Upload, MessageSquare, Database, Download, Loader2 } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
+import FeatureGate from '@/components/ui/FeatureGate';
 import PermissionGuard from '@/components/assistente-ia/PermissionGuard';
+import Button from '@/components/ui/Button';
 import { parseDocumentation, getDocumentationStats, ParsedDocumentation } from '@/lib/assistente-ia/documentation-parser';
 import { useToast } from '@/contexts/ToastContext';
 import { useMenu } from '@/contexts/MenuContext';
@@ -351,7 +353,7 @@ function ContextosContent() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
       </div>
     );
   }
@@ -360,56 +362,40 @@ function ContextosContent() {
     <>
       <div className="space-y-6">
           
-          {/* Header */}
-          <div className="flex justify-between items-center">
+          {/* Header - estilo sistema */}
+          <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Contextos da IA</h1>
-              <p className="text-gray-500 text-sm mt-1">Configure as documentações que alimentam o assistente de inteligência artificial</p>
+              <p className="text-gray-500">Configure as documentações que alimentam o assistente de inteligência artificial</p>
             </div>
-            <div className="flex items-center gap-3">
-              {/* Ícones de Download */}
-              <div className="relative group">
-                <button
-                  onClick={() => handleDownload('prompt-documentacao-chat.md')}
-                  className="p-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-colors"
-                  title="Baixar prompt de Documentação Chat"
-                >
-                  <Download size={20} />
-                </button>
-                <div className="absolute right-0 top-full mt-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10 pointer-events-none">
-                  <div className="font-semibold mb-1">Documentação Chat</div>
-                  <div className="text-gray-300">Gera documentação estruturada para a IA responder perguntas dos usuários</div>
-                </div>
-              </div>
-              <div className="relative group">
-                <button
-                  onClick={() => handleDownload('prompt-extrair-dax.md')}
-                  className="p-2 bg-purple-600 text-white hover:bg-purple-700 rounded-lg transition-colors"
-                  title="Baixar prompt de Extrair DAX"
-                >
-                  <Download size={20} />
-                </button>
-                <div className="absolute right-0 top-full mt-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10 pointer-events-none">
-                  <div className="font-semibold mb-1">Extrair DAX</div>
-                  <div className="text-gray-300">Extrai todas as medidas e colunas do modelo em formato JSON</div>
-                </div>
-              </div>
+            <div className="flex items-center gap-2">
               <button
-                onClick={() => setShowHelp(true)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors border border-gray-300"
+                onClick={() => handleDownload('prompt-documentacao-chat.md')}
+                className="p-2 text-[#686d76] hover:bg-gray-100 rounded-lg transition-colors"
+                title="Baixar prompt de Documentação Chat"
               >
-                Como usar
+                <Download size={20} />
               </button>
+              <button
+                onClick={() => handleDownload('prompt-extrair-dax.md')}
+                className="p-2 text-[#686d76] hover:bg-gray-100 rounded-lg transition-colors"
+                title="Baixar prompt de Extrair DAX"
+              >
+                <Download size={20} />
+              </button>
+              <Button onClick={() => setShowHelp(true)} variant="secondary">
+                Como usar
+              </Button>
             </div>
           </div>
 
           {/* Seleção de Dataset */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
             <label className="block text-sm font-medium text-gray-700 mb-2">Dataset</label>
             <select
               value={selectedDataset}
               onChange={(e) => setSelectedDataset(e.target.value)}
-              className="w-full max-w-md px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-green-500 bg-white text-gray-900"
+              className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
             >
               <option value="">
                 {datasets.length === 0 ? 'Nenhum dataset encontrado' : 'Selecione um dataset'}
@@ -422,11 +408,13 @@ function ContextosContent() {
 
 
           {loadingContexts ? (
-            <div className="text-center py-8 text-gray-500">Carregando contextos...</div>
+            <div className="flex items-center justify-center h-48">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Documentação Chat */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3 flex-1">
                     <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
@@ -437,25 +425,22 @@ function ContextosContent() {
                       <p className="text-sm text-gray-500">Usada pela IA para responder perguntas dos usuários</p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setShowChatModal(true)}
-                    className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
+                  <Button onClick={() => setShowChatModal(true)}>
                     {chatContext ? 'Atualizar' : 'Importar'}
-                  </button>
+                  </Button>
                 </div>
 
                 {!chatContext ? (
-                  <div className="text-center py-12 text-gray-500 border-2 border-dashed border-gray-300 rounded-lg">
+                  <div className="text-center py-12 text-gray-500 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50/50">
                     <p className="font-medium">Nenhuma documentação configurada</p>
                     <p className="text-sm mt-1">Importe um arquivo .md para começar</p>
                   </div>
                 ) : (
-                  <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                  <div className="border border-gray-100 rounded-xl p-4 bg-gray-50/50">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
-                          <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                          <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
                           <span className="font-semibold text-gray-900">Documentação Ativa</span>
                         </div>
                         <div className="text-sm text-gray-600 mb-3">
@@ -478,14 +463,14 @@ function ContextosContent() {
                       <div className="ml-4 flex items-center gap-1">
                         <button
                           onClick={() => handleDownloadContext(chatContext)}
-                          className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          className="p-2 text-[#686d76] hover:bg-gray-100 rounded-lg transition-colors"
                           title="Baixar documentação"
                         >
                           <Download size={18} />
                         </button>
                         <button
                           onClick={() => handleDelete(chatContext.id)}
-                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          className="p-2 text-[#686d76] hover:bg-gray-100 rounded-lg transition-colors"
                           title="Excluir"
                         >
                           <Trash2 size={18} />
@@ -497,7 +482,7 @@ function ContextosContent() {
               </div>
 
               {/* Base de DAX */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3 flex-1">
                     <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
@@ -508,25 +493,22 @@ function ContextosContent() {
                       <p className="text-sm text-gray-500">Todas as medidas e colunas do modelo para treinamento</p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setShowDaxModal(true)}
-                    className="px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-                  >
+                  <Button onClick={() => setShowDaxModal(true)}>
                     {daxContext ? 'Atualizar' : 'Importar'}
-                  </button>
+                  </Button>
                 </div>
 
                 {!daxContext ? (
-                  <div className="text-center py-12 text-gray-500 border-2 border-dashed border-gray-300 rounded-lg">
+                  <div className="text-center py-12 text-gray-500 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50/50">
                     <p className="font-medium">Nenhuma base de DAX importada</p>
                     <p className="text-sm mt-1">Importe um arquivo .json para começar</p>
                   </div>
                 ) : (
-                  <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                  <div className="border border-gray-100 rounded-xl p-4 bg-gray-50/50">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
-                          <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                          <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
                           <span className="font-semibold text-gray-900">Base Ativa</span>
                         </div>
                         <div className="text-sm text-gray-600 mb-3">
@@ -547,14 +529,14 @@ function ContextosContent() {
                       <div className="ml-4 flex items-center gap-1">
                         <button
                           onClick={() => handleDownloadContext(daxContext)}
-                          className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                          className="p-2 text-[#686d76] hover:bg-gray-100 rounded-lg transition-colors"
                           title="Baixar base de DAX"
                         >
                           <Download size={18} />
                         </button>
                         <button
                           onClick={() => handleDelete(daxContext.id)}
-                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          className="p-2 text-[#686d76] hover:bg-gray-100 rounded-lg transition-colors"
                           title="Excluir"
                         >
                           <Trash2 size={18} />
@@ -571,7 +553,7 @@ function ContextosContent() {
       {/* Modal de Ajuda */}
         {showHelp && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-6 max-w-2xl w-full shadow-xl">
+            <div className="bg-white rounded-xl p-6 max-w-2xl w-full shadow-xl border border-gray-100">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-semibold text-gray-900">Como Configurar</h3>
                 <button onClick={() => setShowHelp(false)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
@@ -601,12 +583,9 @@ function ContextosContent() {
                 </div>
               </div>
               
-              <button
-                onClick={() => setShowHelp(false)}
-                className="w-full mt-6 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
+              <Button onClick={() => setShowHelp(false)} className="w-full mt-6">
                 Entendi
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -614,7 +593,7 @@ function ContextosContent() {
         {/* Modal Chat */}
         {showChatModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-auto shadow-xl">
+            <div className="bg-white rounded-xl p-6 max-w-3xl w-full max-h-[90vh] overflow-auto shadow-xl border border-gray-100">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-semibold text-gray-900">Importar Documentação para Chat</h3>
                 <button 
@@ -638,8 +617,8 @@ function ContextosContent() {
                   onDragLeave={handleDrag}
                   onDragOver={handleDrag}
                   onDrop={(e) => handleDrop(e, 'chat')}
-                  className={`border-2 border-dashed rounded-lg p-8 text-center mb-4 transition-colors ${
-                    dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+                  className={`border-2 border-dashed rounded-xl p-8 text-center mb-4 transition-colors ${
+                    dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
                   <input
@@ -654,12 +633,9 @@ function ContextosContent() {
                   </div>
                   <p className="font-medium text-gray-900 mb-1">Arraste um arquivo .md aqui</p>
                   <p className="text-sm text-gray-500 mb-4">ou</p>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
+                  <Button onClick={() => fileInputRef.current?.click()}>
                     Selecionar arquivo
-                  </button>
+                  </Button>
                   
                   <div className="relative my-4">
                     <div className="absolute inset-0 flex items-center">
@@ -673,7 +649,7 @@ function ContextosContent() {
               )}
 
               {chatFileName && (
-                <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg mb-4">
+                <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl mb-4">
                   <span className="flex-1 font-medium text-green-900">{chatFileName}</span>
                   <button 
                     onClick={() => { 
@@ -694,11 +670,11 @@ function ContextosContent() {
                   setChatFileName(null); 
                 }}
                 placeholder="Ou cole o conteúdo aqui..."
-                className="w-full h-48 p-4 border border-gray-300 rounded-lg font-mono text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full h-48 p-4 border border-gray-300 rounded-xl font-mono text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
 
               {chatStats && (
-                <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                <div className="mt-4 p-4 bg-gray-50 rounded-xl">
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-center">
                     {['BASE', 'MEDIDAS', 'COLUNAS', 'QUERIES', 'EXEMPLOS'].map((label, i) => {
                       const values = [
@@ -727,25 +703,27 @@ function ContextosContent() {
               )}
 
               <div className="flex gap-3 mt-6">
-                <button 
+                <Button
+                  variant="secondary"
                   onClick={() => { 
                     setShowChatModal(false); 
                     setChatContent(''); 
                     setChatFileName(null);
                     setChatParsed(null);
                     setChatStats(null);
-                  }} 
-                  className="flex-1 py-2.5 text-sm font-medium border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700"
+                  }}
+                  className="flex-1"
                 >
                   Cancelar
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={handleSaveChat}
                   disabled={!chatParsed || chatParsed.errors.length > 0 || saving}
-                  className="flex-1 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  loading={saving}
+                  className="flex-1"
                 >
                   {saving ? 'Salvando...' : 'Salvar Documentação'}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -754,7 +732,7 @@ function ContextosContent() {
         {/* Modal DAX */}
         {showDaxModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-auto shadow-xl">
+            <div className="bg-white rounded-xl p-6 max-w-3xl w-full max-h-[90vh] overflow-auto shadow-xl border border-gray-100">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-semibold text-gray-900">Importar Base de DAX</h3>
                 <button 
@@ -777,8 +755,8 @@ function ContextosContent() {
                   onDragLeave={handleDrag}
                   onDragOver={handleDrag}
                   onDrop={(e) => handleDrop(e, 'dax')}
-                  className={`border-2 border-dashed rounded-lg p-8 text-center mb-4 transition-colors ${
-                    dragActive ? 'border-purple-500 bg-purple-50' : 'border-gray-300 hover:border-gray-400'
+                  className={`border-2 border-dashed rounded-xl p-8 text-center mb-4 transition-colors ${
+                    dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
                   <input
@@ -793,12 +771,9 @@ function ContextosContent() {
                   </div>
                   <p className="font-medium text-gray-900 mb-1">Arraste um arquivo .json aqui</p>
                   <p className="text-sm text-gray-500 mb-4">ou</p>
-                  <button
-                    onClick={() => daxFileInputRef.current?.click()}
-                    className="px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-                  >
+                  <Button onClick={() => daxFileInputRef.current?.click()}>
                     Selecionar arquivo
-                  </button>
+                  </Button>
                   
                   <div className="relative my-4">
                     <div className="absolute inset-0 flex items-center">
@@ -812,7 +787,7 @@ function ContextosContent() {
               )}
 
               {daxFileName && (
-                <div className="flex items-center gap-3 p-4 bg-purple-50 border border-purple-200 rounded-lg mb-4">
+                <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl mb-4">
                   <span className="flex-1 font-medium text-purple-900">{daxFileName}</span>
                   <button 
                     onClick={() => { 
@@ -833,11 +808,11 @@ function ContextosContent() {
                   setDaxFileName(null); 
                 }}
                 placeholder='Cole o JSON aqui... {"modelo": "...", "medidas": [...], "colunas": [...]}'
-                className="w-full h-48 p-4 border border-gray-300 rounded-lg font-mono text-sm resize-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                className="w-full h-48 p-4 border border-gray-300 rounded-xl font-mono text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
 
               {daxParsed && (
-                <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                <div className="mt-4 p-4 bg-gray-50 rounded-xl">
                   <div className="grid grid-cols-3 gap-4 text-center">
                     <div className="p-3 bg-green-100 rounded">
                       <div className="text-xs text-gray-600">MODELO</div>
@@ -862,24 +837,26 @@ function ContextosContent() {
               )}
 
               <div className="flex gap-3 mt-6">
-                <button 
+                <Button
+                  variant="secondary"
                   onClick={() => { 
                     setShowDaxModal(false); 
                     setDaxContent(''); 
                     setDaxFileName(null);
                     setDaxParsed(null);
-                  }} 
-                  className="flex-1 py-2.5 text-sm font-medium border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700"
+                  }}
+                  className="flex-1"
                 >
                   Cancelar
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={handleSaveDax}
                   disabled={!daxParsed || saving}
-                  className="flex-1 py-2.5 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  loading={saving}
+                  className="flex-1"
                 >
                   {saving ? 'Salvando...' : 'Salvar Base de DAX'}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -893,7 +870,9 @@ export default function ContextosPage() {
   return (
     <PermissionGuard>
       <MainLayout>
-        <ContextosContent />
+        <FeatureGate feature="ai">
+          <ContextosContent />
+        </FeatureGate>
       </MainLayout>
     </PermissionGuard>
   );

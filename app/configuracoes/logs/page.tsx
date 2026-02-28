@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
+import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
 import { useMenu } from '@/contexts/MenuContext';
 import {
   FileText,
@@ -99,6 +100,7 @@ function LogsContent() {
     date_to: ''
   });
   const [currentUser, setCurrentUser] = useState<{ id?: string; is_master?: boolean; role?: string } | null>(null);
+  const [pageUsage, setPageUsage] = useState(1);
 
   // Verifica se é usuário comum (declarado antes do useEffect)
   const isRegularUser = !currentUser?.is_master && currentUser?.role === 'user';
@@ -306,7 +308,7 @@ function LogsContent() {
         {activeTab === 'logs' && (
           <>
             {/* Filtros */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="card-modern p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Filter size={18} className="text-gray-400" />
                 <span className="text-sm font-medium text-gray-700">Filtros</span>
@@ -379,14 +381,14 @@ function LogsContent() {
                 <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
               </div>
             ) : logs.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+              <div className="card-modern p-12 text-center">
                 <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum log encontrado</h3>
                 <p className="text-gray-500">Ajuste os filtros ou aguarde novas atividades</p>
               </div>
             ) : (
               <>
-                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div className="overflow-hidden">
                   <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
                     <span className="text-sm text-gray-600">{total} registros encontrados</span>
                   </div>
@@ -463,57 +465,64 @@ function LogsContent() {
                 <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
               </div>
             ) : summary.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+              <div className="card-modern p-12 text-center">
                 <Activity className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum dado de uso</h3>
                 <p className="text-gray-500">Aguarde atividades dos usuários</p>
               </div>
             ) : (
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Usuário</th>
-                      <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Dias Ativos</th>
-                      <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Logins</th>
-                      <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Ações</th>
-                      <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Chat IA</th>
-                      <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Power BI</th>
-                      <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Tempo Online</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {summary.map((user) => (
-                      <tr key={user.user_id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3">
-                          <div>
-                            <p className="font-medium text-gray-900">{user.full_name}</p>
-                            <p className="text-sm text-gray-500">{user.email}</p>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <span className="font-medium text-gray-900">{user.days_active}</span>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <span className="font-medium text-gray-900">{user.login_count}</span>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <span className="font-medium text-gray-900">{user.total_actions}</span>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <span className="font-medium text-purple-600">{user.chat_queries}</span>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <span className="font-medium text-blue-600">{user.powerbi_views}</span>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <span className="font-medium text-green-600">{formatMinutes(user.total_minutes_online)}</span>
-                        </td>
+              <>
+                <div className="overflow-hidden">
+                  <table className="w-full table-modern">
+                    <thead>
+                      <tr>
+                        <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Usuário</th>
+                        <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Dias Ativos</th>
+                        <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Logins</th>
+                        <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Ações</th>
+                        <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Chat IA</th>
+                        <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Power BI</th>
+                        <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Tempo Online</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {summary.slice((pageUsage - 1) * PAGE_SIZE, pageUsage * PAGE_SIZE).map((user) => (
+                        <tr key={user.user_id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <div>
+                              <p className="font-medium text-gray-900">{user.full_name}</p>
+                              <p className="text-sm text-gray-500">{user.email}</p>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="font-medium text-gray-900">{user.days_active}</span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="font-medium text-gray-900">{user.login_count}</span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="font-medium text-gray-900">{user.total_actions}</span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="font-medium text-purple-600">{user.chat_queries}</span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="font-medium text-blue-600">{user.powerbi_views}</span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="font-medium text-green-600">{formatMinutes(user.total_minutes_online)}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {summary.length > PAGE_SIZE && (
+                  <div className="mt-4">
+                    <Pagination totalItems={summary.length} currentPage={pageUsage} onPageChange={setPageUsage} pageSize={PAGE_SIZE} />
+                  </div>
+                )}
+              </>
             )}
           </>
         )}

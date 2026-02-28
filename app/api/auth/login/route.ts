@@ -1,15 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { createToken } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
-
-function getSupabase() {
-  return createClient(supabaseUrl, supabaseKey);
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,7 +14,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = getSupabase();
+    const supabase = createAdminClient();
 
     // Buscar usuario com todos os campos necessarios
     const { data: user, error } = await supabase
@@ -30,8 +22,6 @@ export async function POST(request: NextRequest) {
       .select('id, email, full_name, password_hash, is_master, status, developer_id, is_developer_user')
       .eq('email', email.toLowerCase().trim())
       .single();
-
-    console.log('Usuario encontrado:', user ? 'SIM' : 'NAO', user?.email);
 
     if (error || !user) {
       return NextResponse.json(
@@ -48,19 +38,47 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('Status do usuario:', user.status);
-
-    // Verificar senha
-    console.log('Verificando senha...');
-    console.log('Password hash existe:', !!user.password_hash);
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
-    console.log('Senha valida:', isValidPassword);
 
     if (!isValidPassword) {
       return NextResponse.json(
         { error: 'Email ou senha incorretos' },
         { status: 401 }
       );
+    }
+
+    const subdomain = request.headers.get('x-subdomain');
+    if (subdomain) {
+      const { data: subDev } = await supabase
+        .from('developers')
+        .select('id')
+        .eq('subdomain', subdomain.toLowerCase())
+        .eq('subdomain_enabled', true)
+        .eq('subdomain_approved', true)
+        .single();
+
+      if (subDev) {
+        const isOwner = user.developer_id === subDev.id;
+        if (!isOwner) {
+          const { data: groups } = await supabase
+            .from('company_groups')
+            .select('id')
+            .eq('developer_id', subDev.id);
+          const groupIdsDev = groups?.map(g => g.id) || [];
+          const { data: membership } = await supabase
+            .from('user_group_membership')
+            .select('company_group_id')
+            .eq('user_id', user.id)
+            .eq('is_active', true)
+            .in('company_group_id', groupIdsDev.length ? groupIdsDev : ['00000000-0000-0000-0000-000000000000']);
+          if (!membership || membership.length === 0) {
+            return NextResponse.json(
+              { error: 'Você não tem acesso a esta área' },
+              { status: 403 }
+            );
+          }
+        }
+      }
     }
 
     // Verificar se está usando senha padrão "123456"
@@ -97,7 +115,7 @@ export async function POST(request: NextRequest) {
       groupIds: groupIds,
     };
 
-    const token = jwt.sign(tokenData, jwtSecret, { expiresIn: '7d' });
+    const token = await createToken(tokenData as any);
 
     // Buscar developer info para tema
     let developerInfo = null;
@@ -152,14 +170,22 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Setar cookie
-    response.cookies.set('auth-token', token, {
+    const host = request.headers.get('host') || '';
+    const cookieOptions: { httpOnly: boolean; secure: boolean; sameSite: 'lax'; maxAge: number; path: string; domain?: string } = {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7, // 7 dias
+      maxAge: 60 * 60 * 24 * 7,
       path: '/',
-    });
+    };
+    if (process.env.NODE_ENV === 'production') {
+      if (host.includes('meudashboard.com')) {
+        cookieOptions.domain = '.meudashboard.com';
+      } else {
+        cookieOptions.domain = '.meudashboard.org';
+      }
+    }
+    response.cookies.set('auth-token', token, cookieOptions);
 
     return response;
   } catch (error: any) {

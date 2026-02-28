@@ -39,8 +39,8 @@ function MainContent({ children, user }: MainLayoutProps & { user: User | null }
   }, [user, setContextUser]);
   
   return (
-    <main className={`pt-16 min-h-screen transition-all duration-300 ${
-      isCollapsed ? 'lg:pl-16' : 'lg:pl-64'
+    <main className={`pt-16 min-h-screen bg-[#f8f9fb] transition-all duration-300 ${
+      isCollapsed ? 'lg:pl-[5.5rem]' : 'lg:pl-56'
     }`}>
       <div className="p-6">
         {children}
@@ -84,9 +84,12 @@ export default function MainLayout({ children }: MainLayoutProps) {
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);
-        // Mostrar modal se precisar trocar senha
+        // Mostrar modal se precisar trocar senha (não mostrar se usuário pulou nesta sessão)
         if (data.user?.needsPasswordChange) {
-          setShowPasswordModal(true);
+          const skipped = sessionStorage.getItem('password-change-skipped');
+          if (!skipped) {
+            setShowPasswordModal(true);
+          }
         }
       } else {
         router.push('/login');
@@ -101,6 +104,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
 
   function handlePasswordChanged() {
     setShowPasswordModal(false);
+    sessionStorage.removeItem('password-change-skipped');
     // Recarregar dados do usuário
     checkAuth();
   }
@@ -123,13 +127,16 @@ export default function MainLayout({ children }: MainLayoutProps) {
   return (
     <ThemeProvider>
       <MenuProvider>
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-[#f8f9fb]">
           <Header user={user} />
           <Sidebar />
           <MainContent user={user}>{children}</MainContent>
           {showPasswordModal && (
             <PasswordChangeModal
-              onClose={() => setShowPasswordModal(false)}
+              onClose={() => {
+                setShowPasswordModal(false);
+                sessionStorage.setItem('password-change-skipped', 'true');
+              }}
               onPasswordChanged={handlePasswordChanged}
             />
           )}

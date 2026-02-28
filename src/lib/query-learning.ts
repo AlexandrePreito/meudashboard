@@ -158,28 +158,50 @@ function calculateSimilarity(question1: string, question2: string): number {
 }
 
 /**
- * Busca exemplos de treinamento relevantes para a pergunta (por CONCEITO)
+ * Busca exemplos de treinamento relevantes para a pergunta (por CONCEITO).
+ * Opcionalmente aceita companyGroupId e developerId para herança: merge de exemplos do grupo + exemplos compartilhados do developer.
  */
 export async function findTrainingExamples(
   supabase: SupabaseClient,
   question: string,
   datasetId: string,
-  limit: number = 5
+  limit: number = 5,
+  companyGroupId?: string | null,
+  developerId?: string | null
 ): Promise<TrainingExample[]> {
   try {
     const keywords = extractKeywords(question);
     const concepts = identifyConcept(question);
-    
-    const { data, error } = await supabase
-      .from('ai_training_examples')
-      .select('id, user_question, dax_query, formatted_response, category, tags')
-      .eq('dataset_id', datasetId)
-      .eq('is_validated', true)
-      .limit(50);
 
-    if (error || !data) {
-      console.error('[findTrainingExamples] Erro ao buscar:', error);
-      return [];
+    let data: any[] = [];
+
+    if (companyGroupId && developerId) {
+      const [groupRes, devRes] = await Promise.all([
+        supabase
+          .from('ai_training_examples')
+          .select('id, user_question, dax_query, formatted_response, category, tags')
+          .eq('dataset_id', datasetId)
+          .eq('company_group_id', companyGroupId)
+          .eq('is_validated', true)
+          .limit(50),
+        supabase
+          .from('ai_training_examples')
+          .select('id, user_question, dax_query, formatted_response, category, tags')
+          .eq('dataset_id', datasetId)
+          .eq('developer_id', developerId)
+          .is('company_group_id', null)
+          .eq('is_validated', true)
+          .limit(50)
+      ]);
+      data = [...(devRes.data || []), ...(groupRes.data || [])];
+    } else {
+      const { data: raw } = await supabase
+        .from('ai_training_examples')
+        .select('id, user_question, dax_query, formatted_response, category, tags')
+        .eq('dataset_id', datasetId)
+        .eq('is_validated', true)
+        .limit(50);
+      data = raw || [];
     }
 
     // Calcular similaridade por CONCEITO e keywords
@@ -294,14 +316,17 @@ export async function markTrainingExampleUsed(
 }
 
 /**
- * Busca queries similares para uma pergunta
+ * Busca contexto de queries e exemplos de treinamento para uma pergunta.
+ * Opcionalmente aceita companyGroupId e developerId para incluir exemplos compartilhados do developer (herança aditiva).
  */
 export async function getQueryContext(
   supabase: SupabaseClient,
   question: string,
   connectionId: string | null,
   datasetId: string | null,
-  limit: number = 5
+  limit: number = 5,
+  companyGroupId?: string | null,
+  developerId?: string | null
 ): Promise<QueryContext> {
   try {
     if (!datasetId) {
@@ -330,7 +355,7 @@ export async function getQueryContext(
       console.error('[QueryLearning] Erro ao buscar queries:', error);
       // Continuar mesmo com erro, retornar contexto vazio
       const trainingExamples = datasetId 
-        ? await findTrainingExamples(supabase, question, datasetId, 3)
+        ? await findTrainingExamples(supabase, question, datasetId, 3, companyGroupId, developerId)
         : [];
       
       return {
@@ -365,9 +390,9 @@ export async function getQueryContext(
       console.log(`[QueryLearning] Encontradas ${similarQueries.length} queries similares para intent: ${intent}`);
     }
 
-    // Buscar exemplos de treinamento
+    // Buscar exemplos de treinamento (grupo + developer quando informados)
     const trainingExamples = datasetId 
-      ? await findTrainingExamples(supabase, question, datasetId, 3)
+      ? await findTrainingExamples(supabase, question, datasetId, 3, companyGroupId, developerId)
       : [];
 
     // Extrair medidas sugeridas de ambas as fontes

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
+import { getDeveloperIdForGroup, resolveConnectionForGroup } from '@/lib/shared-resources';
 
 // POST - Gerar embed token
 export async function POST(request: Request) {
@@ -36,52 +37,75 @@ export async function POST(request: Request) {
     }
 
     // SEGURANÇA: Validar acesso do usuário à tela
+    // Ordem: 1) Master → total; 2) Developer dono do grupo → total; 3) Admin; 4) Viewer (screen_users)
     if (!user.is_master) {
-      // Verificar acesso ao grupo
-      const { data: membership } = await supabase
-        .from('user_group_membership')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('company_group_id', screen.company_group_id)
-        .eq('is_active', true)
-        .maybeSingle();
+      // 1. Verificar se é developer dono do grupo (não tem membership, mas é owner)
+      const { data: groupData } = await supabase
+        .from('company_groups')
+        .select('developer_id')
+        .eq('id', screen.company_group_id)
+        .single();
 
-      if (!membership) {
-        console.warn('[SEGURANÇA /api/powerbi/embed] Acesso negado - sem membership:', {
-          userId: user.id,
-          screenId: screen_id,
-          screenGroupId: screen.company_group_id
-        });
-        return NextResponse.json({ error: 'Sem permissão para acessar esta tela' }, { status: 403 });
-      }
+      const userDeveloperId = await getUserDeveloperId(user.id);
+      const isDeveloper = userDeveloperId != null && userDeveloperId === groupData?.developer_id;
 
-      // Verificar se a tela tem restrição de usuários específicos
-      const { data: screenUsers } = await supabase
-        .from('powerbi_screen_users')
-        .select('user_id')
-        .eq('screen_id', screen_id);
+      if (!isDeveloper) {
+        // 2. Não é developer — precisa ter membership no grupo
+        const { data: membership } = await supabase
+          .from('user_group_membership')
+          .select('id, role')
+          .eq('user_id', user.id)
+          .eq('company_group_id', screen.company_group_id)
+          .eq('is_active', true)
+          .maybeSingle();
 
-      // Se a tela tem usuários específicos vinculados, verificar se o usuário está na lista
-      if (screenUsers && screenUsers.length > 0) {
-        const hasAccess = screenUsers.some(su => su.user_id === user.id);
-        
-        if (!hasAccess) {
-          console.warn('[SEGURANÇA /api/powerbi/embed] Acesso negado - usuário não está na lista:', {
+        if (!membership) {
+          console.warn('[SEGURANÇA /api/powerbi/embed] Acesso negado - sem membership:', {
             userId: user.id,
             screenId: screen_id,
-            allowedUserIds: screenUsers.map(su => su.user_id)
+            screenGroupId: screen.company_group_id
           });
           return NextResponse.json({ error: 'Sem permissão para acessar esta tela' }, { status: 403 });
         }
+
+        const isAdmin = membership.role === 'admin';
+
+        // 3. Admin tem acesso total, pular screen_users
+        if (!isAdmin) {
+          // 4. Viewer — verificar screen_users
+          const { data: screenUsers } = await supabase
+            .from('powerbi_screen_users')
+            .select('user_id')
+            .eq('screen_id', screen_id);
+
+          if (screenUsers && screenUsers.length > 0) {
+            const hasAccess = screenUsers.some(su => su.user_id === user.id);
+            if (!hasAccess) {
+              console.warn('[SEGURANÇA /api/powerbi/embed] Acesso negado - usuário não está na lista:', {
+                userId: user.id,
+                screenId: screen_id,
+                allowedUserIds: screenUsers.map(su => su.user_id)
+              });
+              return NextResponse.json({ error: 'Sem permissão para acessar esta tela' }, { status: 403 });
+            }
+          }
+        }
       }
-      // Se não tem usuários específicos, a tela é pública para o grupo (já validado acima)
+      // Se isDeveloper = true, acesso liberado (pula toda verificação)
     }
 
     const report = screen.report;
-    const connection = report?.connection;
+    let connection = report?.connection;
 
     if (!connection) {
-      return NextResponse.json({ error: 'Conexão Power BI não configurada' }, { status: 400 });
+      const developerId = await getDeveloperIdForGroup(screen.company_group_id);
+      if (developerId) {
+        connection = await resolveConnectionForGroup(screen.company_group_id, developerId);
+      }
+    }
+
+    if (!connection) {
+      return NextResponse.json({ error: 'Nenhuma conexão Power BI configurada' }, { status: 404 });
     }
 
     // 1. Obter token do Azure AD

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
 import { useRouter, useParams } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import {
@@ -158,6 +159,8 @@ export default function AdminGroupDetailPage() {
     role: 'viewer',
   });
   const [userError, setUserError] = useState('');
+  const [userScreenIds, setUserScreenIds] = useState<string[]>([]);
+  const [loadingUserScreens, setLoadingUserScreens] = useState(false);
 
   const [screens, setScreens] = useState<Screen[]>([]);
   const [screensLoading, setScreensLoading] = useState(false);
@@ -179,6 +182,7 @@ export default function AdminGroupDetailPage() {
     icon: 'Monitor',
   });
   const [screenError, setScreenError] = useState('');
+  const [usersTablePage, setUsersTablePage] = useState(1);
 
   useEffect(() => {
     if (groupId) {
@@ -305,7 +309,7 @@ export default function AdminGroupDetailPage() {
     setShowUserModal(true);
   }
 
-  function openEditUser(user: User) {
+  async function openEditUser(user: User) {
     setEditingUser(user);
     setUserFormData({
       full_name: user.full_name,
@@ -313,8 +317,29 @@ export default function AdminGroupDetailPage() {
       password: '',
       role: user.role,
     });
+    setUserScreenIds([]);
     setUserError('');
     setShowUserModal(true);
+    if (groupId && user.id) {
+      setLoadingUserScreens(true);
+      try {
+        const res = await fetch(`/api/powerbi/screens/user-screen-ids?group_id=${groupId}&user_id=${user.id}`);
+        if (res.ok) {
+          const d = await res.json();
+          setUserScreenIds(d.screen_ids || []);
+        }
+      } catch (e) {
+        console.error('Erro ao carregar telas do usuário:', e);
+      } finally {
+        setLoadingUserScreens(false);
+      }
+    }
+  }
+
+  function toggleUserScreen(screenId: string) {
+    setUserScreenIds(prev =>
+      prev.includes(screenId) ? prev.filter(id => id !== screenId) : [...prev, screenId]
+    );
   }
 
   async function handleSaveUser() {
@@ -357,6 +382,20 @@ export default function AdminGroupDetailPage() {
         if (!response.ok) {
           const data = await response.json();
           throw new Error(data.error || 'Erro ao atualizar usuário');
+        }
+
+        try {
+          await fetch('/api/powerbi/screens/set-user-screens', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              group_id: groupId,
+              user_id: editingUser.id,
+              screen_ids: userScreenIds
+            })
+          });
+        } catch (e) {
+          console.error('Erro ao salvar telas do usuário:', e);
         }
 
         await loadUsers();
@@ -662,7 +701,7 @@ export default function AdminGroupDetailPage() {
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Uso de Recursos</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
             {/* Usuários */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="card-modern p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Users className="w-4 h-4 text-indigo-600" />
                 <span className="text-sm font-medium text-gray-700">Usuários</span>
@@ -681,7 +720,7 @@ export default function AdminGroupDetailPage() {
             </div>
 
             {/* Telas */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="card-modern p-4">
               <div className="flex items-center gap-2 mb-2">
                 <MonitorPlay className="w-4 h-4 text-purple-600" />
                 <span className="text-sm font-medium text-gray-700">Telas</span>
@@ -700,7 +739,7 @@ export default function AdminGroupDetailPage() {
             </div>
 
             {/* Alertas */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="card-modern p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Bell className="w-4 h-4 text-red-600" />
                 <span className="text-sm font-medium text-gray-700">Alertas</span>
@@ -719,7 +758,7 @@ export default function AdminGroupDetailPage() {
             </div>
 
             {/* WhatsApp/dia */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="card-modern p-4">
               <div className="flex items-center gap-2 mb-2">
                 <MessageCircle className="w-4 h-4 text-green-600" />
                 <span className="text-sm font-medium text-gray-700">WhatsApp/dia</span>
@@ -738,7 +777,7 @@ export default function AdminGroupDetailPage() {
             </div>
 
             {/* Atualizações/dia */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="card-modern p-4">
               <div className="flex items-center gap-2 mb-2">
                 <RefreshCw className="w-4 h-4 text-orange-600" />
                 <span className="text-sm font-medium text-gray-700">Atualizações/dia</span>
@@ -759,7 +798,7 @@ export default function AdminGroupDetailPage() {
         </div>
 
         {/* Usuários do Grupo */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="card-modern p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900">Usuários do Grupo</h2>
             <button
@@ -780,29 +819,30 @@ export default function AdminGroupDetailPage() {
               Nenhum usuário ativo cadastrado neste grupo
             </div>
           ) : (
+            <>
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
+              <table className="w-full table-modern">
+                <thead>
                   <tr>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Nome</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Email</th>
-                    <th className="text-center px-4 py-3 text-xs font-medium text-gray-500 uppercase">Perfil</th>
-                    <th className="text-center px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase">Ações</th>
+                    <th>Nome</th>
+                    <th>Email</th>
+                    <th className="text-center">Perfil</th>
+                    <th className="text-center">Status</th>
+                    <th className="text-right">Ações</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {users.filter(u => u.is_active).map((userMembership) => (
-                    <tr key={userMembership.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
+                <tbody>
+                  {users.filter(u => u.is_active).slice((usersTablePage - 1) * PAGE_SIZE, usersTablePage * PAGE_SIZE).map((userMembership) => (
+                    <tr key={userMembership.id}>
+                      <td>
                         <span className="font-medium text-gray-900">
                           {userMembership.full_name}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-600">
+                      <td className="text-gray-600">
                         {userMembership.email}
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="text-center">
                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                           userMembership.role === 'admin' 
                             ? 'bg-purple-100 text-purple-700' 
@@ -814,7 +854,7 @@ export default function AdminGroupDetailPage() {
                            userMembership.role}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="text-center">
                         <span
                           className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                             userMembership.is_active
@@ -825,11 +865,11 @@ export default function AdminGroupDetailPage() {
                           {userMembership.is_active ? 'Ativo' : 'Inativo'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => openEditUser(userMembership)}
-                            className="p-1.5 text-gray-600 hover:bg-gray-50 rounded transition-colors"
+                            className="btn-ghost p-1.5 text-gray-600"
                             title="Editar usuário"
                           >
                             <Edit2 className="w-4 h-4" />
@@ -855,11 +895,17 @@ export default function AdminGroupDetailPage() {
                 </tbody>
               </table>
             </div>
+            {users.filter(u => u.is_active).length > PAGE_SIZE && (
+              <div className="mt-4">
+                <Pagination totalItems={users.filter(u => u.is_active).length} currentPage={usersTablePage} onPageChange={setUsersTablePage} pageSize={PAGE_SIZE} />
+              </div>
+            )}
+            </>
           )}
         </div>
 
         {/* Telas Power BI */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="card-modern p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900">Telas Power BI</h2>
             <button
@@ -932,7 +978,117 @@ export default function AdminGroupDetailPage() {
         </div>
       </div>
 
-      {/* Modal de Usuário - Ainda precisa ser implementado, mas por enquanto mantém estrutura básica */}
+      {/* Modal de Usuário */}
+      {showUserModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h2 className="text-lg font-bold text-gray-900">
+                {editingUser ? 'Editar Usuário' : 'Novo Usuário'}
+              </h2>
+              <button
+                onClick={() => { setShowUserModal(false); setEditingUser(null); }}
+                className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 space-y-4">
+              {userError && (
+                <div className="bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded-lg text-sm">
+                  {userError}
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
+                <input
+                  type="text"
+                  value={userFormData.full_name}
+                  onChange={(e) => setUserFormData({ ...userFormData, full_name: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                <input
+                  type="email"
+                  value={userFormData.email}
+                  onChange={(e) => setUserFormData({ ...userFormData, email: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              {!editingUser && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Senha *</label>
+                  <input
+                    type="password"
+                    value={userFormData.password}
+                    onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Perfil</label>
+                <select
+                  value={userFormData.role}
+                  onChange={(e) => setUserFormData({ ...userFormData, role: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="viewer">Visualizador</option>
+                  <option value="admin">Administrador</option>
+                </select>
+              </div>
+
+              {editingUser && screens.length > 0 && (
+                <div className="border-t border-gray-200 pt-4 mt-4">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Telas com Acesso</h3>
+                  <p className="text-xs text-gray-500 mb-3">Selecione quais telas este usuário pode visualizar</p>
+                  {loadingUserScreens ? (
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Carregando...
+                    </div>
+                  ) : (
+                    <div className="max-h-48 overflow-y-auto space-y-1">
+                      {screens.map((screen) => (
+                        <label
+                          key={screen.id}
+                          className="flex items-center gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={userScreenIds.includes(screen.id)}
+                            onChange={() => toggleUserScreen(screen.id)}
+                            className="rounded border-gray-300 text-blue-600"
+                          />
+                          <span className="text-sm">{screen.title}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200">
+              <button
+                onClick={() => { setShowUserModal(false); setEditingUser(null); }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveUser}
+                disabled={savingUser}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {savingUser && <Loader2 className="w-4 h-4 animate-spin" />}
+                {editingUser ? 'Salvar' : 'Criar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </MainLayout>
   );
 }

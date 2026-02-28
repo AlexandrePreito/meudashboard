@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
+import Pagination from '@/components/ui/Pagination';
 import { useMenu } from '@/contexts/MenuContext';
 import { 
   Plus, 
@@ -16,7 +18,8 @@ import {
   EyeOff,
   Copy,
   Search,
-  Database
+  Database,
+  Share2
 } from 'lucide-react';
 
 interface Connection {
@@ -26,10 +29,14 @@ interface Connection {
   client_id: string;
   workspace_id: string;
   show_page_navigation: boolean;
-  company_group: {
+  company_group_id?: string | null;
+  developer_id?: string | null;
+  company_group?: {
     id: string;
     name: string;
-  };
+  } | null;
+  _source?: 'group' | 'developer';
+  _label?: string;
 }
 
 interface CompanyGroup {
@@ -37,9 +44,12 @@ interface CompanyGroup {
   name: string;
 }
 
+const PAGE_SIZE = 20;
+
 // Componente interno que usa o contexto
 function ConexoesContent() {
   const { activeGroup } = useMenu();
+  const searchParams = useSearchParams();
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -47,7 +57,9 @@ function ConexoesContent() {
   const [saving, setSaving] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
   const [groups, setGroups] = useState<CompanyGroup[]>([]);
+  const [developerId, setDeveloperId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string>('user');
   const [accessDenied, setAccessDenied] = useState(false);
   
@@ -70,6 +82,20 @@ function ConexoesContent() {
       loadConnections();
     }
   }, [activeGroup, userRole]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm]);
+
+  // Abrir modal com "Compartilhado" pré-selecionado quando vem de /dev/recursos?shared=1
+  useEffect(() => {
+    if (loading || !groups.length) return;
+    const fromShared = searchParams.get('shared') === '1';
+    if (fromShared && userRole === 'developer' && developerId) {
+      openModal(undefined, true);
+      window.history.replaceState({}, '', '/powerbi/conexoes');
+    }
+  }, [loading, groups.length, userRole, developerId, searchParams]);
 
   async function checkAccessAndLoad() {
     try {
@@ -121,6 +147,7 @@ function ConexoesContent() {
       if (groupsRes.ok) {
         const data = await groupsRes.json();
         setGroups(data.groups || []);
+        setDeveloperId(data.developer?.id || null);
       }
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
@@ -129,9 +156,10 @@ function ConexoesContent() {
     }
   }
 
-  function openModal(connection?: Connection) {
+  function openModal(connection?: Connection, preferShared?: boolean) {
     if (connection) {
       setEditingConnection(connection);
+      const isShared = connection.developer_id && !connection.company_group_id;
       setForm({
         name: connection.name,
         tenant_id: connection.tenant_id,
@@ -139,7 +167,7 @@ function ConexoesContent() {
         client_secret: '',
         workspace_id: connection.workspace_id,
         show_page_navigation: connection.show_page_navigation,
-        company_group_id: connection.company_group?.id || ''
+        company_group_id: isShared ? 'shared' : (connection.company_group?.id || connection.company_group_id || '')
       });
     } else {
       setEditingConnection(null);
@@ -150,7 +178,7 @@ function ConexoesContent() {
         client_secret: '',
         workspace_id: '',
         show_page_navigation: true,
-        company_group_id: groups[0]?.id || ''
+        company_group_id: preferShared ? 'shared' : (groups[0]?.id || '')
       });
     }
     setShowModal(true);
@@ -158,6 +186,7 @@ function ConexoesContent() {
 
   function handleCopy(connection: Connection) {
     setEditingConnection(null);
+    const isShared = connection.developer_id && !connection.company_group_id;
     setForm({
       name: `${connection.name} (Cópia)`,
       tenant_id: connection.tenant_id,
@@ -165,7 +194,7 @@ function ConexoesContent() {
       client_secret: '',
       workspace_id: connection.workspace_id,
       show_page_navigation: connection.show_page_navigation,
-      company_group_id: connection.company_group?.id || ''
+      company_group_id: isShared ? 'shared' : (connection.company_group?.id || connection.company_group_id || '')
     });
     setShowModal(true);
   }
@@ -179,10 +208,23 @@ function ConexoesContent() {
         ? `/api/powerbi/connections/${editingConnection.id}`
         : '/api/powerbi/connections';
       
-      const body = {
-        ...form,
+      const isShared = form.company_group_id === 'shared';
+      const body: Record<string, unknown> = {
+        name: form.name,
+        tenant_id: form.tenant_id,
+        client_id: form.client_id,
+        workspace_id: form.workspace_id,
+        show_page_navigation: form.show_page_navigation,
         client_secret: editingConnection ? (form.client_secret || undefined) : form.client_secret
       };
+
+      if (isShared && developerId) {
+        body.company_group_id = null;
+        body.developer_id = developerId;
+      } else {
+        body.company_group_id = form.company_group_id || null;
+        body.developer_id = null;
+      }
 
       const res = await fetch(url, {
         method: editingConnection ? 'PUT' : 'POST',
@@ -231,6 +273,7 @@ function ConexoesContent() {
     conn.workspace_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
     conn.company_group?.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+  const paginatedConnections = filteredConnections.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   if (accessDenied) {
     return (
@@ -279,7 +322,7 @@ function ConexoesContent() {
         )}
 
         {connections.length === 0 ? (
-          <div className="bg-white rounded-2xl p-12 text-center border border-gray-100">
+          <div className="card-modern p-12 text-center">
             <LinkIcon size={48} className="mx-auto text-gray-300 mb-4" />
             <h2 className="text-lg font-medium text-gray-900 mb-2">Nenhuma conexão</h2>
             <p className="text-gray-500 mb-4">Crie sua primeira conexão com o Power BI</p>
@@ -288,41 +331,55 @@ function ConexoesContent() {
             </Button>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-100">
+          <>
+          <div className="overflow-hidden bg-white">
+            <table className="w-full table-modern">
+              <thead>
                 <tr>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Nome</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Workspace ID</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Grupo</th>
-                  <th className="text-center px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Navegação</th>
-                  <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Ações</th>
+                  <th>Nome</th>
+                  <th>Workspace ID</th>
+                  <th>Grupo</th>
+                  <th className="text-center">Navegação</th>
+                  <th className="text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody>
                 {filteredConnections.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
                       Nenhuma conexão encontrada para "{searchTerm}"
                     </td>
                   </tr>
                 ) : (
-                  filteredConnections.map((conn) => (
+                  paginatedConnections.map((conn) => (
                   <tr key={conn.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
-                      <div className="font-medium text-gray-900">{conn.name}</div>
+                      <div className="font-medium text-gray-900 flex items-center gap-2">
+                        {conn.name}
+                        {(conn._source === 'developer' || (conn.developer_id && !conn.company_group_id)) && (
+                          <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full flex items-center gap-1 w-fit">
+                            <Share2 size={12} /> Compartilhado
+                          </span>
+                        )}
+                      </div>
                       <div className="text-sm text-gray-500">{conn.tenant_id}</div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 font-mono">{conn.workspace_id}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{conn.company_group?.name}</td>
-                    <td className="px-6 py-4 text-center">
+                    <td className="text-sm text-gray-600 font-mono">{conn.workspace_id}</td>
+                    <td className="text-sm text-gray-600">
+                      {conn.developer_id && !conn.company_group_id ? (
+                        <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">Compartilhado</span>
+                      ) : (
+                        conn.company_group?.name || '—'
+                      )}
+                    </td>
+                    <td className="text-center">
                       {conn.show_page_navigation ? (
                         <CheckCircle size={20} className="inline text-green-500" />
                       ) : (
                         <XCircle size={20} className="inline text-gray-400" />
                       )}
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="text-right">
                       <button
                         onClick={() => handleCopy(conn)}
                         className={`p-2 rounded-lg mr-1 ${
@@ -363,6 +420,10 @@ function ConexoesContent() {
               </tbody>
             </table>
           </div>
+          <div className="mt-4">
+            <Pagination totalItems={filteredConnections.length} currentPage={page} onPageChange={setPage} pageSize={PAGE_SIZE} />
+          </div>
+          </>
         )}
       </div>
 
@@ -396,10 +457,18 @@ function ConexoesContent() {
                     required
                   >
                     <option value="">Selecione um grupo</option>
+                    {userRole === 'developer' && developerId && (
+                      <option value="shared">🔗 Compartilhado (todos os grupos)</option>
+                    )}
                     {groups.map((group) => (
                       <option key={group.id} value={group.id}>{group.name}</option>
                     ))}
                   </select>
+                  {form.company_group_id === 'shared' && (
+                    <p className="text-xs text-amber-600 mt-1.5 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                      Esta conexão será usada por todos os grupos que não têm conexão própria.
+                    </p>
+                  )}
                 </div>
               </div>
 

@@ -147,7 +147,7 @@ export async function GET() {
       // Desenvolvedor: busca pelo seu developer_id
       const { data: devData, error: devError } = await supabase
         .from('developers')
-        .select('id, name, logo_url, primary_color, max_daily_refreshes, max_powerbi_screens, max_users, max_companies')
+        .select('id, name, logo_url, primary_color, max_daily_refreshes, max_powerbi_screens, max_users, max_companies, max_alerts, max_chat_messages_per_day, max_whatsapp_messages_per_day, max_ai_credits_per_day')
         .eq('id', developerId)
         .single();
       
@@ -170,7 +170,11 @@ export async function GET() {
             max_daily_refreshes,
             max_powerbi_screens,
             max_users,
-            max_companies
+            max_companies,
+            max_alerts,
+            max_chat_messages_per_day,
+            max_whatsapp_messages_per_day,
+            max_ai_credits_per_day
           ),
           plan:powerbi_plans(*)
         `)

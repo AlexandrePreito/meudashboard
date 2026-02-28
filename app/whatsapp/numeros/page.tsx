@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
+import FeatureGate from '@/components/ui/FeatureGate';
 import Button from '@/components/ui/Button';
 import DatasetSelector from '@/components/whatsapp/DatasetSelector';
 import { useMenu } from '@/contexts/MenuContext';
@@ -21,6 +22,7 @@ import {
   CheckCircle,
   XCircle
 } from 'lucide-react';
+import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
 
 interface AuthorizedNumber {
   id: string;
@@ -57,6 +59,7 @@ function NumerosContent() {
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterInstance, setFilterInstance] = useState('');
+  const [page, setPage] = useState(1);
 
   const [showModal, setShowModal] = useState(false);
   const [editingNumber, setEditingNumber] = useState<AuthorizedNumber | null>(null);
@@ -327,6 +330,10 @@ function NumerosContent() {
     
     return true;
   });
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, filterInstance]);
+  const paginatedNumbers = filteredNumbers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   // Loading state
   if (userRole === 'loading') {
@@ -384,20 +391,21 @@ function NumerosContent() {
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
+          <>
+          <div className="overflow-hidden bg-white rounded-xl border border-gray-200">
+            <table className="w-full table-modern">
+              <thead>
                 <tr>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Contato</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Instância</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Datasets</th>
-                  <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Alertas</th>
-                  <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Chat IA</th>
-                  <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Status</th>
-                  <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Ações</th>
+                  <th>Contato</th>
+                  <th>Instância</th>
+                  <th>Datasets</th>
+                  <th className="text-center">Alertas</th>
+                  <th className="text-center">Chat IA</th>
+                  <th className="text-center">Status</th>
+                  <th className="text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody>
                 {filteredNumbers.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
@@ -406,9 +414,9 @@ function NumerosContent() {
                     </td>
                   </tr>
                 ) : (
-                  filteredNumbers.map((num) => (
-                    <tr key={num.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
+                  paginatedNumbers.map((num) => (
+                    <tr key={num.id}>
+                      <td>
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
                             <Phone className="text-blue-600" size={18} />
@@ -419,10 +427,10 @@ function NumerosContent() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
+                      <td className="text-sm text-gray-600">
                         {num.instance?.name || '-'}
                       </td>
-                      <td className="px-4 py-3">
+                      <td>
                         <div className="flex flex-wrap gap-1">
                           {num.datasets && num.datasets.length > 0 ? (
                             num.datasets.map((d: any) => (
@@ -438,21 +446,21 @@ function NumerosContent() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="text-center">
                         {num.can_receive_alerts ? (
                           <Bell className="w-5 h-5 text-green-600 mx-auto" />
                         ) : (
                           <Bell className="w-5 h-5 text-gray-300 mx-auto" />
                         )}
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="text-center">
                         {num.can_use_chat ? (
                           <MessageSquare className="w-5 h-5 text-green-600 mx-auto" />
                         ) : (
                           <MessageSquare className="w-5 h-5 text-gray-300 mx-auto" />
                         )}
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="text-center">
                         <button
                           onClick={() => toggleActive(num)}
                           className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
@@ -465,7 +473,7 @@ function NumerosContent() {
                           {num.is_active ? 'Ativo' : 'Inativo'}
                         </button>
                       </td>
-                      <td className="px-4 py-3">
+                      <td>
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => openEdit(num)}
@@ -489,6 +497,10 @@ function NumerosContent() {
               </tbody>
             </table>
           </div>
+          <div className="mt-4">
+            <Pagination totalItems={filteredNumbers.length} currentPage={page} onPageChange={setPage} pageSize={PAGE_SIZE} />
+          </div>
+          </>
         )}
 
         {/* Modal */}
@@ -645,7 +657,9 @@ function NumerosContent() {
 export default function NumerosPage() {
   return (
     <MainLayout>
-      <NumerosContent />
+      <FeatureGate feature="whatsapp">
+        <NumerosContent />
+      </FeatureGate>
     </MainLayout>
   );
 }

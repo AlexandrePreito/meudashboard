@@ -146,7 +146,7 @@ export default function PerfilPage() {
         <div className="max-w-4xl mx-auto space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Dados Pessoais - Editáveis */}
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="card-modern p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <User size={20} className="text-gray-400" />
               Dados Pessoais
@@ -183,7 +183,7 @@ export default function PerfilPage() {
           </div>
 
           {/* Dados do Sistema - Somente Leitura */}
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="card-modern p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <Shield size={20} className="text-gray-400" />
               Informações da Conta
@@ -243,7 +243,7 @@ export default function PerfilPage() {
 
         {/* Uso do Plano */}
         {usage && (
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="card-modern p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
               Uso do Plano: <span className="text-primary">{usage.plan_name}</span>
             </h2>

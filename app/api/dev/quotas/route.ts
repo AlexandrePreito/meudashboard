@@ -103,13 +103,20 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Voce nao e um desenvolvedor' }, { status: 403 });
     }
 
-    // Buscar plano para validar limites
+    // Buscar developer e plano para validar limites (developer overrides plan)
     const { data: developer } = await supabase
       .from('developers')
       .select(`
+        max_users,
+        max_powerbi_screens,
+        max_alerts,
+        max_chat_messages_per_day,
+        max_whatsapp_messages_per_day,
+        max_ai_credits_per_day,
+        max_daily_refreshes,
         plan:developer_plans(
           max_users,
-          max_screens,
+          max_powerbi_screens,
           max_alerts,
           max_whatsapp_messages_per_day,
           max_ai_credits_per_day
@@ -120,9 +127,15 @@ export async function PUT(request: Request) {
 
     const planRaw = developer?.plan;
     const plan = Array.isArray(planRaw) ? planRaw[0] : planRaw;
-    if (!plan) {
-      return NextResponse.json({ error: 'Plano nao encontrado' }, { status: 400 });
-    }
+    const dev = developer as any;
+
+    // Limites efetivos: developer overrides plan
+    const maxUsers = dev?.max_users ?? plan?.max_users ?? 50;
+    const maxScreens = dev?.max_powerbi_screens ?? plan?.max_powerbi_screens ?? 10;
+    const maxAlerts = dev?.max_alerts ?? plan?.max_alerts ?? 20;
+    const maxWhatsapp = dev?.max_whatsapp_messages_per_day ?? dev?.max_chat_messages_per_day ?? plan?.max_whatsapp_messages_per_day ?? 500;
+    const maxAI = dev?.max_ai_credits_per_day ?? plan?.max_ai_credits_per_day ?? 200;
+    const maxRefreshes = dev?.max_daily_refreshes ?? 20;
 
     const body = await request.json();
     const { quotas } = body;
@@ -131,7 +144,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Dados invalidos' }, { status: 400 });
     }
 
-    // Validar que soma nao excede plano
+    // Validar que soma nao excede limites do developer
     let totalUsers = 0, totalScreens = 0, totalAlerts = 0, totalWhatsapp = 0, totalAI = 0, totalRefreshes = 0;
 
     Object.values(quotas).forEach((q: any) => {
@@ -143,20 +156,23 @@ export async function PUT(request: Request) {
       totalRefreshes += q.quota_refreshes || 0;
     });
 
-    if (totalUsers > plan.max_users) {
-      return NextResponse.json({ error: `Quota de usuarios (${totalUsers}) excede limite do plano (${plan.max_users})` }, { status: 400 });
+    if (totalUsers > maxUsers) {
+      return NextResponse.json({ error: `Quota de usuarios (${totalUsers}) excede limite (${maxUsers})` }, { status: 400 });
     }
-    if (totalScreens > plan.max_screens) {
-      return NextResponse.json({ error: `Quota de telas (${totalScreens}) excede limite do plano (${plan.max_screens})` }, { status: 400 });
+    if (totalScreens > maxScreens) {
+      return NextResponse.json({ error: `Quota de telas (${totalScreens}) excede limite (${maxScreens})` }, { status: 400 });
     }
-    if (totalAlerts > plan.max_alerts) {
-      return NextResponse.json({ error: `Quota de alertas (${totalAlerts}) excede limite do plano (${plan.max_alerts})` }, { status: 400 });
+    if (totalAlerts > maxAlerts) {
+      return NextResponse.json({ error: `Quota de alertas (${totalAlerts}) excede limite (${maxAlerts})` }, { status: 400 });
     }
-    if (totalWhatsapp > plan.max_whatsapp_messages_per_day) {
-      return NextResponse.json({ error: `Quota de WhatsApp (${totalWhatsapp}) excede limite do plano (${plan.max_whatsapp_messages_per_day})` }, { status: 400 });
+    if (totalWhatsapp > maxWhatsapp) {
+      return NextResponse.json({ error: `Quota de WhatsApp (${totalWhatsapp}) excede limite (${maxWhatsapp})` }, { status: 400 });
     }
-    if (totalAI > plan.max_ai_credits_per_day) {
-      return NextResponse.json({ error: `Quota de IA (${totalAI}) excede limite do plano (${plan.max_ai_credits_per_day})` }, { status: 400 });
+    if (totalAI > maxAI) {
+      return NextResponse.json({ error: `Quota de IA (${totalAI}) excede limite (${maxAI})` }, { status: 400 });
+    }
+    if (totalRefreshes > maxRefreshes) {
+      return NextResponse.json({ error: `Quota de atualizacoes (${totalRefreshes}) excede limite (${maxRefreshes})` }, { status: 400 });
     }
 
     // Atualizar cada grupo

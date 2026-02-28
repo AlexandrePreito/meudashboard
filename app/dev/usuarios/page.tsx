@@ -21,6 +21,7 @@ import {
   ListOrdered
 } from 'lucide-react';
 import ScreenOrderModal from './ScreenOrderModal';
+import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
 
 const roleLabels: { [key: string]: string } = {
   admin: 'Administrador',
@@ -29,6 +30,12 @@ const roleLabels: { [key: string]: string } = {
   developer: 'Desenvolvedor',
   master: 'Master',
 };
+
+interface Screen {
+  id: string;
+  title: string;
+  icon?: string;
+}
 
 interface User {
   id: string;
@@ -44,6 +51,8 @@ interface User {
   company_group_id: string;
   company_group_name: string;
   created_at: string;
+  screen_ids?: string[];
+  screen_titles?: string[];
 }
 
 interface Group {
@@ -59,6 +68,7 @@ export default function DevUsuariosPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterGroup, setFilterGroup] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [page, setPage] = useState(1);
 
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -80,6 +90,10 @@ export default function DevUsuariosPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [orderingUser, setOrderingUser] = useState<User | null>(null);
+
+  const [screens, setScreens] = useState<Screen[]>([]);
+  const [userScreenIds, setUserScreenIds] = useState<string[]>([]);
+  const [loadingScreens, setLoadingScreens] = useState(false);
 
   useEffect(() => {
     loadUsers();
@@ -118,7 +132,7 @@ export default function DevUsuariosPage() {
     setShowModal(true);
   }
 
-  function openEditUser(user: User) {
+  async function openEditUser(user: User) {
     setEditingUser(user);
     setFormData({
       email: user.email,
@@ -130,9 +144,40 @@ export default function DevUsuariosPage() {
       can_use_ai: user.can_use_ai,
       can_refresh: user.can_refresh
     });
+    setUserScreenIds(user.screen_ids || []);
     setError('');
     setShowPassword(false);
     setShowModal(true);
+    if (user.company_group_id) {
+      setLoadingScreens(true);
+      try {
+        const [screensRes, idsRes] = await Promise.all([
+          fetch(`/api/powerbi/screens?group_id=${user.company_group_id}`),
+          fetch(`/api/powerbi/screens/user-screen-ids?group_id=${user.company_group_id}&user_id=${user.id}`)
+        ]);
+        if (screensRes.ok) {
+          const d = await screensRes.json();
+          const list = (d.screens || []).filter((s: Screen) => s.id).map((s: Screen) => ({ id: s.id, title: s.title || s.id }));
+          setScreens(list);
+        }
+        if (idsRes.ok) {
+          const d = await idsRes.json();
+          setUserScreenIds(d.screen_ids || []);
+        }
+      } catch (e) {
+        console.error('Erro ao carregar telas:', e);
+      } finally {
+        setLoadingScreens(false);
+      }
+    } else {
+      setScreens([]);
+    }
+  }
+
+  function toggleScreen(screenId: string) {
+    setUserScreenIds(prev =>
+      prev.includes(screenId) ? prev.filter(id => id !== screenId) : [...prev, screenId]
+    );
   }
 
   async function handleSave() {
@@ -193,6 +238,22 @@ export default function DevUsuariosPage() {
 
       if (!res.ok) {
         throw new Error(result.error || 'Erro ao salvar');
+      }
+
+      if (editingUser && editingUser.company_group_id) {
+        try {
+          await fetch('/api/powerbi/screens/set-user-screens', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              group_id: editingUser.company_group_id,
+              user_id: editingUser.id,
+              screen_ids: userScreenIds
+            })
+          });
+        } catch (e) {
+          console.error('Erro ao salvar telas do usuário:', e);
+        }
       }
 
       setShowModal(false);
@@ -256,6 +317,12 @@ export default function DevUsuariosPage() {
     if (filterStatus === 'inactive' && user.is_active) return false;
     return true;
   });
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, filterGroup, filterStatus]);
+
+  const paginatedUsers = filteredUsers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   if (loading) {
     return (
@@ -339,7 +406,7 @@ export default function DevUsuariosPage() {
 
         {/* Lista */}
         {users.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div className="card-modern p-12 text-center">
             <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Nenhum usuário cadastrado</h3>
             <p className="text-gray-500 mb-6">Crie seu primeiro usuário para começar</p>
@@ -354,25 +421,27 @@ export default function DevUsuariosPage() {
             )}
           </div>
         ) : filteredUsers.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+          <div className="card-modern p-8 text-center">
             <p className="text-gray-500">Nenhum usuário encontrado</p>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
+          <>
+          <div className="overflow-hidden">
+            <table className="w-full table-modern">
+              <thead>
                 <tr>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Usuário</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Grupo</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Função</th>
-                  <th className="text-center px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                  <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Ações</th>
+                  <th>Usuário</th>
+                  <th>Grupo</th>
+                  <th>Função</th>
+                  <th>Telas</th>
+                  <th className="text-center">Status</th>
+                  <th className="text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredUsers.map((user) => (
-                  <tr key={user.membership_id} className={`hover:bg-gray-50 ${!user.is_active ? 'opacity-60' : ''}`}>
-                    <td className="px-6 py-4">
+              <tbody>
+                {paginatedUsers.map((user) => (
+                  <tr key={user.membership_id} className={!user.is_active ? 'opacity-60' : ''}>
+                    <td>
                       <div className="flex items-center gap-3">
                         {user.avatar_url ? (
                           <img src={user.avatar_url} alt={user.full_name} className="w-10 h-10 rounded-full" />
@@ -389,20 +458,42 @@ export default function DevUsuariosPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td>
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 text-gray-700 rounded-full text-sm">
                         <Building2 className="w-3.5 h-3.5" />
                         {user.company_group_name}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td>
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
                         user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700'
                       }`}>
                         {roleLabels[user.role] || 'Usuário'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-center">
+                    <td>
+                      {user.screen_titles && user.screen_titles.length > 0 ? (
+                        user.screen_titles.length <= 3 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {user.screen_titles.map((t) => (
+                              <span key={t} className="inline-flex px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700">
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span
+                            className="inline-flex px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700"
+                            title={user.screen_titles.join(', ')}
+                          >
+                            {user.screen_titles.length} telas
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-gray-400 text-sm">—</span>
+                      )}
+                    </td>
+                    <td className="text-center">
                       <button
                         onClick={() => toggleUserStatus(user)}
                         className={`p-1.5 rounded-lg transition-colors ${
@@ -415,7 +506,7 @@ export default function DevUsuariosPage() {
                         {user.is_active ? <UserCheck className="w-4 h-4" /> : <UserX className="w-4 h-4" />}
                       </button>
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="text-right">
                       <button
                         onClick={() => setOrderingUser(user)}
                         className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -443,6 +534,15 @@ export default function DevUsuariosPage() {
               </tbody>
             </table>
           </div>
+          <div className="mt-4">
+            <Pagination
+              totalItems={filteredUsers.length}
+              currentPage={page}
+              onPageChange={setPage}
+              pageSize={PAGE_SIZE}
+            />
+          </div>
+          </>
         )}
       </div>
 
@@ -606,6 +706,36 @@ export default function DevUsuariosPage() {
                       Pode atualizar dashboards
                     </label>
                   </div>
+                </div>
+              )}
+
+              {editingUser && (screens.length > 0 || loadingScreens) && (
+                <div className="border-t border-gray-200 pt-4 mt-4">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Telas com Acesso</h3>
+                  <p className="text-xs text-gray-500 mb-3">Selecione quais telas este usuário pode visualizar</p>
+                  {loadingScreens ? (
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Carregando telas...
+                    </div>
+                  ) : (
+                    <div className="max-h-48 overflow-y-auto space-y-1">
+                      {screens.map(screen => (
+                        <label
+                          key={screen.id}
+                          className="flex items-center gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={userScreenIds.includes(screen.id)}
+                            onChange={() => toggleScreen(screen.id)}
+                            className="rounded border-gray-300 text-blue-600"
+                          />
+                          <span className="text-sm">{screen.title}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
