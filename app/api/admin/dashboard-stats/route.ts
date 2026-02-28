@@ -47,6 +47,7 @@ export async function GET() {
     const recentDevelopers: Array<{
       id: string;
       name: string;
+      logo_url: string | null;
       plan_name: string;
       groups_count: number;
       created_at: string;
@@ -65,7 +66,7 @@ export async function GET() {
       recentDevelopers.push({
         id: dev.id,
         name: dev.name,
-        logo_url: dev.logo_url,
+        logo_url: dev.logo_url ?? null,
         plan_name: planName,
         groups_count: groupsCount || 0,
         created_at: dev.created_at,
