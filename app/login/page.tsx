@@ -99,9 +99,10 @@ export default function LoginPage() {
         setTransitioning(true);
         setTimeout(() => {
           if (data.user?.isDeveloperUser && data.user?.developerId) {
-            window.location.href = '/dev';
+            // Dev admin → redirecionar para domínio principal
+            window.location.href = isSubdomain ? 'https://meudashboard.org/dev' : '/dev';
           } else if (data.user?.role === 'master') {
-            window.location.href = '/admin';
+            window.location.href = isSubdomain ? 'https://meudashboard.org/admin' : '/admin';
           } else if (data.user?.role === 'admin' && data.user?.groupIds?.length > 0) {
             window.location.href = `/administrador/${data.user.groupIds[0]}`;
           } else {
