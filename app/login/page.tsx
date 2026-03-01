@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Eye, EyeOff, LogIn } from 'lucide-react';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -64,7 +63,6 @@ function hexToRgb(hex: string) {
 }
 
 export default function LoginPage() {
-  const router = useRouter();
   const { developerInfo, isSubdomain } = useSubdomain();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -101,13 +99,13 @@ export default function LoginPage() {
         setTransitioning(true);
         setTimeout(() => {
           if (data.user?.isDeveloperUser && data.user?.developerId) {
-            router.push('/dev');
+            window.location.href = '/dev';
           } else if (data.user?.role === 'master') {
-            router.push('/admin');
+            window.location.href = '/admin';
           } else if (data.user?.role === 'admin' && data.user?.groupIds?.length > 0) {
-            router.push(`/administrador/${data.user.groupIds[0]}`);
+            window.location.href = `/administrador/${data.user.groupIds[0]}`;
           } else {
-            router.push('/dashboard');
+            window.location.href = '/dashboard';
           }
         }, 800);
       } else {
