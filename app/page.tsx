@@ -298,17 +298,87 @@ export default function LandingPage() {
     );
   }
 
+  // Subdomínio com developer — landing com login embutido
   if (isSubdomain && developerInfo) {
     const { name, logo_url, primary_color, landing_title, landing_description, landing_background_url } = developerInfo;
+    const color = primary_color || '#3B82F6';
+
+    function hexToRgb(hex: string) {
+      const h = hex.startsWith('#') ? hex : `#${hex}`;
+      const r = parseInt(h.slice(1, 3), 16);
+      const g = parseInt(h.slice(3, 5), 16);
+      const b = parseInt(h.slice(5, 7), 16);
+      return `${r}, ${g}, ${b}`;
+    }
+
+    const rgb = hexToRgb(color);
+
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center relative p-4" style={{ backgroundColor: primary_color || '#3B82F6', backgroundImage: landing_background_url ? `url(${landing_background_url})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center' }}>
-        {landing_background_url && <div className="absolute inset-0 bg-black/50" />}
-        <div className="relative z-10 bg-white rounded-2xl shadow-2xl p-10 max-w-md w-full mx-4 text-center">
-          {logo_url ? <img src={logo_url} alt={name} className="h-16 mx-auto mb-6 object-contain" /> : <div className="h-16 w-16 rounded-xl mx-auto mb-6 flex items-center justify-center text-white text-2xl font-bold" style={{ backgroundColor: primary_color || '#3B82F6' }}>{name?.charAt(0)?.toUpperCase()}</div>}
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">{landing_title || name}</h1>
-          {landing_description && <p className="text-gray-500 mb-8">{landing_description}</p>}
-          <Link href="/login" className="block w-full py-3 px-6 rounded-xl text-white font-semibold text-lg transition-all hover:opacity-90 hover:shadow-lg text-center" style={{ backgroundColor: primary_color || '#3B82F6' }}>Entrar na conta</Link>
-          <p className="text-xs text-gray-400 mt-8">Powered by <span className="font-medium">MeuDashboard</span></p>
+      <div className="min-h-screen flex items-center justify-center relative overflow-hidden p-4"
+        style={{
+          background: landing_background_url
+            ? undefined
+            : `linear-gradient(135deg, rgba(${rgb}, 0.06) 0%, rgba(${rgb}, 0.12) 30%, rgba(${rgb}, 0.04) 60%, #f8fafc 100%)`,
+          backgroundImage: landing_background_url ? `url(${landing_background_url})` : undefined,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+      >
+        {/* Esferas decorativas */}
+        {!landing_background_url && (
+          <>
+            <div className="absolute top-20 right-20 w-72 h-72 rounded-full blur-3xl opacity-20" style={{ backgroundColor: color }} />
+            <div className="absolute bottom-20 left-20 w-56 h-56 rounded-full blur-3xl opacity-15" style={{ backgroundColor: color }} />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full blur-3xl opacity-5" style={{ backgroundColor: color }} />
+          </>
+        )}
+        {landing_background_url && <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />}
+
+        <div className="relative z-10 bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl shadow-black/10 p-10 max-w-md w-full text-center border border-white/80">
+          {/* Logo */}
+          {logo_url ? (
+            <img src={logo_url} alt={name} className="h-14 mx-auto mb-5 object-contain" />
+          ) : (
+            <div className="h-14 w-14 rounded-2xl mx-auto mb-5 flex items-center justify-center text-white text-xl font-bold shadow-lg" style={{ backgroundColor: color }}>
+              {name?.charAt(0)?.toUpperCase()}
+            </div>
+          )}
+
+          {/* Título e descrição */}
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">{landing_title || name}</h1>
+          <p className="text-sm text-gray-500 mb-8">{landing_description || 'Acesse seus dashboards e relatórios'}</p>
+
+          {/* Formulário de login */}
+          <form onSubmit={(e) => { e.preventDefault(); window.location.href = '/login'; }} className="space-y-4 text-left">
+            <div>
+              <input
+                type="email"
+                placeholder="Email"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/80 text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all placeholder:text-gray-400"
+                style={{ '--tw-ring-color': color } as React.CSSProperties}
+                onFocus={(e) => { e.target.style.borderColor = color; e.target.style.boxShadow = `0 0 0 2px ${color}30`; }}
+                onBlur={(e) => { e.target.style.borderColor = '#e5e7eb'; e.target.style.boxShadow = 'none'; }}
+              />
+            </div>
+            <div>
+              <input
+                type="password"
+                placeholder="Senha"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/80 text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all placeholder:text-gray-400"
+                onFocus={(e) => { e.target.style.borderColor = color; e.target.style.boxShadow = `0 0 0 2px ${color}30`; }}
+                onBlur={(e) => { e.target.style.borderColor = '#e5e7eb'; e.target.style.boxShadow = 'none'; }}
+              />
+            </div>
+            <Link
+              href="/login"
+              className="block w-full py-3.5 rounded-xl text-white font-semibold text-sm transition-all hover:opacity-90 hover:shadow-lg text-center"
+              style={{ backgroundColor: color }}
+            >
+              Entrar
+            </Link>
+          </form>
+
+          <p className="text-xs text-gray-300 mt-8">Ambiente seguro com criptografia de dados</p>
         </div>
       </div>
     );
