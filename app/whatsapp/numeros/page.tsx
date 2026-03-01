@@ -23,6 +23,7 @@ import {
   XCircle
 } from 'lucide-react';
 import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
+import ActionsDropdown from '@/components/ui/ActionsDropdown';
 
 interface AuthorizedNumber {
   id: string;
@@ -474,22 +475,30 @@ function NumerosContent() {
                         </button>
                       </td>
                       <td>
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => openEdit(num)}
-                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Editar"
-                          >
-                            <Edit size={16} />
-                          </button>
-                          <button
-                            onClick={() => openDeleteModal(num)}
-                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Excluir"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
+                        <ActionsDropdown
+                          align="right"
+                          actions={[
+                            { label: 'Editar', icon: Edit, onClick: () => openEdit(num) },
+                            { label: 'Excluir', icon: Trash2, onClick: () => openDeleteModal(num), className: 'text-red-600' }
+                          ]}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => openEdit(num)}
+                              className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Editar"
+                            >
+                              <Edit size={16} />
+                            </button>
+                            <button
+                              onClick={() => openDeleteModal(num)}
+                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Excluir"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </ActionsDropdown>
                       </td>
                     </tr>
                   ))

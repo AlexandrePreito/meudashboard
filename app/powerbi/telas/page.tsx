@@ -34,6 +34,7 @@ import {
   XCircle
 } from 'lucide-react';
 import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
+import ActionsDropdown from '@/components/ui/ActionsDropdown';
 
 interface Report {
   id: string;
@@ -549,27 +550,38 @@ function TelasContent() {
                       </button>
                     </td>
                     <td className="text-right">
-                      <button
-                        onClick={() => openModal(screen)}
-                        className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg mr-1"
-                        title="Editar"
+                      <ActionsDropdown
+                        align="right"
+                        actions={[
+                          { label: 'Editar', icon: Pencil, onClick: () => openModal(screen) },
+                          { label: 'Copiar', icon: Copy, onClick: () => handleCopy(screen) },
+                          { label: 'Excluir', icon: Trash2, onClick: () => openDeleteModal(screen), className: 'text-red-600' }
+                        ]}
                       >
-                        <Pencil size={16} />
-                      </button>
-                      <button
-                        onClick={() => handleCopy(screen)}
-                        className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg mr-1"
-                        title="Copiar"
-                      >
-                        <Copy size={16} />
-                      </button>
-                      <button
-                        onClick={() => openDeleteModal(screen)}
-                        className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg"
-                        title="Excluir"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                        <>
+                          <button
+                            onClick={() => openModal(screen)}
+                            className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg mr-1"
+                            title="Editar"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleCopy(screen)}
+                            className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg mr-1"
+                            title="Copiar"
+                          >
+                            <Copy size={16} />
+                          </button>
+                          <button
+                            onClick={() => openDeleteModal(screen)}
+                            className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg"
+                            title="Excluir"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      </ActionsDropdown>
                     </td>
                   </tr>
                 ))}

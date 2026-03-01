@@ -374,15 +374,15 @@ export default function LandingPage() {
               <a href="#faq" className="text-slate-600 hover:text-slate-900 text-sm font-medium">FAQ</a>
             </div>
             <div className="flex items-center gap-3">
-              <Link href="/login" className="text-slate-600 hover:text-slate-900 text-sm font-medium">Entrar</Link>
-              <Link href="/cadastro" className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all">Criar conta grátis</Link>
+              <Link href="/login" className="border border-slate-300 text-slate-800 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-50 hover:border-slate-400 transition-all">Entrar</Link>
+              <Link href="/cadastro" className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all">Comece grátis</Link>
             </div>
           </div>
         </div>
       </nav>
 
       {/* Hero */}
-      <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16" style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)' }}>
+      <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-28" style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)' }}>
         <div className="absolute top-40 left-20 w-96 h-96 bg-cyan-500/5 rounded-full blur-3xl" />
         <div className="absolute bottom-20 right-20 w-80 h-80 bg-purple-500/5 rounded-full blur-3xl" />
         <div className="relative z-10 max-w-5xl mx-auto px-6 text-center">
@@ -454,7 +454,7 @@ export default function LandingPage() {
             href="/cadastro"
             className="bg-white text-blue-700 px-8 py-3.5 rounded-xl font-semibold text-base hover:bg-blue-50 transition-all shadow-lg whitespace-nowrap flex items-center gap-2"
           >
-            Criar conta grátis
+            Comece grátis
             <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
@@ -495,7 +495,7 @@ export default function LandingPage() {
                 <StepCard number={3} title="Ative IA e WhatsApp" description="Conecte o WhatsApp e deixe a IA responder perguntas em linguagem natural sobre seus dados." isLast={true} />
               </div>
               <Link href="/cadastro" className="inline-flex items-center gap-2 mt-8 bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-700 transition-all">
-                Criar conta grátis
+                Comece grátis
                 <ArrowRight className="w-5 h-5" />
               </Link>
             </div>
@@ -566,7 +566,7 @@ export default function LandingPage() {
           <p className="text-xl text-slate-300 mb-10 max-w-xl mx-auto">Crie sua conta grátis e em minutos seus dashboards estarão com superpoderes.</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/cadastro" className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-semibold text-lg transition-all flex items-center justify-center gap-2">
-              Criar conta grátis
+              Comece grátis
               <ArrowRight className="w-5 h-5" />
             </Link>
             <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="bg-green-500 hover:bg-green-600 text-white px-8 py-4 rounded-2xl font-semibold text-lg transition-all flex items-center justify-center gap-3">

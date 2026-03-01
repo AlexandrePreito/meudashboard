@@ -6,6 +6,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import FeatureGate from '@/components/ui/FeatureGate';
 import PermissionGuard from '@/components/assistente-ia/PermissionGuard';
 import Pagination from '@/components/ui/Pagination';
+import ActionsDropdown from '@/components/ui/ActionsDropdown';
 import { TrainingExample } from '@/types/assistente-ia';
 import { Plus, Pencil, Trash2, Sparkles } from 'lucide-react';
 import { useMenu } from '@/contexts/MenuContext';
@@ -266,22 +267,30 @@ function TreinarIAContent() {
                         {new Date(example.created_at).toLocaleDateString('pt-BR')}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="flex justify-end gap-1">
-                          <button
-                            onClick={() => router.push(`/assistente-ia/treinar/${example.id}`)}
-                            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Editar"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => deleteExample(example.id)}
-                            className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Excluir"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                        <ActionsDropdown
+                          align="right"
+                          actions={[
+                            { label: 'Editar', icon: Pencil, onClick: () => router.push(`/assistente-ia/treinar/${example.id}`) },
+                            { label: 'Excluir', icon: Trash2, onClick: () => deleteExample(example.id), className: 'text-red-600' }
+                          ]}
+                        >
+                          <div className="flex justify-end gap-1">
+                            <button
+                              onClick={() => router.push(`/assistente-ia/treinar/${example.id}`)}
+                              className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Editar"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => deleteExample(example.id)}
+                              className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Excluir"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </ActionsDropdown>
                       </td>
                     </tr>
                   ))}

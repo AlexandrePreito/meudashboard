@@ -16,6 +16,7 @@ import {
   Database
 } from 'lucide-react';
 import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
+import ActionsDropdown from '@/components/ui/ActionsDropdown';
 
 interface Connection {
   id: string;
@@ -449,27 +450,38 @@ function RelatoriosContent() {
                       {report.connection?.company_group?.name || '-'}
                     </td>
                     <td className="text-right">
-                      <button
-                        onClick={() => openModal(report)}
-                        className="p-2 rounded-lg mr-1 text-gray-600 hover:bg-gray-100"
-                        title="Editar"
+                      <ActionsDropdown
+                        align="right"
+                        actions={[
+                          { label: 'Editar', icon: Pencil, onClick: () => openModal(report) },
+                          { label: 'Copiar', icon: Copy, onClick: () => handleCopy(report) },
+                          { label: 'Excluir', icon: Trash2, onClick: () => handleDelete(report.id), className: 'text-red-600' }
+                        ]}
                       >
-                        <Pencil size={16} />
-                      </button>
-                      <button
-                        onClick={() => handleCopy(report)}
-                        className="p-2 rounded-lg mr-1 text-blue-600 hover:bg-blue-50"
-                        title="Copiar"
-                      >
-                        <Copy size={16} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(report.id)}
-                        className="p-2 rounded-lg text-red-600 hover:bg-red-50"
-                        title="Excluir"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                        <>
+                          <button
+                            onClick={() => openModal(report)}
+                            className="p-2 rounded-lg mr-1 text-gray-600 hover:bg-gray-100"
+                            title="Editar"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleCopy(report)}
+                            className="p-2 rounded-lg mr-1 text-blue-600 hover:bg-blue-50"
+                            title="Copiar"
+                          >
+                            <Copy size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(report.id)}
+                            className="p-2 rounded-lg text-red-600 hover:bg-red-50"
+                            title="Excluir"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      </ActionsDropdown>
                     </td>
                   </tr>
                   ));

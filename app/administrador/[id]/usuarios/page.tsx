@@ -9,6 +9,7 @@ import {
 import MainLayout from '@/components/layout/MainLayout';
 import ScreenOrderModal from '@/components/admin/ScreenOrderModal';
 import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
+import ActionsDropdown from '@/components/ui/ActionsDropdown';
 
 interface User {
   id: string;
@@ -266,36 +267,45 @@ export default function AdminUsuariosPage() {
                       )}
                     </td>
                     <td>
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => openOrderModal(user)}
-                          className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
-                          title="Ordenar telas"
-                        >
-                          <MoveVertical className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => router.push(`/administrador/${groupId}/usuarios/${user.id}`)}
-                          className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
-                          title="Editar"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleToggleActive(user)}
-                          className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
-                          title={user.is_active ? 'Desativar' : 'Ativar'}
-                        >
-                          {user.is_active ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
-                        </button>
-                        <button
-                          onClick={() => handleDelete(user)}
-                          className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
-                          title="Remover"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                      <ActionsDropdown
+                        actions={[
+                          { label: 'Ordenar telas', icon: MoveVertical, onClick: () => openOrderModal(user) },
+                          { label: 'Editar', icon: Edit, onClick: () => router.push(`/administrador/${groupId}/usuarios/${user.id}`) },
+                          { label: user.is_active ? 'Desativar' : 'Ativar', icon: user.is_active ? UserX : UserCheck, onClick: () => handleToggleActive(user) },
+                          { label: 'Remover', icon: Trash2, onClick: () => handleDelete(user), className: 'text-red-600' }
+                        ]}
+                      >
+                        <>
+                          <button
+                            onClick={() => openOrderModal(user)}
+                            className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+                            title="Ordenar telas"
+                          >
+                            <MoveVertical className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => router.push(`/administrador/${groupId}/usuarios/${user.id}`)}
+                            className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+                            title="Editar"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleToggleActive(user)}
+                            className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+                            title={user.is_active ? 'Desativar' : 'Ativar'}
+                          >
+                            {user.is_active ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                          </button>
+                          <button
+                            onClick={() => handleDelete(user)}
+                            className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+                            title="Remover"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      </ActionsDropdown>
                     </td>
                   </tr>
                 ))}

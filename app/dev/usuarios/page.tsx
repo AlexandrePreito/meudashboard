@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import ScreenOrderModal from './ScreenOrderModal';
 import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
+import ActionsDropdown from '@/components/ui/ActionsDropdown';
 
 const roleLabels: { [key: string]: string } = {
   admin: 'Administrador',
@@ -507,27 +508,38 @@ export default function DevUsuariosPage() {
                       </button>
                     </td>
                     <td className="text-right">
-                      <button
-                        onClick={() => setOrderingUser(user)}
-                        className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        title="Ordenar Telas"
+                      <ActionsDropdown
+                        align="right"
+                        actions={[
+                          { label: 'Ordenar Telas', icon: ListOrdered, onClick: () => setOrderingUser(user) },
+                          { label: 'Editar', icon: Edit2, onClick: () => openEditUser(user) },
+                          { label: 'Remover', icon: Trash2, onClick: () => setDeleteConfirm(user), className: 'text-red-600' }
+                        ]}
                       >
-                        <ListOrdered className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => openEditUser(user)}
-                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                        title="Editar"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setDeleteConfirm(user)}
-                        className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Remover"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                        <>
+                          <button
+                            onClick={() => setOrderingUser(user)}
+                            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Ordenar Telas"
+                          >
+                            <ListOrdered className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => openEditUser(user)}
+                            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="Editar"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm(user)}
+                            className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Remover"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      </ActionsDropdown>
                     </td>
                   </tr>
                 ))}

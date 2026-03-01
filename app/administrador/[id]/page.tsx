@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
+import ActionsDropdown from '@/components/ui/ActionsDropdown';
 import { useRouter, useParams } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import {
@@ -866,29 +867,38 @@ export default function AdminGroupDetailPage() {
                         </span>
                       </td>
                       <td className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => openEditUser(userMembership)}
-                            className="btn-ghost p-1.5 text-gray-600"
-                            title="Editar usuário"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleResetPassword(userMembership.id)}
-                            className="p-1.5 text-gray-600 hover:bg-gray-50 rounded transition-colors"
-                            title="Resetar senha"
-                          >
-                            <Key className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteUser(userMembership.id)}
-                            className="p-1.5 text-gray-600 hover:bg-gray-50 rounded transition-colors"
-                            title="Remover"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                        <ActionsDropdown
+                          align="right"
+                          actions={[
+                            { label: 'Editar usuário', icon: Edit2, onClick: () => openEditUser(userMembership) },
+                            { label: 'Resetar senha', icon: Key, onClick: () => handleResetPassword(userMembership.id) },
+                            { label: 'Remover', icon: Trash2, onClick: () => handleDeleteUser(userMembership.id), className: 'text-red-600' }
+                          ]}
+                        >
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => openEditUser(userMembership)}
+                              className="btn-ghost p-1.5 text-gray-600"
+                              title="Editar usuário"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleResetPassword(userMembership.id)}
+                              className="p-1.5 text-gray-600 hover:bg-gray-50 rounded transition-colors"
+                              title="Resetar senha"
+                            >
+                              <Key className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUser(userMembership.id)}
+                              className="p-1.5 text-gray-600 hover:bg-gray-50 rounded transition-colors"
+                              title="Remover"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </ActionsDropdown>
                       </td>
                     </tr>
                   ))}

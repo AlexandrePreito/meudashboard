@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
 import Pagination from '@/components/ui/Pagination';
+import ActionsDropdown from '@/components/ui/ActionsDropdown';
 import { useMenu } from '@/contexts/MenuContext';
 import { 
   Plus, 
@@ -380,39 +381,50 @@ function ConexoesContent() {
                       )}
                     </td>
                     <td className="text-right">
-                      <button
-                        onClick={() => handleCopy(conn)}
-                        className={`p-2 rounded-lg mr-1 ${
-                          userRole === 'developer' 
-                            ? 'text-gray-400 hover:bg-gray-100' 
-                            : 'text-blue-600 hover:bg-blue-50'
-                        }`}
-                        title="Copiar conexão"
+                      <ActionsDropdown
+                        align="right"
+                        actions={[
+                          { label: 'Copiar conexão', icon: Copy, onClick: () => handleCopy(conn), className: userRole === 'developer' ? 'text-gray-400' : 'text-blue-600' },
+                          { label: 'Editar', icon: Pencil, onClick: () => openModal(conn) },
+                          { label: 'Excluir', icon: Trash2, onClick: () => handleDelete(conn.id), className: userRole === 'developer' ? 'text-gray-400' : 'text-red-600' }
+                        ]}
                       >
-                        <Copy size={16} />
-                      </button>
-                      <button
-                        onClick={() => openModal(conn)}
-                        className={`p-2 rounded-lg mr-1 ${
-                          userRole === 'developer'
-                            ? 'text-gray-400 hover:bg-gray-100'
-                            : 'text-gray-600 hover:bg-gray-100'
-                        }`}
-                        title="Editar"
-                      >
-                        <Pencil size={16} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(conn.id)}
-                        className={`p-2 rounded-lg ${
-                          userRole === 'developer'
-                            ? 'text-gray-400 hover:bg-gray-100'
-                            : 'text-red-600 hover:bg-red-50'
-                        }`}
-                        title="Excluir"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                        <>
+                          <button
+                            onClick={() => handleCopy(conn)}
+                            className={`p-2 rounded-lg mr-1 ${
+                              userRole === 'developer' 
+                                ? 'text-gray-400 hover:bg-gray-100' 
+                                : 'text-blue-600 hover:bg-blue-50'
+                            }`}
+                            title="Copiar conexão"
+                          >
+                            <Copy size={16} />
+                          </button>
+                          <button
+                            onClick={() => openModal(conn)}
+                            className={`p-2 rounded-lg mr-1 ${
+                              userRole === 'developer'
+                                ? 'text-gray-400 hover:bg-gray-100'
+                                : 'text-gray-600 hover:bg-gray-100'
+                            }`}
+                            title="Editar"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(conn.id)}
+                            className={`p-2 rounded-lg ${
+                              userRole === 'developer'
+                                ? 'text-gray-400 hover:bg-gray-100'
+                                : 'text-red-600 hover:bg-red-50'
+                            }`}
+                            title="Excluir"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      </ActionsDropdown>
                     </td>
                   </tr>
                   ))

@@ -156,8 +156,17 @@ export default function Header({ user }: HeaderProps) {
     <>
       <header className="fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 z-40">
         <div className={`h-full flex items-center justify-between transition-all duration-300 px-4 ${isCollapsed ? 'lg:pl-[5.5rem]' : 'lg:pl-56'}`}>
-          {/* Esquerda: seletor de grupo + hamburger (logo fica só no sidebar) */}
+          {/* Esquerda: no mobile menu antes dos grupos; no desktop grupos + menu */}
           <div className="flex items-center gap-3 min-w-0 flex-1 ml-4 lg:ml-6">
+            {/* Menu hamburger — mobile: primeiro (esquerda); desktop: após grupos */}
+            <button
+              type="button"
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className="lg:hidden order-first sm:order-none p-2 hover:bg-gray-100 rounded-lg flex-shrink-0"
+              aria-label="Abrir menu"
+            >
+              <Menu size={24} />
+            </button>
             {groups.length > 0 && (
               <div className="hidden sm:flex items-center relative flex-shrink-0" ref={groupDropdownRef}>
                 <button
@@ -234,14 +243,6 @@ export default function Header({ user }: HeaderProps) {
                 )}
               </div>
             )}
-            <button
-              type="button"
-              onClick={() => setIsCollapsed(!isCollapsed)}
-              className="lg:hidden p-2 hover:bg-gray-100 rounded-lg flex-shrink-0"
-              aria-label="Abrir menu"
-            >
-              <Menu size={24} />
-            </button>
           </div>
 
           {/* Direita: indicador de refresh + ajuda (dev) + upgrade (free) + avatar + dropdown */}

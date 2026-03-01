@@ -5,6 +5,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import FeatureGate from '@/components/ui/FeatureGate';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useToast } from '@/contexts/ToastContext';
 import { useMenu } from '@/contexts/MenuContext';
 import {
@@ -27,6 +28,7 @@ import {
   Copy
 } from 'lucide-react';
 import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
+import ActionsDropdown from '@/components/ui/ActionsDropdown';
 
 interface Alert {
   id: string;
@@ -76,6 +78,7 @@ const frequencyLabels: Record<string, string> = {
 };
 
 function AlertasContent() {
+  const router = useRouter();
   const { showToast } = useToast();
   const { activeGroup } = useMenu();
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -472,46 +475,56 @@ function AlertasContent() {
                         </div>
                       </td>
                       <td>
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => triggerAlert(alertItem)}
-                            disabled={triggeringId === alertItem.id || !alertItem.is_enabled}
-                            className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
-                            title="Disparar agora"
-                          >
-                            {triggeringId === alertItem.id ? (
-                              <Loader2 size={16} className="animate-spin" />
-                            ) : (
-                              <Send size={16} />
-                            )}
-                          </button>
-                          <button
-                            onClick={() => cloneAlert(alertItem)}
-                            disabled={cloningId === alertItem.id}
-                            className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50"
-                            title="Clonar alerta"
-                          >
-                            {cloningId === alertItem.id ? (
-                              <Loader2 size={16} className="animate-spin" />
-                            ) : (
-                              <Copy size={16} />
-                            )}
-                          </button>
-                          <Link
-                            href={`/alertas/${alertItem.id}`}
-                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Editar"
-                          >
-                            <Edit size={16} />
-                          </Link>
-                          <button
-                            onClick={() => handleDelete(alertItem.id, alertItem.name)}
-                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Excluir"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
+                        <ActionsDropdown
+                          align="right"
+                          actions={[
+                            { label: 'Disparar agora', icon: Send, onClick: () => triggerAlert(alertItem), disabled: triggeringId === alertItem.id || !alertItem.is_enabled },
+                            { label: 'Clonar alerta', icon: Copy, onClick: () => cloneAlert(alertItem), disabled: cloningId === alertItem.id },
+                            { label: 'Editar', icon: Edit, onClick: () => router.push(`/alertas/${alertItem.id}`) },
+                            { label: 'Excluir', icon: Trash2, onClick: () => handleDelete(alertItem.id, alertItem.name), className: 'text-red-600' }
+                          ]}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => triggerAlert(alertItem)}
+                              disabled={triggeringId === alertItem.id || !alertItem.is_enabled}
+                              className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
+                              title="Disparar agora"
+                            >
+                              {triggeringId === alertItem.id ? (
+                                <Loader2 size={16} className="animate-spin" />
+                              ) : (
+                                <Send size={16} />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => cloneAlert(alertItem)}
+                              disabled={cloningId === alertItem.id}
+                              className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50"
+                              title="Clonar alerta"
+                            >
+                              {cloningId === alertItem.id ? (
+                                <Loader2 size={16} className="animate-spin" />
+                              ) : (
+                                <Copy size={16} />
+                              )}
+                            </button>
+                            <Link
+                              href={`/alertas/${alertItem.id}`}
+                              className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Editar"
+                            >
+                              <Edit size={16} />
+                            </Link>
+                            <button
+                              onClick={() => handleDelete(alertItem.id, alertItem.name)}
+                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Excluir"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </ActionsDropdown>
                       </td>
                     </tr>
                   ))}
