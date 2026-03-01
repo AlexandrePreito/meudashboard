@@ -1,7 +1,7 @@
 'use client';
 
 import { useFeatures } from '@/hooks/useFeatures';
-import { Crown, Zap, Users, LayoutDashboard, FolderOpen, Globe, MessageCircle, Brain, Check, BarChart3 } from 'lucide-react';
+import { Crown, Zap, Users, LayoutDashboard, FolderOpen, Globe, MessageCircle, Brain, Bell, Check, BarChart3 } from 'lucide-react';
 
 const whatsappLink = 'https://wa.me/5562982289559?text=Olá!%20Tenho%20interesse%20em%20fazer%20upgrade%20do%20meu%20plano%20no%20MeuDashboard.';
 
@@ -17,21 +17,15 @@ export default function TabPlano({ quotas }: TabPlanoProps) {
   const { isFree } = useFeatures();
   const currentPlan = isFree ? 'free' : 'pro';
 
-  const freeFeatures = [
-    { icon: FolderOpen, text: '5 grupos' },
-    { icon: Users, text: '15 usuários' },
-    { icon: LayoutDashboard, text: '15 telas' },
-    { icon: BarChart3, text: 'Power BI Embedded' },
-  ];
-  const freeExcluded = ['WhatsApp', 'IA', 'Subdomínio personalizado'];
-
-  const proFeatures = [
-    { icon: FolderOpen, text: 'Grupos ilimitados' },
-    { icon: Users, text: 'Viewers conforme demanda' },
-    { icon: LayoutDashboard, text: 'Dashboards conforme demanda' },
-    { icon: Globe, text: 'Subdomínio personalizado' },
-    { icon: MessageCircle, text: 'WhatsApp integrado' },
-    { icon: Brain, text: 'IA assistente' },
+  const planFeatures = [
+    { icon: FolderOpen, freeText: '5 grupos', proText: 'Grupos sob demanda', freeEnabled: true, proEnabled: true },
+    { icon: Users, freeText: '15 usuários', proText: 'Usuários sob demanda', freeEnabled: true, proEnabled: true },
+    { icon: LayoutDashboard, freeText: '15 telas', proText: 'Telas sob demanda', freeEnabled: true, proEnabled: true },
+    { icon: BarChart3, freeText: 'Power BI Embedded', proText: 'Power BI Embedded', freeEnabled: true, proEnabled: true },
+    { icon: Globe, freeText: 'Subdomínio personalizado', proText: 'Subdomínio personalizado', freeEnabled: false, proEnabled: true },
+    { icon: MessageCircle, freeText: 'WhatsApp Integrado', proText: 'WhatsApp Integrado', freeEnabled: false, proEnabled: true },
+    { icon: Brain, freeText: 'Assistente IA', proText: 'Assistente IA', freeEnabled: false, proEnabled: true },
+    { icon: Bell, freeText: 'Alertas via WhatsApp', proText: 'Alertas via WhatsApp', freeEnabled: false, proEnabled: true },
   ];
 
   return (
@@ -93,24 +87,19 @@ export default function TabPlano({ quotas }: TabPlanoProps) {
           </div>
           <p className="text-slate-600 text-sm mb-6">Ideal para testar a plataforma e começar com o essencial.</p>
           <ul className="space-y-3 mb-8">
-            {freeFeatures.map((f, i) => {
+            {planFeatures.map((f, i) => {
               const Icon = f.icon;
+              const enabled = f.freeEnabled;
               return (
-                <li key={i} className="flex items-center gap-3 text-slate-700">
-                  <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                <li key={i} className={`flex items-center gap-3 ${enabled ? 'text-slate-700' : 'text-slate-400'}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${enabled ? 'bg-emerald-100' : 'bg-slate-100'}`}>
+                    {enabled ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <span className="text-[10px] font-bold">✕</span>}
                   </div>
-                  <Icon className="w-4 h-4 text-slate-400" />
-                  <span>{f.text}</span>
+                  <Icon className="w-4 h-4" />
+                  <span className={enabled ? '' : 'line-through'}>{f.freeText}</span>
                 </li>
               );
             })}
-            {freeExcluded.map((text, i) => (
-              <li key={`ex-${i}`} className="flex items-center gap-3 text-slate-400">
-                <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold">✕</div>
-                <span className="line-through">{text}</span>
-              </li>
-            ))}
           </ul>
           {currentPlan === 'free' && (
             <div className="mt-auto flex items-center justify-center gap-2 w-full bg-emerald-50 text-emerald-700 font-semibold py-4 rounded-xl border border-emerald-200">
@@ -137,15 +126,16 @@ export default function TabPlano({ quotas }: TabPlanoProps) {
           </div>
           <p className="text-slate-600 text-sm mb-6">Todos os recursos para escalar. Proposta personalizada conforme sua necessidade.</p>
           <ul className="space-y-3 mb-8">
-            {proFeatures.map((f, i) => {
+            {planFeatures.map((f, i) => {
               const Icon = f.icon;
+              const enabled = f.proEnabled;
               return (
-                <li key={i} className="flex items-center gap-3 text-slate-700">
-                  <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                <li key={i} className={`flex items-center gap-3 ${enabled ? 'text-slate-700' : 'text-slate-400'}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${enabled ? 'bg-emerald-100' : 'bg-slate-100'}`}>
+                    {enabled ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <span className="text-[10px] font-bold">✕</span>}
                   </div>
                   <Icon className="w-4 h-4 text-blue-500" />
-                  <span>{f.text}</span>
+                  <span className={enabled ? '' : 'line-through'}>{f.proText}</span>
                 </li>
               );
             })}

@@ -614,28 +614,26 @@ export default function LandingPage() {
               <p className="text-slate-600 text-sm mb-6">Ideal para testar a plataforma e começar com o essencial.</p>
               <ul className="space-y-3 mb-8">
                 {[
-                  { icon: FolderOpen, text: '5 grupos' },
-                  { icon: Users, text: '15 usuários' },
-                  { icon: LayoutDashboard, text: '15 telas' },
-                  { icon: BarChart3, text: 'Power BI Embedded' },
+                  { icon: FolderOpen, text: '5 grupos', enabled: true },
+                  { icon: Users, text: '15 usuários', enabled: true },
+                  { icon: LayoutDashboard, text: '15 telas', enabled: true },
+                  { icon: BarChart3, text: 'Power BI Embedded', enabled: true },
+                  { icon: Globe, text: 'Subdomínio personalizado', enabled: false },
+                  { icon: MessageSquare, text: 'WhatsApp Integrado', enabled: false },
+                  { icon: Brain, text: 'Assistente IA', enabled: false },
+                  { icon: Bell, text: 'Alertas via WhatsApp', enabled: false },
                 ].map((f, i) => {
                   const Icon = f.icon;
                   return (
-                    <li key={i} className="flex items-center gap-3 text-slate-700">
-                      <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <li key={i} className={`flex items-center gap-3 ${f.enabled ? 'text-slate-700' : 'text-slate-400'}`}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${f.enabled ? 'bg-emerald-100' : 'bg-slate-100'}`}>
+                        {f.enabled ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <span className="text-[10px] font-bold">✕</span>}
                       </div>
-                      <Icon className="w-4 h-4 text-slate-400" />
-                      <span>{f.text}</span>
+                      <Icon className="w-4 h-4" />
+                      <span className={f.enabled ? '' : 'line-through'}>{f.text}</span>
                     </li>
                   );
                 })}
-                {['WhatsApp', 'IA', 'Subdomínio personalizado'].map((text, i) => (
-                  <li key={`ex-${i}`} className="flex items-center gap-3 text-slate-400">
-                    <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold">✕</div>
-                    <span className="line-through">{text}</span>
-                  </li>
-                ))}
               </ul>
               <Link href="/cadastro" className="mt-auto block w-full text-center bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold py-4 rounded-xl transition-colors">
                 Começar grátis
@@ -659,12 +657,14 @@ export default function LandingPage() {
               <p className="text-slate-600 text-sm mb-6">Todos os recursos para escalar. Proposta personalizada conforme sua necessidade.</p>
               <ul className="space-y-3 mb-8">
                 {[
-                  { icon: FolderOpen, text: 'Grupos ilimitados' },
-                  { icon: Users, text: 'Viewers conforme demanda' },
-                  { icon: LayoutDashboard, text: 'Dashboards conforme demanda' },
-                  { icon: Globe, text: 'Subdomínio personalizado' },
-                  { icon: MessageSquare, text: 'WhatsApp integrado' },
-                  { icon: Brain, text: 'IA assistente' },
+                  { icon: FolderOpen, text: 'Grupos sob demanda', enabled: true },
+                  { icon: Users, text: 'Usuários sob demanda', enabled: true },
+                  { icon: LayoutDashboard, text: 'Telas sob demanda', enabled: true },
+                  { icon: BarChart3, text: 'Power BI Embedded', enabled: true },
+                  { icon: Globe, text: 'Subdomínio personalizado', enabled: true },
+                  { icon: MessageSquare, text: 'WhatsApp Integrado', enabled: true },
+                  { icon: Brain, text: 'Assistente IA', enabled: true },
+                  { icon: Bell, text: 'Alertas via WhatsApp', enabled: true },
                 ].map((f, i) => {
                   const Icon = f.icon;
                   return (
