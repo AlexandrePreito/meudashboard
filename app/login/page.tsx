@@ -25,28 +25,21 @@ function AnimatedBars() {
   );
 }
 
-// Componente de número animado
 function AnimatedNumber({ value, label, delay }: { value: string; label: string; delay: number }) {
   const [show, setShow] = useState(false);
-  
   useEffect(() => {
     const timer = setTimeout(() => setShow(true), delay);
     return () => clearTimeout(timer);
   }, [delay]);
 
   return (
-    <div 
-      className={`bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10 transition-all duration-700 ${
-        show ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-      }`}
-    >
+    <div className={`bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10 transition-all duration-700 ${show ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
       <p className="text-2xl font-bold text-white">{value}</p>
       <p className="text-xs text-slate-400">{label}</p>
     </div>
   );
 }
 
-// Componente de linha de gráfico animada
 function AnimatedLineChart() {
   return (
     <svg viewBox="0 0 200 60" className="w-full h-20" preserveAspectRatio="none">
@@ -56,25 +49,18 @@ function AnimatedLineChart() {
           <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.8" />
         </linearGradient>
       </defs>
-      <path
-        d="M0,45 Q30,40 60,30 T120,20 T160,25 T200,10"
-        fill="none"
-        stroke="url(#lineGradient)"
-        strokeWidth="2"
-        className="animate-dash"
-        style={{
-          strokeDasharray: 300,
-          strokeDashoffset: 300,
-          animation: 'dashDraw 3s ease-out forwards'
-        }}
-      />
-      <path
-        d="M0,45 Q30,40 60,30 T120,20 T160,25 T200,10 L200,60 L0,60 Z"
-        fill="url(#lineGradient)"
-        opacity="0.1"
-      />
+      <path d="M0,45 Q30,40 60,30 T120,20 T160,25 T200,10" fill="none" stroke="url(#lineGradient)" strokeWidth="2" style={{ strokeDasharray: 300, strokeDashoffset: 300, animation: 'dashDraw 3s ease-out forwards' }} />
+      <path d="M0,45 Q30,40 60,30 T120,20 T160,25 T200,10 L200,60 L0,60 Z" fill="url(#lineGradient)" opacity="0.1" />
     </svg>
   );
+}
+
+function hexToRgb(hex: string) {
+  const h = hex.startsWith('#') ? hex : `#${hex}`;
+  const r = parseInt(h.slice(1, 3), 16);
+  const g = parseInt(h.slice(3, 5), 16);
+  const b = parseInt(h.slice(5, 7), 16);
+  return `${r}, ${g}, ${b}`;
 }
 
 export default function LoginPage() {
@@ -88,6 +74,8 @@ export default function LoginPage() {
   const [transitioning, setTransitioning] = useState(false);
 
   const primaryColor = isSubdomain && developerInfo?.primary_color ? developerInfo.primary_color : undefined;
+  const color = primaryColor || '#3B82F6';
+  const rgb = hexToRgb(color);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -102,33 +90,21 @@ export default function LoginPage() {
       });
 
       const data = await response.json();
-      console.log('=== DADOS LOGIN ===', JSON.stringify(data, null, 2));
 
       if (response.ok && data.success) {
-        console.log('🔍 DEBUG - Dados do usuário:', {
-          isDeveloperUser: data.user?.isDeveloperUser,
-          developerId: data.user?.developerId,
-          role: data.user?.role,
-          groupIds: data.user?.groupIds,
-        });
-        
-        // Salvar cor do tema para evitar flash
         if (data.user?.developer?.primary_color) {
           localStorage.setItem('theme-color', data.user.developer.primary_color);
         } else if (data.user?.group?.primary_color && data.user?.group?.use_developer_colors === false) {
           localStorage.setItem('theme-color', data.user.group.primary_color);
         }
-        
+
         setTransitioning(true);
         setTimeout(() => {
-          // Apos receber resposta do login
-          // Verifica se e usuario desenvolvedor
           if (data.user?.isDeveloperUser && data.user?.developerId) {
             router.push('/dev');
           } else if (data.user?.role === 'master') {
             router.push('/admin');
           } else if (data.user?.role === 'admin' && data.user?.groupIds?.length > 0) {
-            // Admin vai para página de gestão do seu grupo
             router.push(`/administrador/${data.user.groupIds[0]}`);
           } else {
             router.push('/dashboard');
@@ -144,192 +120,210 @@ export default function LoginPage() {
     }
   };
 
-  return (
-    <>
-      <div className={`min-h-screen flex ${transitioning ? 'page-transition' : ''}`} suppressHydrationWarning>
-        {/* Lado esquerdo - Dashboard Animado */}
-        <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
-          {/* Gradiente de fundo */}
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" />
-          
-          {/* Efeitos de luz */}
-          <div className="absolute top-0 left-1/4 w-96 h-96 bg-cyan-500/20 rounded-full blur-[100px] animate-pulse" style={{ animationDuration: '4s' }} />
-          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-[100px] animate-pulse" style={{ animationDuration: '5s', animationDelay: '1s' }} />
-          
-          {/* Grid de fundo */}
-          <div className="absolute inset-0 opacity-[0.03]" style={{
-            backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)`,
-            backgroundSize: '50px 50px'
-          }} />
+  // ========== LAYOUT SUBDOMÍNIO ==========
+  if (isSubdomain && developerInfo) {
+    return (
+      <>
+        <div className={`min-h-screen flex items-center justify-center relative overflow-hidden p-4 ${transitioning ? 'page-transition' : ''}`}
+          style={{
+            background: `linear-gradient(135deg, #f0f4f8 0%, rgba(${rgb}, 0.08) 25%, #ffffff 50%, rgba(${rgb}, 0.06) 75%, #f8fafc 100%)`,
+          }}
+        >
+          {/* Mesh gradient decorativo */}
+          <div className="absolute -top-32 -right-32 w-[500px] h-[500px] rounded-full blur-[100px] opacity-30" style={{ backgroundColor: color }} />
+          <div className="absolute -bottom-40 -left-40 w-[600px] h-[600px] rounded-full blur-[120px] opacity-20" style={{ backgroundColor: color }} />
+          <div className="absolute top-1/4 left-1/3 w-80 h-80 rounded-full blur-[80px] opacity-10" style={{ background: `linear-gradient(135deg, ${color}, #8b5cf6)` }} />
+          <div className="absolute bottom-1/3 right-1/4 w-64 h-64 rounded-full blur-[90px] opacity-15" style={{ background: `linear-gradient(45deg, #06b6d4, ${color})` }} />
+          <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle, #000 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
 
-          {/* Conteúdo do Dashboard */}
-          <div className="relative z-10 flex flex-col justify-center p-12 w-full">
-            {/* Cards de métricas */}
-            <div className="grid grid-cols-2 gap-4 mb-8">
-              <AnimatedNumber value="R$ 284k" label="Faturamento" delay={200} />
-              <AnimatedNumber value="+18.5%" label="Crescimento" delay={400} />
-              <AnimatedNumber value="1.247" label="Clientes" delay={600} />
-              <AnimatedNumber value="94.2%" label="Satisfação" delay={800} />
-            </div>
+          <div className="relative z-10 bg-white/90 backdrop-blur-md rounded-3xl shadow-2xl shadow-black/10 p-10 max-w-md w-full text-center border border-white/80">
+            {/* Logo */}
+            {developerInfo.logo_url ? (
+              <img src={developerInfo.logo_url} alt={developerInfo.name} className="h-14 mx-auto mb-4 object-contain" />
+            ) : (
+              <div className="h-14 w-14 rounded-2xl mx-auto mb-4 flex items-center justify-center text-white text-xl font-bold shadow-lg" style={{ backgroundColor: color }}>
+                {developerInfo.name?.charAt(0)?.toUpperCase()}
+              </div>
+            )}
 
-            {/* Gráfico de linha */}
-            <div 
-              className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10 mb-8"
-              style={{ animation: 'float 6s ease-in-out infinite' }}
-            >
-              <p className="text-xs text-slate-400 mb-3">Evolução Mensal</p>
-              <AnimatedLineChart />
-            </div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-1">{developerInfo.landing_title || developerInfo.name}</h1>
+            <p className="text-sm text-gray-500 mb-8">{developerInfo.landing_description || 'Acesse seus dashboards e relatórios'}</p>
 
-            {/* Gráfico de barras */}
-            <div 
-              className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10"
-              style={{ animation: 'float 6s ease-in-out 0.5s infinite' }}
-            >
-              <p className="text-xs text-slate-400 mb-3">Vendas por Período</p>
-              <AnimatedBars />
-            </div>
-
-            {/* Texto */}
-            <div className="mt-8">
-              <p className="text-lg text-slate-400">
-                Transforme seus dados em decisões inteligentes
-              </p>
-            </div>
-          </div>
-
-          {/* Partículas flutuantes */}
-          {[...Array(6)].map((_, i) => (
-            <div
-              key={i}
-              className="absolute w-2 h-2 bg-cyan-400/30 rounded-full"
-              style={{
-                top: `${20 + i * 15}%`,
-                left: `${10 + i * 12}%`,
-                animation: `float ${3 + i * 0.5}s ease-in-out ${i * 0.3}s infinite`
-              }}
-            />
-          ))}
-        </div>
-
-        {/* Lado direito - Formulário */}
-        <div className={`w-full lg:w-1/2 flex flex-col items-center justify-center p-8 bg-white ${transitioning ? 'form-transition' : ''}`}>
-          {isSubdomain && developerInfo && (
-            <div className="mb-6 flex flex-col items-center">
-              {developerInfo.logo_url ? (
-                <img src={developerInfo.logo_url} alt={developerInfo.name} className="h-12 w-auto object-contain mb-2" />
-              ) : (
-                <div
-                  className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-lg font-bold mb-2"
-                  style={{ backgroundColor: primaryColor || '#3B82F6' }}
-                >
-                  {developerInfo.name?.charAt(0)?.toUpperCase()}
-                </div>
-              )}
-              <span className="text-sm text-gray-500">{developerInfo.name}</span>
-            </div>
-          )}
-          <div className="w-full max-w-md">
-            {/* Header */}
-            <div className="mb-8">
-              <h1 className="text-2xl font-semibold text-gray-900">
-                Bem-vindo de volta
-              </h1>
-              <p className="text-gray-500 mt-2">
-                Entre com suas credenciais para acessar
-              </p>
-            </div>
-
-            {/* Formulário */}
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Campo Email */}
+            {/* Formulário real */}
+            <form onSubmit={handleSubmit} className="space-y-4 text-left">
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Email
-                </label>
                 <input
                   type="email"
-                  id="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   disabled={loading}
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed transition-all"
-                  placeholder="seu@email.com"
+                  placeholder="Email"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/80 text-sm focus:outline-none transition-all placeholder:text-gray-400 disabled:opacity-50"
+                  style={{ boxShadow: 'none' }}
+                  onFocus={(e) => { e.target.style.borderColor = color; e.target.style.boxShadow = `0 0 0 2px ${color}30`; }}
+                  onBlur={(e) => { e.target.style.borderColor = '#e5e7eb'; e.target.style.boxShadow = 'none'; }}
                 />
               </div>
-
-              {/* Campo Senha */}
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Senha
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    id="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    disabled={loading}
-                    className="w-full px-4 py-3 pr-12 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed transition-all"
-                    placeholder="••••••••"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                  </button>
-                </div>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={loading}
+                  placeholder="Senha"
+                  className="w-full px-4 py-3 pr-12 rounded-xl border border-gray-200 bg-gray-50/80 text-sm focus:outline-none transition-all placeholder:text-gray-400 disabled:opacity-50"
+                  style={{ boxShadow: 'none' }}
+                  onFocus={(e) => { e.target.style.borderColor = color; e.target.style.boxShadow = `0 0 0 2px ${color}30`; }}
+                  onBlur={(e) => { e.target.style.borderColor = '#e5e7eb'; e.target.style.boxShadow = 'none'; }}
+                />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition-colors">
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
 
-              {/* Mensagem de Erro */}
+              {/* Esqueceu a senha */}
+              <div className="text-right">
+                <Link href="/esqueci-senha" className="text-xs hover:underline transition-colors" style={{ color }}>
+                  Esqueceu a senha?
+                </Link>
+              </div>
+
               {error && (
-                <div className="p-4 bg-red-50 border border-red-100 rounded-xl">
+                <div className="p-3 bg-red-50 border border-red-100 rounded-xl">
                   <p className="text-sm text-red-600">{error}</p>
                 </div>
               )}
 
-              {/* Botão Entrar */}
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full text-white py-3.5 px-4 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-                style={primaryColor ? { backgroundColor: primaryColor } : { backgroundColor: '#0f172a' }}
+                className="w-full py-3.5 rounded-xl text-white font-semibold text-sm transition-all hover:opacity-90 hover:shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                style={{ backgroundColor: color }}
               >
                 {loading ? (
                   <>
-                    <LoadingSpinner size={20} />
+                    <LoadingSpinner size={18} />
                     Entrando...
                   </>
                 ) : (
                   <>
-                    <LogIn size={20} />
+                    <LogIn size={18} />
                     Entrar
                   </>
                 )}
               </button>
             </form>
 
-            {/* Link para cadastro — esconder em subdomínio (cadastro só no domínio principal) */}
-            {!isSubdomain && (
-              <div className="mt-6 text-center">
-                <p className="text-sm text-gray-500">
-                  Não tem conta?{' '}
-                  <Link href="/cadastro" className="text-blue-600 hover:text-blue-700 font-medium transition-colors">
-                    Criar conta grátis
-                  </Link>
-                </p>
-              </div>
-            )}
+            <p className="text-xs text-gray-300 mt-8">Ambiente seguro com criptografia de dados</p>
+          </div>
+        </div>
 
-            {/* Footer discreto */}
-            <div className="mt-6 pt-6 border-t border-gray-100">
-              <p className="text-center text-xs text-gray-400">
-                Ambiente seguro com criptografia de dados
+        {transitioning && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-white transition-overlay">
+            <div className="flex flex-col items-center gap-4 transition-spinner">
+              <div className="animate-spin rounded-full h-10 w-10 border-2 border-t-transparent" style={{ borderColor: `${color} transparent ${color} ${color}` }} />
+              <p className="text-slate-600 text-sm font-medium">Carregando seu ambiente...</p>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // ========== LAYOUT PADRÃO (domínio principal) ==========
+  return (
+    <>
+      <div className={`min-h-screen flex ${transitioning ? 'page-transition' : ''}`} suppressHydrationWarning>
+        {/* Lado esquerdo - Dashboard Animado */}
+        <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" />
+          <div className="absolute top-0 left-1/4 w-96 h-96 bg-cyan-500/20 rounded-full blur-[100px] animate-pulse" style={{ animationDuration: '4s' }} />
+          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-[100px] animate-pulse" style={{ animationDuration: '5s', animationDelay: '1s' }} />
+          <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)`, backgroundSize: '50px 50px' }} />
+
+          <div className="relative z-10 flex flex-col justify-center p-12 w-full">
+            <div className="grid grid-cols-2 gap-4 mb-8">
+              <AnimatedNumber value="R$ 284k" label="Faturamento" delay={200} />
+              <AnimatedNumber value="+18.5%" label="Crescimento" delay={400} />
+              <AnimatedNumber value="1.247" label="Clientes" delay={600} />
+              <AnimatedNumber value="94.2%" label="Satisfação" delay={800} />
+            </div>
+            <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10 mb-8" style={{ animation: 'float 6s ease-in-out infinite' }}>
+              <p className="text-xs text-slate-400 mb-3">Evolução Mensal</p>
+              <AnimatedLineChart />
+            </div>
+            <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10" style={{ animation: 'float 6s ease-in-out 0.5s infinite' }}>
+              <p className="text-xs text-slate-400 mb-3">Vendas por Período</p>
+              <AnimatedBars />
+            </div>
+            <div className="mt-8">
+              <p className="text-lg text-slate-400">Transforme seus dados em decisões inteligentes</p>
+            </div>
+          </div>
+
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="absolute w-2 h-2 bg-cyan-400/30 rounded-full" style={{ top: `${20 + i * 15}%`, left: `${10 + i * 12}%`, animation: `float ${3 + i * 0.5}s ease-in-out ${i * 0.3}s infinite` }} />
+          ))}
+        </div>
+
+        {/* Lado direito - Formulário */}
+        <div className={`w-full lg:w-1/2 flex flex-col items-center justify-center p-8 bg-white ${transitioning ? 'form-transition' : ''}`}>
+          <div className="w-full max-w-md">
+            <div className="mb-8">
+              <h1 className="text-2xl font-semibold text-gray-900">Bem-vindo de volta</h1>
+              <p className="text-gray-500 mt-2">Entre com suas credenciais para acessar</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+                <input type="email" id="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={loading}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed transition-all"
+                  placeholder="seu@email.com" />
+              </div>
+
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">Senha</label>
+                <div className="relative">
+                  <input type={showPassword ? 'text' : 'password'} id="password" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={loading}
+                    className="w-full px-4 py-3 pr-12 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed transition-all"
+                    placeholder="••••••••" />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 transition-colors">
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Esqueceu a senha */}
+              <div className="text-right">
+                <Link href="/esqueci-senha" className="text-xs text-blue-600 hover:text-blue-700 hover:underline transition-colors">
+                  Esqueceu a senha?
+                </Link>
+              </div>
+
+              {error && (
+                <div className="p-4 bg-red-50 border border-red-100 rounded-xl">
+                  <p className="text-sm text-red-600">{error}</p>
+                </div>
+              )}
+
+              <button type="submit" disabled={loading}
+                className="w-full text-white py-3.5 px-4 rounded-xl font-medium bg-slate-900 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2">
+                {loading ? (<><LoadingSpinner size={20} /> Entrando...</>) : (<><LogIn size={20} /> Entrar</>)}
+              </button>
+            </form>
+
+            <div className="mt-6 text-center">
+              <p className="text-sm text-gray-500">
+                Não tem conta?{' '}
+                <Link href="/cadastro" className="text-blue-600 hover:text-blue-700 font-medium transition-colors">Criar conta grátis</Link>
               </p>
+            </div>
+
+            <div className="mt-6 pt-6 border-t border-gray-100">
+              <p className="text-center text-xs text-gray-400">Ambiente seguro com criptografia de dados</p>
             </div>
           </div>
         </div>
@@ -338,13 +332,7 @@ export default function LoginPage() {
       {transitioning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-white transition-overlay">
           <div className="flex flex-col items-center gap-4 transition-spinner">
-            <svg
-              viewBox="0 0 100 100"
-              width={48}
-              height={48}
-              className="animate-spin"
-              style={{ animationDuration: '1.5s' }}
-            >
+            <svg viewBox="0 0 100 100" width={48} height={48} className="animate-spin" style={{ animationDuration: '1.5s' }}>
               <defs>
                 <linearGradient id="transitionGrad" x1="0%" y1="0%" x2="100%" y2="100%">
                   <stop offset="0%" stopColor="#06b6d4" />
