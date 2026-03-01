@@ -189,6 +189,7 @@ export async function middleware(request: NextRequest) {
     '/api/whatsapp/webhook/contacts-update',
     '/api/whatsapp/webhook/chats-update',
     '/api/alertas/cron',
+    '/api/leads/proposta',
   ];
 
   const isPublicApi = pathname.startsWith('/api/subdomain/');

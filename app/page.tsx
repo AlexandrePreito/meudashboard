@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { BarChart3, MessageSquare, Bell, Shield, ArrowRight, Brain, RefreshCw, ChevronDown, Users, Building2, TrendingUp, Database, FileCheck, Zap, Sparkles, Crown, FolderOpen, LayoutDashboard, Globe, Check } from 'lucide-react';
 import { useSubdomain } from '@/hooks/useSubdomain';
+import PropostaModal from '@/components/landing/PropostaModal';
 
 // Componente do Asterisco Animado
 function AnimatedLogo({ size = 48, scrollY = 0, isInitialSpin = false }: { size?: number; scrollY?: number; isInitialSpin?: boolean }) {
@@ -280,6 +281,7 @@ export default function LandingPage() {
   const [navOpaque, setNavOpaque] = useState(false);
   const [isInitialSpin, setIsInitialSpin] = useState(true);
   const [dashboardVisible, setDashboardVisible] = useState(false);
+  const [propostaModalOpen, setPropostaModalOpen] = useState(false);
   const dashboardRef = useRef<HTMLDivElement>(null);
 
   const whatsappLink = 'https://wa.me/556282289559?text=Olá! Gostaria de saber mais sobre o MeuDashboard.';
@@ -676,10 +678,14 @@ export default function LandingPage() {
                   );
                 })}
               </ul>
-              <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="mt-auto flex items-center justify-center gap-2 w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-semibold py-4 rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all">
+              <button
+                type="button"
+                onClick={() => setPropostaModalOpen(true)}
+                className="mt-auto flex items-center justify-center gap-2 w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-semibold py-4 rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all"
+              >
                 <MessageSquare className="w-5 h-5" />
                 Solicitar proposta
-              </a>
+              </button>
             </div>
           </div>
         </div>
@@ -729,6 +735,8 @@ export default function LandingPage() {
         <MessageSquare className="w-6 h-6" />
         <span className="absolute right-full mr-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-slate-900 text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Fale conosco!</span>
       </a>
+
+      <PropostaModal open={propostaModalOpen} onClose={() => setPropostaModalOpen(false)} />
     </div>
   );
 }
