@@ -1,7 +1,9 @@
 'use client';
 
 import { useFeatures } from '@/hooks/useFeatures';
-import { Crown, Zap, Users, LayoutDashboard, FolderOpen, Globe, MessageCircle, Brain, Sparkles, ArrowRight, Check, BarChart3 } from 'lucide-react';
+import { Crown, Zap, Users, LayoutDashboard, FolderOpen, Globe, MessageCircle, Brain, Check, BarChart3 } from 'lucide-react';
+
+const whatsappLink = 'https://wa.me/5562982289559?text=Olá!%20Tenho%20interesse%20em%20fazer%20upgrade%20do%20meu%20plano%20no%20MeuDashboard.';
 
 interface TabPlanoProps {
   quotas?: {
@@ -15,31 +17,21 @@ export default function TabPlano({ quotas }: TabPlanoProps) {
   const { isFree } = useFeatures();
   const currentPlan = isFree ? 'free' : 'pro';
 
-  const plans = [
-    {
-      id: 'free', name: 'Free', price: 'Grátis',
-      icon: <Zap size={24} />, color: 'from-gray-500 to-gray-600', shadowColor: 'shadow-gray-500/20',
-      features: [
-        { icon: <FolderOpen size={14} />, text: '1 grupo' },
-        { icon: <Users size={14} />, text: '10 viewers' },
-        { icon: <LayoutDashboard size={14} />, text: '5 dashboards' },
-        { icon: <BarChart3 size={14} />, text: 'Power BI Embedded' },
-      ],
-      excluded: ['WhatsApp', 'IA', 'Subdomínio personalizado'],
-    },
-    {
-      id: 'pro', name: 'Pro', price: 'Sob consulta',
-      icon: <Crown size={24} />, color: 'from-blue-500 to-cyan-500', shadowColor: 'shadow-blue-500/20',
-      features: [
-        { icon: <FolderOpen size={14} />, text: 'Grupos' },
-        { icon: <Users size={14} />, text: 'Viewers' },
-        { icon: <LayoutDashboard size={14} />, text: 'Dashboards' },
-        { icon: <Globe size={14} />, text: 'Subdomínio personalizado' },
-        { icon: <MessageCircle size={14} />, text: 'WhatsApp integrado' },
-        { icon: <Brain size={14} />, text: 'IA assistente' },
-      ],
-      excluded: [],
-    },
+  const freeFeatures = [
+    { icon: FolderOpen, text: '1 grupo' },
+    { icon: Users, text: '10 viewers' },
+    { icon: LayoutDashboard, text: '5 dashboards' },
+    { icon: BarChart3, text: 'Power BI Embedded' },
+  ];
+  const freeExcluded = ['WhatsApp', 'IA', 'Subdomínio personalizado'];
+
+  const proFeatures = [
+    { icon: FolderOpen, text: 'Grupos ilimitados' },
+    { icon: Users, text: 'Viewers conforme demanda' },
+    { icon: LayoutDashboard, text: 'Dashboards conforme demanda' },
+    { icon: Globe, text: 'Subdomínio personalizado' },
+    { icon: MessageCircle, text: 'WhatsApp integrado' },
+    { icon: Brain, text: 'IA assistente' },
   ];
 
   return (
@@ -47,7 +39,7 @@ export default function TabPlano({ quotas }: TabPlanoProps) {
       {/* Plano Atual + Cotas */}
       <div className="card-modern p-6">
         <div className="flex items-center gap-3">
-          <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${currentPlan === 'pro' ? 'from-blue-500 to-cyan-500 shadow-blue-500/20' : 'from-gray-500 to-gray-600 shadow-gray-500/20'} flex items-center justify-center shadow-lg`}>
+          <div className={`w-12 h-12 rounded-xl bg-gradient-to-br flex items-center justify-center shadow-lg ${currentPlan === 'pro' ? 'from-blue-500 to-cyan-500 shadow-blue-500/20' : 'from-emerald-500 to-green-600 shadow-emerald-500/25'}`}>
             {currentPlan === 'pro' ? <Crown size={22} className="text-white" /> : <Zap size={22} className="text-white" />}
           </div>
           <div>
@@ -83,49 +75,92 @@ export default function TabPlano({ quotas }: TabPlanoProps) {
         )}
       </div>
 
-      {/* Comparação de Planos */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {plans.map((plan) => {
-          const isCurrent = plan.id === currentPlan;
-          return (
-            <div key={plan.id} className={`relative rounded-2xl border-2 p-6 transition-all ${isCurrent ? 'border-blue-500 bg-blue-50/30 shadow-lg shadow-blue-500/10' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
-              {isCurrent && (
-                <div className="absolute -top-3 left-6 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-md">Seu plano atual</div>
-              )}
-              <div className="flex items-center gap-3 mb-4">
-                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${plan.color} flex items-center justify-center shadow-md ${plan.shadowColor}`}>
-                  <span className="text-white">{plan.icon}</span>
-                </div>
-                <div>
-                  <h4 className="font-bold text-gray-900">{plan.name}</h4>
-                  <p className="text-sm text-gray-500">{plan.price}</p>
-                </div>
-              </div>
-              <div className="space-y-2.5 mb-6">
-                {plan.features.map((f, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm text-gray-700">
-                    <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center shrink-0"><Check size={12} className="text-emerald-600" /></div>
-                    {f.text}
-                  </div>
-                ))}
-                {plan.excluded.map((text, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm text-gray-400 line-through">
-                    <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center shrink-0"><span className="text-[10px] text-gray-400">✕</span></div>
-                    {text}
-                  </div>
-                ))}
-              </div>
-              {!isCurrent && plan.id === 'pro' && (
-                <a href="https://wa.me/5562982289559?text=Olá!%20Tenho%20interesse%20em%20fazer%20upgrade%20do%20meu%20plano%20no%20MeuDashboard." target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-semibold py-3 rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all">
-                  <Sparkles size={16} /> Fazer upgrade <ArrowRight size={16} />
-                </a>
-              )}
-              {isCurrent && plan.id === 'pro' && (
-                <div className="flex items-center justify-center gap-2 w-full bg-emerald-50 text-emerald-700 font-semibold py-3 rounded-xl border border-emerald-200"><Check size={16} /> Plano ativo</div>
-              )}
+      {/* Comparação de Planos - Padronizado com página inicial */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
+        {/* Free */}
+        <div className={`flex flex-col relative bg-white rounded-3xl border-2 p-8 shadow-lg transition-all duration-300 ${currentPlan === 'free' ? 'border-blue-500 bg-blue-50/30 shadow-blue-500/10' : 'border-slate-200 shadow-slate-200/50 hover:border-slate-300 hover:shadow-xl'}`}>
+          {currentPlan === 'free' && (
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 md:left-8 md:translate-x-0 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-sm font-bold px-4 py-1.5 rounded-full shadow-lg">Seu plano atual</div>
+          )}
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg shadow-emerald-500/25">
+              <Zap className="w-7 h-7 text-white" />
             </div>
-          );
-        })}
+            <div>
+              <h3 className="text-2xl font-bold text-slate-900">Free</h3>
+              <p className="text-slate-500 font-medium">Grátis para sempre</p>
+            </div>
+          </div>
+          <p className="text-slate-600 text-sm mb-6">Ideal para testar a plataforma e começar com o essencial.</p>
+          <ul className="space-y-3 mb-8">
+            {freeFeatures.map((f, i) => {
+              const Icon = f.icon;
+              return (
+                <li key={i} className="flex items-center gap-3 text-slate-700">
+                  <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  </div>
+                  <Icon className="w-4 h-4 text-slate-400" />
+                  <span>{f.text}</span>
+                </li>
+              );
+            })}
+            {freeExcluded.map((text, i) => (
+              <li key={`ex-${i}`} className="flex items-center gap-3 text-slate-400">
+                <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold">✕</div>
+                <span className="line-through">{text}</span>
+              </li>
+            ))}
+          </ul>
+          {currentPlan === 'free' && (
+            <div className="mt-auto flex items-center justify-center gap-2 w-full bg-emerald-50 text-emerald-700 font-semibold py-4 rounded-xl border border-emerald-200">
+              <Check size={16} /> Plano atual
+            </div>
+          )}
+        </div>
+
+        {/* Pro */}
+        <div className={`flex flex-col relative bg-white rounded-3xl border-2 p-8 shadow-xl transition-all duration-300 ${currentPlan === 'pro' ? 'border-blue-500 bg-blue-50/30 shadow-blue-500/15' : 'border-blue-500 shadow-blue-500/15 hover:shadow-blue-500/25'}`}>
+          {currentPlan === 'pro' ? (
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 md:left-8 md:translate-x-0 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-sm font-bold px-4 py-1.5 rounded-full shadow-lg">Seu plano atual</div>
+          ) : (
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-sm font-bold px-4 py-1.5 rounded-full shadow-lg">Mais popular</div>
+          )}
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/30">
+              <Crown className="w-7 h-7 text-white" />
+            </div>
+            <div>
+              <h3 className="text-2xl font-bold text-slate-900">Pro</h3>
+              <p className="text-slate-500 font-medium">Sob consulta</p>
+            </div>
+          </div>
+          <p className="text-slate-600 text-sm mb-6">Todos os recursos para escalar. Proposta personalizada conforme sua necessidade.</p>
+          <ul className="space-y-3 mb-8">
+            {proFeatures.map((f, i) => {
+              const Icon = f.icon;
+              return (
+                <li key={i} className="flex items-center gap-3 text-slate-700">
+                  <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  </div>
+                  <Icon className="w-4 h-4 text-blue-500" />
+                  <span>{f.text}</span>
+                </li>
+              );
+            })}
+          </ul>
+          {currentPlan === 'pro' ? (
+            <div className="mt-auto flex items-center justify-center gap-2 w-full bg-emerald-50 text-emerald-700 font-semibold py-4 rounded-xl border border-emerald-200">
+              <Check size={16} /> Plano ativo
+            </div>
+          ) : (
+            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="mt-auto flex items-center justify-center gap-2 w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-semibold py-4 rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all">
+              <MessageSquare className="w-5 h-5" />
+              Solicitar proposta
+            </a>
+          )}
+        </div>
       </div>
     </div>
   );

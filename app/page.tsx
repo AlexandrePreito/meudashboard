@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { BarChart3, MessageSquare, Bell, Shield, ArrowRight, Brain, RefreshCw, ChevronDown, Users, Building2, TrendingUp, Database, FileCheck, Zap, Sparkles } from 'lucide-react';
+import { BarChart3, MessageSquare, Bell, Shield, ArrowRight, Brain, RefreshCw, ChevronDown, Users, Building2, TrendingUp, Database, FileCheck, Zap, Sparkles, Crown, FolderOpen, LayoutDashboard, Globe, Check } from 'lucide-react';
 import { useSubdomain } from '@/hooks/useSubdomain';
 
 // Componente do Asterisco Animado
@@ -214,13 +214,35 @@ function StepCard({ number, title, description, isLast = false }: { number: numb
   );
 }
 
-const FAQ_ITEMS = [
-  { q: 'O que é o MeuDashboard?', a: 'O MeuDashboard é uma plataforma que hospeda seus dashboards Power BI e adiciona superpoderes: consulta de dados por WhatsApp com IA, alertas automáticos e controle de acesso por usuário.' },
-  { q: 'Preciso de cartão de crédito para começar?', a: 'Não. Você pode criar sua conta grátis e começar a usar sem informar cartão de crédito. Configuração em minutos.' },
-  { q: 'Como funciona a integração com WhatsApp?', a: 'Conectamos sua instância WhatsApp à nossa IA. Seus usuários perguntam em linguagem natural e recebem respostas com dados, gráficos e insights em segundos.' },
-  { q: 'Posso usar com meus clientes?', a: 'Sim! Ideal para software houses, consultorias de BI e gestores que precisam entregar dashboards para clientes com controle de acesso e suporte a múltiplos grupos.' },
-  { q: 'Quais são os planos disponíveis?', a: 'Ofertamos planos Free e Pro. O Free permite testes básicos. O Pro desbloqueia alertas, WhatsApp, IA e mais recursos. Consulte a página de planos.' },
-  { q: 'Como funciona o suporte?', a: 'O suporte é por WhatsApp e email. Temos documentação completa e equipe pronta para ajudar na configuração e migração.' },
+const FAQ_ITEMS: { q: string; a: string; link?: { href: string; label: string } }[] = [
+  {
+    q: 'O que é o MeuDashboard?',
+    a: 'O MeuDashboard é uma plataforma completa que hospeda seus dashboards Power BI e adiciona superpoderes: consulta de dados por WhatsApp com IA, alertas automáticos por métricas, controle de acesso por usuário e grupo, monitoramento de atualizações e suporte multi-tenant. Ideal para empresas que precisam compartilhar relatórios com equipes e clientes de forma segura e inteligente.',
+  },
+  {
+    q: 'Preciso de cartão de crédito para começar?',
+    a: 'Não. Você pode criar sua conta grátis e começar a usar imediatamente, sem informar cartão de crédito. A configuração leva poucos minutos: conecte seu Power BI, defina usuários e telas, e pronto. Você pode fazer upgrade para um plano pago quando precisar de mais recursos.',
+  },
+  {
+    q: 'Como funciona a integração com WhatsApp?',
+    a: 'Conectamos sua instância WhatsApp Business à nossa IA. Seus usuários enviam perguntas em linguagem natural (ex: "Qual foi o faturamento de dezembro?") e recebem respostas instantâneas com dados, gráficos e insights. A IA analisa seus dashboards, interpreta padrões e sugere ações. Também enviamos alertas automáticos quando métricas ultrapassam limites configurados.',
+  },
+  {
+    q: 'Posso usar com meus clientes?',
+    a: 'Sim! O MeuDashboard é ideal para software houses, consultorias de BI e gestores que precisam entregar dashboards para clientes. Oferecemos controle de acesso por grupo (multi-tenant), white-label, permissões granulares por usuário e tela, além de suporte a múltiplos grupos de empresa isolados. Cada cliente vê apenas seus próprios dados.',
+  },
+  {
+    q: 'O que é o subdomínio personalizado?',
+    a: 'O subdomínio permite que sua empresa tenha um endereço exclusivo, como suaempresa.meudashboard.org. Seus clientes acessam a plataforma por esse endereço e veem sua marca: logo, cores e textos personalizados na tela de login e na experiência. Ideal para software houses e consultorias que entregam o MeuDashboard como solução própria aos clientes. O subdomínio é configurado no perfil do desenvolvedor e precisa de aprovação. Consulte-nos para verificar disponibilidade no seu plano.',
+  },
+  {
+    q: 'Quais são os planos disponíveis?',
+    a: 'Os planos são definidos sob consulta, conforme a necessidade do seu negócio. Entre em contato pelo WhatsApp ou email para receber uma proposta personalizada com usuários, telas, alertas, IA e demais recursos adequados à sua operação.',
+  },
+  {
+    q: 'Como funciona o suporte?',
+    a: 'O suporte é oferecido por WhatsApp e email. Temos documentação completa, guias de configuração e equipe pronta para ajudar na implementação, migração e dúvidas técnicas. Planos Business e superiores incluem atendimento prioritário com tempo de resposta reduzido. O plano Personalizado conta com suporte dedicado.',
+  },
 ];
 
 function FAQAccordion() {
@@ -237,7 +259,14 @@ function FAQAccordion() {
             <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${openIndex === i ? 'rotate-180' : ''}`} />
           </button>
           {openIndex === i && (
-            <div className="px-6 pb-4 text-slate-600 text-sm">{item.a}</div>
+            <div className="px-6 pb-4 text-slate-600 text-sm">
+              <p>{item.a}</p>
+              {item.link && (
+                <Link href={item.link.href} className="inline-flex items-center gap-1 mt-3 text-blue-600 hover:text-blue-700 font-medium">
+                  {item.link.label}
+                </Link>
+              )}
+            </div>
           )}
         </div>
       ))}
@@ -371,6 +400,7 @@ export default function LandingPage() {
               <a href="#funcionalidades" className="text-slate-600 hover:text-slate-900 text-sm font-medium">Funcionalidades</a>
               <a href="#como-funciona" className="text-slate-600 hover:text-slate-900 text-sm font-medium">Como funciona</a>
               <a href="#para-quem" className="text-slate-600 hover:text-slate-900 text-sm font-medium">Para quem</a>
+              <a href="#planos" className="text-slate-600 hover:text-slate-900 text-sm font-medium">Planos</a>
               <a href="#faq" className="text-slate-600 hover:text-slate-900 text-sm font-medium">FAQ</a>
             </div>
             <div className="flex items-center gap-3">
@@ -555,6 +585,103 @@ export default function LandingPage() {
             <h2 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4">Perguntas frequentes</h2>
           </div>
           <FAQAccordion />
+        </div>
+      </section>
+
+      {/* Planos */}
+      <section id="planos" className="py-24 px-6 bg-slate-50 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-cyan-50/30" />
+        <div className="relative z-10 max-w-5xl mx-auto">
+          <div className="text-center mb-16">
+            <span className="inline-block bg-cyan-100 text-cyan-700 px-4 py-1.5 rounded-full text-sm font-medium mb-4">Planos</span>
+            <h2 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4">Escolha o que faz sentido para você</h2>
+            <p className="text-xl text-slate-600 max-w-2xl mx-auto">Comece grátis e faça upgrade quando precisar de mais recursos. O plano Pro é personalizado sob consulta.</p>
+          </div>
+          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto items-stretch">
+            {/* Free */}
+            <div className="flex flex-col bg-white rounded-3xl border-2 border-slate-200 p-8 shadow-lg shadow-slate-200/50 hover:border-slate-300 hover:shadow-xl transition-all duration-300">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg shadow-emerald-500/25">
+                  <Zap className="w-7 h-7 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-slate-900">Free</h3>
+                  <p className="text-slate-500 font-medium">Grátis para sempre</p>
+                </div>
+              </div>
+              <p className="text-slate-600 text-sm mb-6">Ideal para testar a plataforma e começar com o essencial.</p>
+              <ul className="space-y-3 mb-8">
+                {[
+                  { icon: FolderOpen, text: '1 grupo' },
+                  { icon: Users, text: '10 viewers' },
+                  { icon: LayoutDashboard, text: '5 dashboards' },
+                  { icon: BarChart3, text: 'Power BI Embedded' },
+                ].map((f, i) => {
+                  const Icon = f.icon;
+                  return (
+                    <li key={i} className="flex items-center gap-3 text-slate-700">
+                      <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      </div>
+                      <Icon className="w-4 h-4 text-slate-400" />
+                      <span>{f.text}</span>
+                    </li>
+                  );
+                })}
+                {['WhatsApp', 'IA', 'Subdomínio personalizado'].map((text, i) => (
+                  <li key={`ex-${i}`} className="flex items-center gap-3 text-slate-400">
+                    <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold">✕</div>
+                    <span className="line-through">{text}</span>
+                  </li>
+                ))}
+              </ul>
+              <Link href="/cadastro" className="mt-auto block w-full text-center bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold py-4 rounded-xl transition-colors">
+                Começar grátis
+              </Link>
+            </div>
+
+            {/* Pro */}
+            <div className="flex flex-col relative bg-white rounded-3xl border-2 border-blue-500 p-8 shadow-xl shadow-blue-500/15 hover:shadow-blue-500/25 transition-all duration-300">
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-sm font-bold px-4 py-1.5 rounded-full shadow-lg">
+                Mais popular
+              </div>
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/30">
+                  <Crown className="w-7 h-7 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-slate-900">Pro</h3>
+                  <p className="text-slate-500 font-medium">Sob consulta</p>
+                </div>
+              </div>
+              <p className="text-slate-600 text-sm mb-6">Todos os recursos para escalar. Proposta personalizada conforme sua necessidade.</p>
+              <ul className="space-y-3 mb-8">
+                {[
+                  { icon: FolderOpen, text: 'Grupos ilimitados' },
+                  { icon: Users, text: 'Viewers conforme demanda' },
+                  { icon: LayoutDashboard, text: 'Dashboards conforme demanda' },
+                  { icon: Globe, text: 'Subdomínio personalizado' },
+                  { icon: MessageSquare, text: 'WhatsApp integrado' },
+                  { icon: Brain, text: 'IA assistente' },
+                ].map((f, i) => {
+                  const Icon = f.icon;
+                  return (
+                    <li key={i} className="flex items-center gap-3 text-slate-700">
+                      <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      </div>
+                      <Icon className="w-4 h-4 text-blue-500" />
+                      <span>{f.text}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="mt-auto flex items-center justify-center gap-2 w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-semibold py-4 rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all">
+                <MessageSquare className="w-5 h-5" />
+                Solicitar proposta
+              </a>
+            </div>
+          </div>
         </div>
       </section>
 

@@ -178,7 +178,6 @@ export async function middleware(request: NextRequest) {
     '/esqueci-senha',
     '/redefinir-senha',
     '/cadastro',
-    '/planos',
     '/api/auth/login',
     '/api/auth/register',
     '/api/auth/verify-email',
@@ -193,7 +192,7 @@ export async function middleware(request: NextRequest) {
   ];
 
   const isPublicApi = pathname.startsWith('/api/subdomain/');
-  const isPublicPath = publicRoutes.includes(pathname) || pathname.startsWith('/cadastro') || pathname === '/planos';
+  const isPublicPath = publicRoutes.includes(pathname) || pathname.startsWith('/cadastro');
 
   if (isPublicPath || isPublicApi) {
     return NextResponse.next();
