@@ -7,10 +7,10 @@ import { useSubdomain } from '@/hooks/useSubdomain';
 import PropostaModal from '@/components/landing/PropostaModal';
 
 // Componente do Asterisco Animado
-function AnimatedLogo({ size = 48, scrollY = 0, isInitialSpin = false }: { size?: number; scrollY?: number; isInitialSpin?: boolean }) {
+function AnimatedLogo({ size = 48, scrollY = 0, isInitialSpin = false, className = '' }: { size?: number; scrollY?: number; isInitialSpin?: boolean; className?: string }) {
   const rotation = isInitialSpin ? 0 : scrollY * 0.8;
   return (
-    <svg viewBox="0 0 100 100" width={size} height={size} style={{ transform: `rotate(${rotation}deg)`, transition: isInitialSpin ? 'none' : 'transform 0.05s linear', animation: isInitialSpin ? 'initialSpin 2s cubic-bezier(0.25, 0.1, 0.25, 1) forwards' : 'none' }}>
+    <svg viewBox="0 0 100 100" width={size} height={size} className={className} style={{ transform: `rotate(${rotation}deg)`, transition: isInitialSpin ? 'none' : 'transform 0.05s linear', animation: isInitialSpin ? 'initialSpin 2s cubic-bezier(0.25, 0.1, 0.25, 1) forwards' : 'none' }}>
       <defs>
         <linearGradient id={`logoGrad${size}`} x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#06b6d4" />
@@ -390,14 +390,12 @@ export default function LandingPage() {
 
       {/* Navigation */}
       <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${navOpaque ? 'bg-white/95 backdrop-blur-md shadow-sm border-b border-slate-100' : 'bg-transparent'}`}>
-        <div className="max-w-6xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Link href="/" className="flex items-center gap-3">
-                <AnimatedLogo size={32} scrollY={scrollY} isInitialSpin={isInitialSpin} />
-                <BrandName size="text-xl" />
-              </Link>
-            </div>
+        <div className="max-w-6xl mx-auto px-4 py-3 md:px-6 md:py-4">
+          <div className="flex items-center justify-between gap-2">
+            <Link href="/" className="flex items-center gap-2 min-w-0 shrink">
+              <AnimatedLogo size={32} scrollY={scrollY} isInitialSpin={isInitialSpin} className="w-7 h-7 md:w-8 md:h-8 shrink-0" />
+              <BrandName size="text-lg md:text-xl" className="truncate" />
+            </Link>
             <div className="hidden md:flex items-center gap-6">
               <a href="#funcionalidades" className="text-slate-600 hover:text-slate-900 text-sm font-medium">Funcionalidades</a>
               <a href="#como-funciona" className="text-slate-600 hover:text-slate-900 text-sm font-medium">Como funciona</a>
@@ -405,9 +403,9 @@ export default function LandingPage() {
               <a href="#faq" className="text-slate-600 hover:text-slate-900 text-sm font-medium">FAQ</a>
               <a href="#planos" className="text-slate-600 hover:text-slate-900 text-sm font-medium">Planos</a>
             </div>
-            <div className="flex items-center gap-3">
-              <Link href="/login" className="border border-slate-300 text-slate-800 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-50 hover:border-slate-400 transition-all">Entrar</Link>
-              <Link href="/cadastro" className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all">Comece grátis</Link>
+            <div className="flex items-center gap-1.5 md:gap-3 shrink-0">
+              <Link href="/login" className="border border-slate-300 text-slate-800 px-2.5 py-1.5 md:px-4 md:py-2 rounded-lg md:rounded-xl text-xs md:text-sm font-semibold hover:bg-slate-50 hover:border-slate-400 transition-all whitespace-nowrap">Entrar</Link>
+              <Link href="/cadastro" className="bg-blue-600 text-white px-2.5 py-1.5 md:px-5 md:py-2.5 rounded-lg md:rounded-xl text-xs md:text-sm font-semibold hover:bg-blue-700 transition-all whitespace-nowrap">Comece grátis</Link>
             </div>
           </div>
         </div>
