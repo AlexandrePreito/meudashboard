@@ -63,7 +63,7 @@ function hexToRgb(hex: string) {
 }
 
 export default function LoginPage() {
-  const { developerInfo, isSubdomain } = useSubdomain();
+  const { developerInfo, isSubdomain, loading: subLoading } = useSubdomain();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -118,6 +118,15 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  // Aguardar detecção de subdomínio antes de renderizar
+  if (subLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-slate-300 border-t-transparent" />
+      </div>
+    );
+  }
 
   // ========== LAYOUT SUBDOMÍNIO ==========
   if (isSubdomain && developerInfo) {
