@@ -402,8 +402,8 @@ export default function LandingPage() {
               <a href="#funcionalidades" className="text-slate-600 hover:text-slate-900 text-sm font-medium">Funcionalidades</a>
               <a href="#como-funciona" className="text-slate-600 hover:text-slate-900 text-sm font-medium">Como funciona</a>
               <a href="#para-quem" className="text-slate-600 hover:text-slate-900 text-sm font-medium">Para quem</a>
-              <a href="#planos" className="text-slate-600 hover:text-slate-900 text-sm font-medium">Planos</a>
               <a href="#faq" className="text-slate-600 hover:text-slate-900 text-sm font-medium">FAQ</a>
+              <a href="#planos" className="text-slate-600 hover:text-slate-900 text-sm font-medium">Planos</a>
             </div>
             <div className="flex items-center gap-3">
               <Link href="/login" className="border border-slate-300 text-slate-800 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-50 hover:border-slate-400 transition-all">Entrar</Link>
