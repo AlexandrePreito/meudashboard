@@ -48,8 +48,12 @@ const SUBDOMAIN_BLOCKED_PREFIXES = [
 const SUBDOMAIN_PUBLIC_ROUTES = [
   '/',
   '/login',
+  '/esqueci-senha',
+  '/redefinir-senha',
   '/api/auth/login',
   '/api/auth/logout',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
   '/api/subdomain/',
 ];
 
@@ -171,12 +175,16 @@ export async function middleware(request: NextRequest) {
   const publicRoutes = [
     '/',
     '/login',
+    '/esqueci-senha',
+    '/redefinir-senha',
     '/cadastro',
     '/planos',
     '/api/auth/login',
     '/api/auth/register',
     '/api/auth/verify-email',
     '/api/auth/logout',
+    '/api/auth/forgot-password',
+    '/api/auth/reset-password',
     '/api/whatsapp/webhook',
     '/api/whatsapp/webhook/messages-upsert',
     '/api/whatsapp/webhook/contacts-update',
