@@ -614,9 +614,9 @@ export default function LandingPage() {
               <p className="text-slate-600 text-sm mb-6">Ideal para testar a plataforma e começar com o essencial.</p>
               <ul className="space-y-3 mb-8">
                 {[
-                  { icon: FolderOpen, text: '1 grupo' },
-                  { icon: Users, text: '10 viewers' },
-                  { icon: LayoutDashboard, text: '5 dashboards' },
+                  { icon: FolderOpen, text: '5 grupos' },
+                  { icon: Users, text: '15 usuários' },
+                  { icon: LayoutDashboard, text: '15 telas' },
                   { icon: BarChart3, text: 'Power BI Embedded' },
                 ].map((f, i) => {
                   const Icon = f.icon;
