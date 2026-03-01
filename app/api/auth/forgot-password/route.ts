@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     // Buscar usuário pelo email
     const { data: user, error: fetchError } = await supabase
       .from('users')
-      .select('id, name, email')
+      .select('id, email')
       .eq('email', email.toLowerCase().trim())
       .maybeSingle();
 
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     const resetUrl = `${baseUrl}/redefinir-senha?token=${token}`;
 
     // Enviar email
-    const userName = user.name || 'Usuário';
+    const userName = 'Usuário';
 
     await sendEmail({
       to: user.email,
