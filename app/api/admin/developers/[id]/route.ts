@@ -140,8 +140,14 @@ export async function PUT(
     if (body.max_daily_refreshes !== undefined) updateData.max_daily_refreshes = body.max_daily_refreshes;
 
     if (body.subdomain !== undefined) updateData.subdomain = body.subdomain || null;
-    if (typeof body.subdomain_enabled === 'boolean') updateData.subdomain_enabled = body.subdomain_enabled;
-    if (typeof body.subdomain_approved === 'boolean') updateData.subdomain_approved = body.subdomain_approved;
+    if (typeof body.subdomain_enabled === 'boolean') {
+      updateData.subdomain_enabled = body.subdomain_enabled;
+      updateData.subdomain_allowed = body.subdomain_enabled;
+    }
+    if (typeof body.subdomain_approved === 'boolean') {
+      updateData.subdomain_approved = body.subdomain_approved;
+      if (body.subdomain_approved) updateData.subdomain_allowed = true;
+    }
     if (typeof body.subdomain_allowed === 'boolean') updateData.subdomain_allowed = body.subdomain_allowed;
 
     const { data: developer, error } = await supabase
