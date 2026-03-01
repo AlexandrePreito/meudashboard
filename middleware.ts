@@ -115,10 +115,9 @@ export async function middleware(request: NextRequest) {
     );
 
     if (isPublic) {
-      // Raiz do subdomínio → redirecionar para /login
+      // Raiz do subdomínio → deixar carregar a landing personalizada
       if (pathname === '/') {
-        const loginUrl = new URL('/login', request.url);
-        const response = NextResponse.redirect(loginUrl);
+        const response = NextResponse.next({ request: { headers: requestHeaders } });
         setSubdomainCookie(response, subdomain);
         return response;
       }
