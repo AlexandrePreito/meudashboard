@@ -410,6 +410,23 @@ export default function CadastroPage() {
                     </button>
                   </div>
                 </div>
+                {/* Aceite dos termos */}
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="aceite-termos"
+                    required
+                    className="mt-1 h-4 w-4 rounded border-gray-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                  />
+                  <label htmlFor="aceite-termos" className="text-xs text-gray-500 leading-relaxed cursor-pointer">
+                    Ao criar sua conta, você concorda com os{' '}
+                    <Link href="/termos-de-uso" target="_blank" className="text-blue-600 hover:underline">Termos de Uso</Link>
+                    {' '}e a{' '}
+                    <Link href="/politica-de-privacidade" target="_blank" className="text-blue-600 hover:underline">Política de Privacidade</Link>
+                    {' '}do MeuDashboard.
+                  </label>
+                </div>
+
                 {error && (
                   <div className="p-4 bg-red-50 border border-red-100 rounded-xl">
                     <p className="text-sm text-red-600">{error}</p>
