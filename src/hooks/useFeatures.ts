@@ -12,6 +12,8 @@ interface Features {
     max_groups?: number;
     max_users?: number;
     max_screens?: number;
+    allow_powerbi_connections?: boolean;
+    allow_whatsapp_instances?: boolean;
   };
   is_free: boolean;
 }
@@ -54,5 +56,7 @@ export function useFeatures() {
     hasAlerts: features?.features?.alerts ?? false,
     hasAI: features?.features?.ai ?? false,
     planName: features?.plan_name || null,
+    allowPowerbiConnections: features?.features?.allow_powerbi_connections ?? true,
+    allowWhatsappInstances: features?.features?.allow_whatsapp_instances ?? true,
   };
 }

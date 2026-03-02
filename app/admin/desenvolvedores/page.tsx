@@ -90,6 +90,8 @@ interface Developer {
   subdomain_allowed?: boolean;
   landing_title?: string | null;
   landing_description?: string | null;
+  allow_powerbi_connections?: boolean;
+  allow_whatsapp_instances?: boolean;
 }
 
 const estadosBrasil = [
@@ -1160,6 +1162,76 @@ export default function AdminDesenvolvedoresPage() {
                   }
                   return null;
                 })()}
+              </div>
+
+              {/* Seção Acesso a Páginas */}
+              <div className="border-t border-gray-100 pt-6">
+                <h3 className="text-sm font-semibold text-gray-900 mb-1">Acesso a Páginas</h3>
+                <p className="text-xs text-gray-500 mb-4">Controle quais páginas o developer e seus usuários podem acessar</p>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Conexões Power BI</p>
+                      <p className="text-xs text-gray-500">/powerbi/conexoes</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const newValue = !(editingLimitsDeveloper!.allow_powerbi_connections ?? true);
+                        try {
+                          const res = await fetch(`/api/admin/developers/${editingLimitsDeveloper!.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ allow_powerbi_connections: newValue })
+                          });
+                          if (res.ok) {
+                            setEditingLimitsDeveloper(prev => prev ? { ...prev, allow_powerbi_connections: newValue } : null);
+                            showToast(newValue ? 'Conexões Power BI habilitadas' : 'Conexões Power BI desabilitadas', 'success');
+                            loadData();
+                          } else showToast((await res.json()).error || 'Erro', 'error');
+                        } catch { showToast('Erro ao atualizar', 'error'); }
+                      }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        (editingLimitsDeveloper!.allow_powerbi_connections ?? true) ? 'bg-blue-600' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${
+                        (editingLimitsDeveloper!.allow_powerbi_connections ?? true) ? 'translate-x-6' : 'translate-x-1'
+                      }`} />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Instâncias WhatsApp</p>
+                      <p className="text-xs text-gray-500">/whatsapp/instancias</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const newValue = !(editingLimitsDeveloper!.allow_whatsapp_instances ?? true);
+                        try {
+                          const res = await fetch(`/api/admin/developers/${editingLimitsDeveloper!.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ allow_whatsapp_instances: newValue })
+                          });
+                          if (res.ok) {
+                            setEditingLimitsDeveloper(prev => prev ? { ...prev, allow_whatsapp_instances: newValue } : null);
+                            showToast(newValue ? 'Instâncias WhatsApp habilitadas' : 'Instâncias WhatsApp desabilitadas', 'success');
+                            loadData();
+                          } else showToast((await res.json()).error || 'Erro', 'error');
+                        } catch { showToast('Erro ao atualizar', 'error'); }
+                      }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        (editingLimitsDeveloper!.allow_whatsapp_instances ?? true) ? 'bg-blue-600' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${
+                        (editingLimitsDeveloper!.allow_whatsapp_instances ?? true) ? 'translate-x-6' : 'translate-x-1'
+                      }`} />
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Seção Subdomínio */}

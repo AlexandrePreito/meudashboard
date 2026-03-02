@@ -15,7 +15,6 @@ import {
   Sparkles,
   Plus,
 } from 'lucide-react';
-import { useFeatures } from '@/hooks/useFeatures';
 
 interface DashboardStats {
   developer: {
@@ -62,7 +61,6 @@ function formatDate(dateStr: string) {
 
 export default function DevPage() {
   const router = useRouter();
-  const { isFree } = useFeatures();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardStats | null>(null);
   const [error, setError] = useState('');
@@ -250,8 +248,8 @@ export default function DevPage() {
           </div>
         </div>
 
-        {/* Alerta upgrade (Free) — elegante e discreto */}
-        {isFree && (
+        {/* Alerta upgrade (Free) — usa developer.isFree da API (fonte única de verdade) */}
+        {developer.isFree && (
           <div className="bg-white rounded-xl border border-blue-100 p-5 shadow-sm">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-start gap-3">

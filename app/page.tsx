@@ -710,20 +710,55 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-slate-50 border-t border-slate-200 py-12 px-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="flex items-center gap-3">
-              <StaticLogo size={28} />
-              <BrandName size="text-lg" />
+      <footer className="relative overflow-hidden border-t border-slate-200 bg-gradient-to-b from-slate-50 to-slate-100/80">
+        {/* Decoração sutil */}
+        <div className="absolute inset-0 opacity-30 pointer-events-none">
+          <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-cyan-400/10 blur-3xl" />
+          <div className="absolute -bottom-24 -left-24 w-80 h-80 rounded-full bg-blue-400/10 blur-3xl" />
+        </div>
+
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
+          {/* Conteúdo principal */}
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-10 md:gap-12">
+            {/* Logo e descrição */}
+            <div className="flex flex-col items-center md:items-start text-center md:text-left max-w-md">
+              <Link href="/" className="flex items-center gap-3 group mb-4">
+                <StaticLogo size={32} />
+                <BrandName size="text-xl" />
+              </Link>
+              <p className="text-slate-600 text-sm leading-relaxed">
+                Dashboards Power BI com IA integrada. Consulte dados por WhatsApp, receba alertas e controle o acesso.
+              </p>
             </div>
-            <div>
-              <p className="text-slate-600 text-sm">Dashboards Power BI com IA integrada. Consulte dados por WhatsApp, receba alertas e controle o acesso.</p>
+
+            {/* Links legais */}
+            <div className="flex flex-col items-center md:items-end">
+              <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Legal</p>
+              <nav className="flex flex-col sm:flex-row gap-3 sm:gap-6">
+                <Link href="/termos-de-uso" className="text-slate-600 hover:text-blue-600 transition-colors text-sm font-medium">
+                  Termos de Uso
+                </Link>
+                <Link href="/politica-de-privacidade" className="text-slate-600 hover:text-blue-600 transition-colors text-sm font-medium">
+                  Política de Privacidade
+                </Link>
+                <Link href="/politica-de-cookies" className="text-slate-600 hover:text-blue-600 transition-colors text-sm font-medium">
+                  Política de Cookies
+                </Link>
+              </nav>
             </div>
-            <div className="text-right">
-              <p className="text-sm text-slate-600">Desenvolvido por <a href="https://vion.com.br" target="_blank" rel="noopener noreferrer" className="font-semibold hover:text-slate-900">vion.com.br</a></p>
-              <p className="text-sm text-slate-400 mt-1">© 2026 MeuDashboard</p>
-            </div>
+          </div>
+
+          {/* Barra inferior */}
+          <div className="mt-12 pt-8 border-t border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-sm text-slate-500 order-2 sm:order-1">
+              © 2026 MeuDashboard. Todos os direitos reservados.
+            </p>
+            <p className="text-sm text-slate-600 order-1 sm:order-2">
+              Desenvolvido por{' '}
+              <a href="https://vion.com.br" target="_blank" rel="noopener noreferrer" className="font-semibold text-slate-800 hover:text-blue-600 transition-colors">
+                vion.com.br
+              </a>
+            </p>
           </div>
         </div>
       </footer>

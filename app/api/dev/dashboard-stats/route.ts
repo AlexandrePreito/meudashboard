@@ -16,25 +16,40 @@ export async function GET() {
 
     const supabase = createAdminClient();
 
-    const { data: devData } = await supabase
+    // Buscar developer (sem join - mais confiável)
+    const { data: devData, error: devError } = await supabase
       .from('developers')
-      .select(`
-        id,
-        name,
-        created_at,
-        plan:developer_plans(
-          name,
-          max_companies,
-          max_users,
-          max_powerbi_screens
-        )
-      `)
+      .select('id, name, created_at, plan_id')
       .eq('id', developerId)
       .single();
 
-    const plan = Array.isArray(devData?.plan) ? devData?.plan[0] : devData?.plan;
+    if (devError || !devData) {
+      console.error('[dashboard-stats] Erro ao buscar developer:', devError?.message);
+      return NextResponse.json({ error: 'Developer não encontrado' }, { status: 404 });
+    }
+
+    // Buscar plano diretamente por plan_id (evita problemas de join)
+    let plan: { name?: string; max_groups?: number; max_users?: number; max_screens?: number } | null = null;
+    console.log('[DEBUG] plan_id:', devData.plan_id, typeof devData.plan_id);
+    if (devData.plan_id) {
+      const { data: planRow, error: planError } = await supabase
+        .from('developer_plans')
+        .select('name, max_groups, max_users, max_screens')
+        .eq('id', devData.plan_id)
+        .eq('is_active', true)
+        .maybeSingle();
+      console.log('[DEBUG] planRow:', JSON.stringify(planRow));
+      console.log('[DEBUG] planError:', JSON.stringify(planError));
+      plan = planRow;
+    }
+
     const planName = (plan?.name || 'Free').trim();
     const isFree = planName.toLowerCase() === 'free';
+
+    // Limites: plan > defaults Free
+    const maxGroups = plan?.max_groups ?? 5;
+    const maxUsers = plan?.max_users ?? 15;
+    const maxScreens = plan?.max_screens ?? 15;
 
     const { data: devGroups } = await supabase
       .from('company_groups')
@@ -79,10 +94,6 @@ export async function GET() {
         reportCount = reportsCount || 0;
       }
     }
-
-    const maxGroups = plan?.max_companies ?? 5;
-    const maxUsers = plan?.max_users ?? 15;
-    const maxScreens = plan?.max_powerbi_screens ?? 15;
 
     const { data: recentGroups } = await supabase
       .from('company_groups')

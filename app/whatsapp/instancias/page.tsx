@@ -7,6 +7,7 @@ import FeatureGate from '@/components/ui/FeatureGate';
 import Button from '@/components/ui/Button';
 import { useToast } from '@/contexts/ToastContext';
 import { useMenu } from '@/contexts/MenuContext';
+import { useFeatures } from '@/hooks/useFeatures';
 import {
   Smartphone,
   Plus,
@@ -47,8 +48,10 @@ function InstanciasContent() {
   const router = useRouter();
   const toast = useToast();
   const { activeGroup } = useMenu();
+  const { allowWhatsappInstances, loading: featuresLoading } = useFeatures();
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>('loading');
+  const [accessDenied, setAccessDenied] = useState(false);
   const [userGroupIds, setUserGroupIds] = useState<string[]>([]);
   
   const [instances, setInstances] = useState<Instance[]>([]);
@@ -83,10 +86,20 @@ function InstanciasContent() {
   }, []);
 
   useEffect(() => {
-    if (userRole !== 'user') {
+    if (userRole === 'user') return;
+    if (userRole === 'master') {
       loadInstances(activeGroup);
+      return;
     }
-  }, [activeGroup, userRole]);
+    // developer/admin: verificar allowWhatsappInstances
+    if (featuresLoading) return;
+    if (!allowWhatsappInstances) {
+      setAccessDenied(true);
+      setLoading(false);
+      return;
+    }
+    loadInstances(activeGroup);
+  }, [activeGroup, userRole, featuresLoading, allowWhatsappInstances]);
 
   async function checkAccessAndLoad() {
     try {
@@ -102,20 +115,20 @@ function InstanciasContent() {
       
       if (data.user.is_master) {
         setUserRole('master');
-        // Carregar todos os grupos para Master
         loadAllGroups();
+        loadInstances(activeGroup);
       } else if (data.user.is_developer) {
         setUserRole('developer');
-        // Carregar grupos do desenvolvedor
         await loadDeveloperGroups();
       } else if (data.user.role === 'admin') {
         setUserRole('admin');
         setUserGroupIds(data.groupIds || []);
       } else {
         setUserRole('user');
+        setAccessDenied(true);
+        setLoading(false);
+        return;
       }
-      
-      loadInstances(activeGroup);
     } catch (error) {
       console.error('Erro ao verificar acesso:', error);
       router.push('/login');
@@ -439,8 +452,16 @@ function InstanciasContent() {
     );
   }
 
-  // Módulos removidos - sempre disponível
-  // Verificação de módulo removida
+  // Acesso negado (página desabilitada para o developer)
+  if (accessDenied) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Smartphone className="w-16 h-16 text-gray-300 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700 mb-2">Acesso restrito</h2>
+        <p className="text-gray-500 mb-4">Esta página não está disponível para seu perfil.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

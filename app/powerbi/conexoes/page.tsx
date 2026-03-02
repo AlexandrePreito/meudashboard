@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button';
 import Pagination from '@/components/ui/Pagination';
 import ActionsDropdown from '@/components/ui/ActionsDropdown';
 import { useMenu } from '@/contexts/MenuContext';
+import { useFeatures } from '@/hooks/useFeatures';
 import { 
   Plus, 
   Pencil, 
@@ -50,6 +51,7 @@ const PAGE_SIZE = 20;
 // Componente interno que usa o contexto
 function ConexoesContent() {
   const { activeGroup } = useMenu();
+  const { allowPowerbiConnections, loading: featuresLoading } = useFeatures();
   const searchParams = useSearchParams();
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,10 +81,20 @@ function ConexoesContent() {
   }, []);
 
   useEffect(() => {
-    if (userRole !== 'user') {
+    if (userRole === 'user') return;
+    if (userRole === 'master') {
       loadConnections();
+      return;
     }
-  }, [activeGroup, userRole]);
+    // developer/admin: verificar allowPowerbiConnections
+    if (featuresLoading) return;
+    if (!allowPowerbiConnections) {
+      setAccessDenied(true);
+      setLoading(false);
+      return;
+    }
+    loadConnections();
+  }, [activeGroup, userRole, featuresLoading, allowPowerbiConnections]);
 
   useEffect(() => {
     setPage(1);
@@ -108,15 +120,16 @@ function ConexoesContent() {
           setUserRole('master');
         } else if (data.user.is_developer) {
           setUserRole('developer');
+          // loadConnections será chamado no useEffect quando features carregar
         } else if (data.user.role === 'admin') {
           setUserRole('admin');
+          // loadConnections será chamado no useEffect quando features carregar
         } else {
           setUserRole('user');
           setAccessDenied(true);
           setLoading(false);
           return;
         }
-        loadConnections();
       } else {
         setAccessDenied(true);
         setLoading(false);

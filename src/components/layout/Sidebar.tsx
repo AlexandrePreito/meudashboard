@@ -98,7 +98,7 @@ export default function Sidebar() {
     user,
     developer
   } = useMenu();
-  const { hasWhatsapp, hasAlerts, hasAI } = useFeatures();
+  const { hasWhatsapp, hasAlerts, hasAI, allowPowerbiConnections, allowWhatsappInstances } = useFeatures();
 
   // Fallback: para master, activeGroup pode ser null mesmo com grupo selecionado
   const effectiveGroupId = activeGroup?.id || (selectedGroupIds?.length === 1 ? selectedGroupIds[0] : null);
@@ -458,7 +458,9 @@ export default function Sidebar() {
                   {(activeCollapsedSectionId === 'powerbi_dev' || activeCollapsedSectionId === 'powerbi_master') ? (
                     <div className="flex flex-col">
                       <button type="button" onClick={() => setIsCollapsed(false)} title="Power BI" className="flex items-center justify-center w-full rounded-md py-2 text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all"><BarChart3 size={iconSize} /></button>
-                      <Link href="/powerbi/conexoes" title="Conexões" className={linkCls(isItemActive('/powerbi/conexoes'))} style={isItemActive('/powerbi/conexoes') ? { borderLeftColor: primaryColorValue } : {}}><LinkIcon size={iconSize} /></Link>
+                      {(activeCollapsedSectionId === 'powerbi_master' || allowPowerbiConnections) && (
+                        <Link href="/powerbi/conexoes" title="Conexões" className={linkCls(isItemActive('/powerbi/conexoes'))} style={isItemActive('/powerbi/conexoes') ? { borderLeftColor: primaryColorValue } : {}}><LinkIcon size={iconSize} /></Link>
+                      )}
                       <Link href="/powerbi/relatorios" title="Relatórios" className={linkCls(isItemActive('/powerbi/relatorios'))} style={isItemActive('/powerbi/relatorios') ? { borderLeftColor: primaryColorValue } : {}}><FileText size={iconSize} /></Link>
                       <Link href="/powerbi/telas" title="Telas" className={linkCls(isItemActive('/powerbi/telas'))} style={isItemActive('/powerbi/telas') ? { borderLeftColor: primaryColorValue } : {}}><Monitor size={iconSize} /></Link>
                       <Link href="/powerbi/ordem-atualizacao" title="Atualizações" className={linkCls(isItemActive('/powerbi/ordem-atualizacao'))} style={isItemActive('/powerbi/ordem-atualizacao') ? { borderLeftColor: primaryColorValue } : {}}><ArrowUpDown size={iconSize} /></Link>
@@ -467,7 +469,9 @@ export default function Sidebar() {
                   {activeCollapsedSectionId === 'whatsapp_dev' ? (
                     <div className="flex flex-col">
                       <button type="button" onClick={() => setIsCollapsed(false)} title="WhatsApp" className="flex items-center justify-center w-full rounded-md py-2 text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all"><MessageSquare size={iconSize} /></button>
-                      <Link href="/whatsapp/instancias" title="Instâncias" className={linkCls(isItemActive('/whatsapp/instancias'))} style={isItemActive('/whatsapp/instancias') ? { borderLeftColor: primaryColorValue } : {}}><Smartphone size={iconSize} /></Link>
+                      {allowWhatsappInstances && (
+                        <Link href="/whatsapp/instancias" title="Instâncias" className={linkCls(isItemActive('/whatsapp/instancias'))} style={isItemActive('/whatsapp/instancias') ? { borderLeftColor: primaryColorValue } : {}}><Smartphone size={iconSize} /></Link>
+                      )}
                       <Link href="/whatsapp/numeros" title="Números" className={linkCls(isItemActive('/whatsapp/numeros'))} style={isItemActive('/whatsapp/numeros') ? { borderLeftColor: primaryColorValue } : {}}><User size={iconSize} /></Link>
                       <Link href="/whatsapp/mensagens" title="Mensagens" className={linkCls(isItemActive('/whatsapp/mensagens'))} style={isItemActive('/whatsapp/mensagens') ? { borderLeftColor: primaryColorValue } : {}}><MessageSquare size={iconSize} /></Link>
                       <Link href="/alertas" title="Alertas" className={linkCls(isItemActive('/alertas', true))} style={isItemActive('/alertas', true) ? { borderLeftColor: primaryColorValue } : {}}><Bell size={iconSize} /></Link>
@@ -730,7 +734,9 @@ export default function Sidebar() {
               <Separator />
               <CollapsibleSection sectionId="powerbi_dev" Icon={BarChart3} title="Power BI">
               <nav className="px-2 space-y-0.5">
-                <Link href="/powerbi/conexoes" className={`flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-150 ${isItemActive('/powerbi/conexoes') ? 'text-gray-900 bg-gray-100 border-l-2' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`} style={isItemActive('/powerbi/conexoes') ? { borderLeftColor: primaryColorValue } : {}}><LinkIcon size={iconSize} />{!isCollapsed && <span className="text-sm">Conexões</span>}</Link>
+                {allowPowerbiConnections && (
+                  <Link href="/powerbi/conexoes" className={`flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-150 ${isItemActive('/powerbi/conexoes') ? 'text-gray-900 bg-gray-100 border-l-2' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`} style={isItemActive('/powerbi/conexoes') ? { borderLeftColor: primaryColorValue } : {}}><LinkIcon size={iconSize} />{!isCollapsed && <span className="text-sm">Conexões</span>}</Link>
+                )}
                 <Link href="/powerbi/relatorios" className={`flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-150 ${isItemActive('/powerbi/relatorios') ? 'text-gray-900 bg-gray-100 border-l-2' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`} style={isItemActive('/powerbi/relatorios') ? { borderLeftColor: primaryColorValue } : {}}><FileText size={iconSize} />{!isCollapsed && <span className="text-sm">Relatórios</span>}</Link>
                 <Link href="/powerbi/telas" className={`flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-150 ${isItemActive('/powerbi/telas') ? 'text-gray-900 bg-gray-100 border-l-2' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`} style={isItemActive('/powerbi/telas') ? { borderLeftColor: primaryColorValue } : {}}><Monitor size={iconSize} />{!isCollapsed && <span className="text-sm">Telas</span>}</Link>
                 <Link href="/powerbi/ordem-atualizacao" className={`flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-150 ${isItemActive('/powerbi/ordem-atualizacao') ? 'text-gray-900 bg-gray-100 border-l-2' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`} style={isItemActive('/powerbi/ordem-atualizacao') ? { borderLeftColor: primaryColorValue } : {}}><ArrowUpDown size={iconSize} />{!isCollapsed && <span className="text-sm">Atualizações</span>}</Link>
@@ -739,7 +745,9 @@ export default function Sidebar() {
               <Separator />
               <CollapsibleSection sectionId="whatsapp_dev" Icon={MessageSquare} title="WhatsApp" locked={!hasWhatsapp}>
               <nav className="px-2 space-y-0.5">
-                <Link href="/whatsapp/instancias" className={`flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-150 ${isItemActive('/whatsapp/instancias') ? 'text-gray-900 bg-gray-100 border-l-2' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`} style={isItemActive('/whatsapp/instancias') ? { borderLeftColor: primaryColorValue } : {}}><Smartphone size={iconSize} />{!isCollapsed && <span className="text-sm">Instâncias</span>}</Link>
+                {allowWhatsappInstances && (
+                  <Link href="/whatsapp/instancias" className={`flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-150 ${isItemActive('/whatsapp/instancias') ? 'text-gray-900 bg-gray-100 border-l-2' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`} style={isItemActive('/whatsapp/instancias') ? { borderLeftColor: primaryColorValue } : {}}><Smartphone size={iconSize} />{!isCollapsed && <span className="text-sm">Instâncias</span>}</Link>
+                )}
                 <Link href="/whatsapp/numeros" className={`flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-150 ${isItemActive('/whatsapp/numeros') ? 'text-gray-900 bg-gray-100 border-l-2' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`} style={isItemActive('/whatsapp/numeros') ? { borderLeftColor: primaryColorValue } : {}}><User size={iconSize} />{!isCollapsed && <span className="text-sm">Números</span>}</Link>
                 <Link href="/whatsapp/mensagens" className={`flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-150 ${isItemActive('/whatsapp/mensagens') ? 'text-gray-900 bg-gray-100 border-l-2' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`} style={isItemActive('/whatsapp/mensagens') ? { borderLeftColor: primaryColorValue } : {}}><MessageSquare size={iconSize} />{!isCollapsed && <span className="text-sm">Mensagens</span>}</Link>
                 <Link href="/alertas" className={`flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-150 ${isItemActive('/alertas', true) ? 'text-gray-900 bg-gray-100 border-l-2' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`} style={isItemActive('/alertas', true) ? { borderLeftColor: primaryColorValue } : {}}><Bell size={iconSize} />{!isCollapsed && <span className="text-sm">Alertas</span>}</Link>

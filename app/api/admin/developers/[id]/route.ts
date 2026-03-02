@@ -28,7 +28,8 @@ export async function GET(
         max_alerts, max_chat_messages_per_day, max_whatsapp_messages_per_day,
         max_ai_credits_per_day, max_daily_refreshes,
         subdomain, subdomain_enabled, subdomain_approved, subdomain_allowed,
-        landing_title, landing_description
+        landing_title, landing_description,
+        allow_powerbi_connections, allow_whatsapp_instances
       `)
       .eq('id', id)
       .single();
@@ -111,6 +112,8 @@ export async function PUT(
     if (body.primary_color !== undefined) updateData.primary_color = body.primary_color;
     if (body.notes !== undefined) updateData.notes = body.notes;
     if (body.allow_shared_tenant !== undefined) updateData.allow_shared_tenant = body.allow_shared_tenant;
+    if (body.allow_powerbi_connections !== undefined) updateData.allow_powerbi_connections = body.allow_powerbi_connections;
+    if (body.allow_whatsapp_instances !== undefined) updateData.allow_whatsapp_instances = body.allow_whatsapp_instances;
 
     // Responsavel
     if (body.responsible_name !== undefined) updateData.responsible_name = body.responsible_name;

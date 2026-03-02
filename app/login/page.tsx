@@ -90,6 +90,10 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (response.ok && data.success) {
+        // Invalidar cache de features para forçar nova busca com plano atualizado
+        if (typeof sessionStorage !== 'undefined') {
+          sessionStorage.removeItem('user-features');
+        }
         if (data.user?.developer?.primary_color) {
           localStorage.setItem('theme-color', data.user.developer.primary_color);
         } else if (data.user?.group?.primary_color && data.user?.group?.use_developer_colors === false) {

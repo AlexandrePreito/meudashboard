@@ -21,6 +21,8 @@ export async function GET(request: NextRequest) {
           max_groups: 999,
           max_users: 999,
           max_screens: 999,
+          allow_powerbi_connections: true,
+          allow_whatsapp_instances: true,
         },
         is_free: false,
       });
@@ -28,40 +30,28 @@ export async function GET(request: NextRequest) {
 
     const supabase = createAdminClient();
 
-    // Developer: buscar plano (detectar por developer_id)
+    // Developer: buscar plano (busca direta por plan_id - mais confiável)
     const developerId = await getUserDeveloperId(user.id);
     if (developerId) {
       const { data: developer, error: devError } = await supabase
         .from('developers')
-        .select(`
-          id,
-          plan_id,
-          plan:developer_plans(
-            name,
-            max_groups,
-            max_users,
-            max_screens,
-            max_whatsapp_messages_per_day,
-            max_alert_executions_per_day,
-            max_ai_credits_per_day,
-            ai_enabled
-          )
-        `)
+        .select('id, plan_id, allow_powerbi_connections, allow_whatsapp_instances')
         .eq('id', developerId)
         .single();
 
-      if (devError) {
-        console.warn('[features] Erro ao buscar developer:', devError.message, 'developerId:', developerId);
+      if (devError || !developer) {
+        console.warn('[features] Erro ao buscar developer:', devError?.message, 'developerId:', developerId);
       }
 
-      let plan = Array.isArray(developer?.plan) ? developer?.plan?.[0] : developer?.plan;
-      if (!plan?.name && developer?.plan_id) {
+      let plan: { name?: string; max_groups?: number; max_users?: number; max_screens?: number; max_whatsapp_messages_per_day?: number; max_alert_executions_per_day?: number; ai_enabled?: boolean } | null = null;
+      if (developer?.plan_id) {
         const { data: planRow } = await supabase
           .from('developer_plans')
-          .select('name, max_groups, max_users, max_screens, max_whatsapp_messages_per_day, max_alert_executions_per_day, max_ai_credits_per_day, ai_enabled')
+          .select('name, max_groups, max_users, max_screens, max_whatsapp_messages_per_day, max_alert_executions_per_day, ai_enabled')
           .eq('id', developer.plan_id)
-          .single();
-        if (planRow) plan = planRow;
+          .eq('is_active', true)
+          .maybeSingle();
+        plan = planRow;
       }
 
       const planName = (plan?.name || 'Free').trim();
@@ -84,6 +74,8 @@ export async function GET(request: NextRequest) {
           max_groups: maxGroups,
           max_users: maxUsers,
           max_screens: maxScreens,
+          allow_powerbi_connections: developer?.allow_powerbi_connections ?? true,
+          allow_whatsapp_instances: developer?.allow_whatsapp_instances ?? true,
         },
         is_free: isFree,
       });
@@ -141,41 +133,28 @@ export async function GET(request: NextRequest) {
           max_groups: 5,
           max_users: 15,
           max_screens: 15,
+          allow_powerbi_connections: true,
+          allow_whatsapp_instances: true,
         },
         is_free: true,
       });
     }
 
-    const { data: dev, error: devError } = await supabase
+    const { data: dev } = await supabase
       .from('developers')
-      .select(`
-        plan_id,
-        plan:developer_plans(
-          name,
-          max_groups,
-          max_users,
-          max_screens,
-          max_whatsapp_messages_per_day,
-          max_alert_executions_per_day,
-          max_ai_credits_per_day,
-          ai_enabled
-        )
-      `)
+      .select('plan_id, allow_powerbi_connections, allow_whatsapp_instances')
       .eq('id', viewerDeveloperId)
       .single();
 
-    if (devError) {
-      console.warn('[features] Erro ao buscar developer (viewer):', devError.message, 'viewerDeveloperId:', viewerDeveloperId);
-    }
-
-    let devPlan = Array.isArray(dev?.plan) ? dev?.plan?.[0] : dev?.plan;
-    if (!devPlan?.name && dev?.plan_id) {
+    let devPlan: { name?: string; max_groups?: number; max_users?: number; max_screens?: number; max_whatsapp_messages_per_day?: number; max_alert_executions_per_day?: number; ai_enabled?: boolean } | null = null;
+    if (dev?.plan_id) {
       const { data: planRow } = await supabase
         .from('developer_plans')
-        .select('name, max_groups, max_users, max_screens, max_whatsapp_messages_per_day, max_alert_executions_per_day, max_ai_credits_per_day, ai_enabled')
+        .select('name, max_groups, max_users, max_screens, max_whatsapp_messages_per_day, max_alert_executions_per_day, ai_enabled')
         .eq('id', dev.plan_id)
-        .single();
-      if (planRow) devPlan = planRow;
+        .eq('is_active', true)
+        .maybeSingle();
+      devPlan = planRow;
     }
 
     const planName = (devPlan?.name || 'Free').trim();
@@ -198,6 +177,8 @@ export async function GET(request: NextRequest) {
         max_groups: maxGroups,
         max_users: maxUsers,
         max_screens: maxScreens,
+        allow_powerbi_connections: dev?.allow_powerbi_connections ?? true,
+        allow_whatsapp_instances: dev?.allow_whatsapp_instances ?? true,
       },
       is_free: isFree,
     });
