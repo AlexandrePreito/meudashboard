@@ -2,6 +2,84 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser } from '@/lib/auth';
 
+const DAY_NAME_TO_NUM: Record<string, number> = {
+  Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6
+};
+
+const TZ_MAP: Record<string, string> = {
+  'E. South America Standard Time': 'America/Sao_Paulo',
+  'Central Brazilian Standard Time': 'America/Cuiaba',
+  'Pacific SA Standard Time': 'America/Santiago',
+};
+
+function getTzOffsetMinutes(tz: string, date: Date): number {
+  try {
+    const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longOffset' });
+    const parts = fmt.formatToParts(date);
+    const offsetPart = parts.find(p => p.type === 'timeZoneName');
+    const str = offsetPart?.value || '';
+    const match = str.match(/GMT([+-])(\d+):?(\d*)/);
+    if (!match) return 0;
+    const sign = match[1] === '+' ? 1 : -1;
+    const h = parseInt(match[2], 10);
+    const m = parseInt(match[3] || '0', 10);
+    return sign * (h * 60 + m);
+  } catch {
+    return 0;
+  }
+}
+
+function calculateNextScheduledRefresh(
+  schedule: { enabled?: boolean; days?: (string | number)[]; times?: string[]; localTimeZoneId?: string },
+  lastRefreshIso: string | null
+): string | null {
+  if (!schedule?.enabled || !schedule?.days?.length || !schedule?.times?.length) return null;
+  const tzRaw = schedule.localTimeZoneId || 'America/Sao_Paulo';
+  const tz = TZ_MAP[tzRaw] || tzRaw;
+  const refDate = lastRefreshIso ? new Date(lastRefreshIso) : new Date();
+  const dayNums = schedule.days.map((d: string | number) =>
+    typeof d === 'number' ? d : (DAY_NAME_TO_NUM[String(d)] ?? -1)
+  ).filter((n: number) => n >= 0 && n <= 6);
+  if (dayNums.length === 0) return null;
+
+  const refParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(refDate);
+  const getPart = (type: string) => parseInt(refParts.find(p => p.type === type)?.value || '0', 10);
+  const refYear = getPart('year');
+  const refMonth = getPart('month') - 1;
+  const refDay = getPart('day');
+  const refMins = getPart('hour') * 60 + getPart('minute');
+
+  let bestNext: Date | null = null;
+  for (let dayOffset = 0; dayOffset <= 14; dayOffset++) {
+    const d = new Date(refYear, refMonth, refDay + dayOffset);
+    const dayOfWeek = d.getDay();
+    if (!dayNums.includes(dayOfWeek)) continue;
+    for (const timeStr of schedule.times) {
+      const [h, m] = (timeStr || '00:00').split(':').map(Number);
+      const candMins = (h || 0) * 60 + (m || 0);
+      if (dayOffset === 0 && candMins <= refMins) continue;
+      const candDate = new Date(refYear, refMonth, refDay + dayOffset);
+      const offsetMin = getTzOffsetMinutes(tz, candDate);
+      const utcMins = candMins - offsetMin;
+      const utcH = Math.floor(utcMins / 60);
+      const utcM = utcMins % 60;
+      const candidate = new Date(Date.UTC(refYear, refMonth, refDay + dayOffset, utcH, utcM, 0, 0));
+      if (candidate.getTime() > refDate.getTime() && (!bestNext || candidate.getTime() < bestNext.getTime())) {
+        bestNext = candidate;
+      }
+    }
+  }
+  return bestNext ? bestNext.toISOString() : null;
+}
+
 // GET - Buscar detalhes de um dataflow ou dataset
 export async function GET(request: Request) {
   try {
@@ -74,8 +152,22 @@ export async function GET(request: Request) {
         details.modifiedBy = dataflowData.modifiedBy;
         details.modifiedDateTime = dataflowData.modifiedDateTime;
         
-        // Schedule do dataflow (se existir)
-        if (dataflowData.refreshSchedule) {
+        // Schedule do dataflow: o GET dataflow não retorna refreshSchedule, buscar em endpoint separado
+        const dfScheduleRes = await fetch(
+          `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/dataflows/${itemId}/refreshSchedule`,
+          { headers: { 'Authorization': `Bearer ${accessToken}` } }
+        );
+        if (dfScheduleRes.ok) {
+          const scheduleData = await dfScheduleRes.json();
+          const s = scheduleData.value ?? scheduleData;
+          details.powerbiSchedule = {
+            enabled: s.enabled,
+            days: s.days,
+            times: s.times,
+            localTimeZoneId: s.localTimeZoneId,
+            notifyOption: s.notifyOption
+          };
+        } else if (dataflowData.refreshSchedule) {
           details.powerbiSchedule = {
             enabled: dataflowData.refreshSchedule.enabled,
             days: dataflowData.refreshSchedule.days,
@@ -94,13 +186,21 @@ export async function GET(request: Request) {
 
       if (transactionsRes.ok) {
         const transactionsData = await transactionsRes.json();
-        details.refreshHistory = (transactionsData.value || []).map((t: any) => ({
+        const transactions = (transactionsData.value || []).map((t: any) => ({
           id: t.id,
           status: t.status === 'Success' || t.status === 'Completed' ? 'Completed' : t.status,
           startTime: t.startTime,
           endTime: t.endTime
         }));
+        // Ordenar por data mais recente primeiro (a API não garante ordem)
+        details.refreshHistory = transactions.sort((a: any, b: any) => {
+          const aTime = new Date(a.endTime || a.startTime || 0).getTime();
+          const bTime = new Date(b.endTime || b.startTime || 0).getTime();
+          return bTime - aTime;
+        });
       }
+      const lastRefreshDf = details.refreshHistory?.[0]?.endTime || details.refreshHistory?.[0]?.startTime;
+      details.nextScheduledRefresh = calculateNextScheduledRefresh(details.powerbiSchedule, lastRefreshDf);
 
     } else if (itemType === 'dataset') {
       // Buscar detalhes do dataset
@@ -143,14 +243,22 @@ export async function GET(request: Request) {
 
       if (refreshesRes.ok) {
         const refreshesData = await refreshesRes.json();
-        details.refreshHistory = (refreshesData.value || []).map((r: any) => ({
+        const refreshes = (refreshesData.value || []).map((r: any) => ({
           id: r.requestId,
           status: r.status,
           startTime: r.startTime,
           endTime: r.endTime,
           refreshType: r.refreshType
         }));
+        // Ordenar por data mais recente primeiro (a API não garante ordem)
+        details.refreshHistory = refreshes.sort((a: any, b: any) => {
+          const aTime = new Date(a.endTime || a.startTime || 0).getTime();
+          const bTime = new Date(b.endTime || b.startTime || 0).getTime();
+          return bTime - aTime;
+        });
       }
+      const lastRefreshDs = details.refreshHistory?.[0]?.endTime || details.refreshHistory?.[0]?.startTime;
+      details.nextScheduledRefresh = calculateNextScheduledRefresh(details.powerbiSchedule, lastRefreshDs);
     }
 
     return NextResponse.json(details);

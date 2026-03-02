@@ -41,6 +41,7 @@ interface RefreshItem {
   lastRefresh?: string;
   lastRefreshStatus?: 'Completed' | 'Failed' | 'Unknown' | 'InProgress' | 'Success' | null;
   lastRefreshDuration?: string;
+  nextScheduledRefresh?: string | null;
   errorMessage?: string;
 }
 
@@ -158,6 +159,7 @@ function OrdemAtualizacaoContent() {
       if (res.ok) {
         const data = await res.json();
         const firstRefresh = data.refreshHistory?.[0];
+        const nextScheduledRefresh = data.nextScheduledRefresh || null;
         if (firstRefresh) {
           const lastRefreshStatus = firstRefresh.status || null;
           const lastRefresh = firstRefresh.endTime || firstRefresh.startTime || null;
@@ -173,8 +175,10 @@ function OrdemAtualizacaoContent() {
             lastRefreshStatus,
             lastRefresh,
             lastRefreshDuration,
+            nextScheduledRefresh,
           };
         }
+        return { ...item, lastRefreshStatus: null, nextScheduledRefresh };
       }
     } catch (error) {
       console.error(`Erro ao buscar status de ${item.name}:`, error);
@@ -740,12 +744,14 @@ function OrdemAtualizacaoContent() {
   function formatDateTime(dateStr: string | null) {
     if (!dateStr) return '-';
     const date = new Date(dateStr);
+    // Garantir fuso horário do Brasil (Power BI retorna UTC)
     return date.toLocaleString('pt-BR', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      timeZone: 'America/Sao_Paulo'
     });
   }
 
@@ -994,6 +1000,9 @@ function OrdemAtualizacaoContent() {
                           {item.lastRefresh && (
                             <p className="text-[10px] text-gray-400">{formatDateTime(item.lastRefresh)}</p>
                           )}
+                          {item.nextScheduledRefresh && (
+                            <p className="text-[10px] text-blue-500">Próxima: {formatDateTime(item.nextScheduledRefresh)}</p>
+                          )}
                         </div>
                       </div>
                     ) : item.lastRefreshStatus === 'Failed' ? (
@@ -1003,6 +1012,9 @@ function OrdemAtualizacaoContent() {
                           <p className="text-xs font-medium text-red-600">Erro</p>
                           {item.lastRefresh && (
                             <p className="text-[10px] text-gray-400">{formatDateTime(item.lastRefresh)}</p>
+                          )}
+                          {item.nextScheduledRefresh && (
+                            <p className="text-[10px] text-blue-500">Próxima: {formatDateTime(item.nextScheduledRefresh)}</p>
                           )}
                         </div>
                       </div>
@@ -1029,7 +1041,12 @@ function OrdemAtualizacaoContent() {
                     ) : (
                       <div className="flex items-center gap-1.5">
                         <Clock size={16} className="text-gray-300" />
-                        <p className="text-xs text-gray-400">Sem info</p>
+                        <div>
+                          <p className="text-xs text-gray-400">Sem info</p>
+                          {item.nextScheduledRefresh && (
+                            <p className="text-[10px] text-blue-500">Próxima: {formatDateTime(item.nextScheduledRefresh)}</p>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1653,6 +1670,14 @@ function OrdemAtualizacaoContent() {
                               <span className="text-xs text-gray-500">Fuso Horário</span>
                               <p className="text-sm text-gray-900 mt-1">
                                 {itemDetails.powerbiSchedule.localTimeZoneId}
+                              </p>
+                            </div>
+                          )}
+                          {itemDetails.nextScheduledRefresh && (
+                            <div>
+                              <span className="text-xs text-gray-500">Próxima atualização</span>
+                              <p className="text-sm text-blue-600 font-medium mt-1">
+                                {formatDateTime(itemDetails.nextScheduledRefresh)}
                               </p>
                             </div>
                           )}
