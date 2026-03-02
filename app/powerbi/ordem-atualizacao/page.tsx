@@ -48,6 +48,11 @@ function OrdemAtualizacaoContent() {
   const [items, setItems] = useState<RefreshItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [availableItems, setAvailableItems] = useState<RefreshItem[]>([]);
+  const [selectedNewItems, setSelectedNewItems] = useState<Set<string>>(new Set());
+  const [loadingAvailable, setLoadingAvailable] = useState(false);
+  const [refreshingStatusIndex, setRefreshingStatusIndex] = useState<number | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [refreshProgress, setRefreshProgress] = useState({
@@ -143,43 +148,55 @@ function OrdemAtualizacaoContent() {
     }
   }
 
-  async function loadItemsStatus(loadedItems: RefreshItem[]) {
-    const updatedItems = await Promise.all(
-      loadedItems.map(async (item) => {
-        try {
-          const itemId = item.type === 'dataset' ? item.dataset_id : item.dataflow_id;
-          if (!itemId || !item.connection_id) return { ...item, lastRefreshStatus: null };
-          const res = await fetch(
-            `/api/powerbi/item-details?type=${item.type}&id=${itemId}&connection_id=${item.connection_id}`
-          );
-          if (res.ok) {
-            const data = await res.json();
-            const firstRefresh = data.refreshHistory?.[0];
-            if (firstRefresh) {
-              const lastRefreshStatus = firstRefresh.status || null;
-              const lastRefresh = firstRefresh.endTime || firstRefresh.startTime || null;
-              let lastRefreshDuration: string | undefined;
-              if (firstRefresh.startTime && firstRefresh.endTime) {
-                const start = new Date(firstRefresh.startTime).getTime();
-                const end = new Date(firstRefresh.endTime).getTime();
-                const secs = Math.round((end - start) / 1000);
-                lastRefreshDuration = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
-              }
-              return {
-                ...item,
-                lastRefreshStatus,
-                lastRefresh,
-                lastRefreshDuration,
-              };
-            }
+  async function fetchItemStatus(item: RefreshItem): Promise<RefreshItem> {
+    try {
+      const itemId = item.type === 'dataset' ? item.dataset_id : item.dataflow_id;
+      if (!itemId || !item.connection_id) return { ...item, lastRefreshStatus: null };
+      const res = await fetch(
+        `/api/powerbi/item-details?type=${item.type}&id=${itemId}&connection_id=${item.connection_id}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const firstRefresh = data.refreshHistory?.[0];
+        if (firstRefresh) {
+          const lastRefreshStatus = firstRefresh.status || null;
+          const lastRefresh = firstRefresh.endTime || firstRefresh.startTime || null;
+          let lastRefreshDuration: string | undefined;
+          if (firstRefresh.startTime && firstRefresh.endTime) {
+            const start = new Date(firstRefresh.startTime).getTime();
+            const end = new Date(firstRefresh.endTime).getTime();
+            const secs = Math.round((end - start) / 1000);
+            lastRefreshDuration = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
           }
-        } catch (error) {
-          console.error(`Erro ao buscar status de ${item.name}:`, error);
+          return {
+            ...item,
+            lastRefreshStatus,
+            lastRefresh,
+            lastRefreshDuration,
+          };
         }
-        return { ...item, lastRefreshStatus: null };
-      })
-    );
+      }
+    } catch (error) {
+      console.error(`Erro ao buscar status de ${item.name}:`, error);
+    }
+    return { ...item, lastRefreshStatus: null };
+  }
+
+  async function loadItemsStatus(loadedItems: RefreshItem[]) {
+    const updatedItems = await Promise.all(loadedItems.map(fetchItemStatus));
     setItems(updatedItems);
+  }
+
+  async function refreshItemStatus(index: number) {
+    const item = items[index];
+    if (!item) return;
+    setRefreshingStatusIndex(index);
+    try {
+      const updated = await fetchItemStatus(item);
+      setItems(prev => prev.map((it, i) => i === index ? updated : it));
+    } finally {
+      setRefreshingStatusIndex(null);
+    }
   }
 
   async function loadItems() {
@@ -201,6 +218,68 @@ function OrdemAtualizacaoContent() {
       setLoading(false);
       setHasChanges(false);
     }
+  }
+
+  function getItemKey(item: RefreshItem): string {
+    return `${item.type}-${item.dataset_id || item.dataflow_id}-${item.connection_id || ''}`;
+  }
+
+  async function openAddModal() {
+    if (!activeGroup?.id) return;
+    setShowAddModal(true);
+    setAvailableItems([]);
+    setSelectedNewItems(new Set());
+    setLoadingAvailable(true);
+    try {
+      // 1. Sync dataflows do Power BI (silencioso)
+      await fetch(`/api/powerbi/dataflows/sync?group_id=${activeGroup.id}`, { method: 'POST' });
+      // 2. Buscar todos os itens disponíveis
+      const res = await fetch(`/api/powerbi/refresh-order?group_id=${activeGroup.id}&available=true`);
+      if (res.ok) {
+        const data = await res.json();
+        const allItems = (data.items || []).map((item: RefreshItem) => ({
+          ...item,
+          status: 'idle' as const
+        }));
+        setAvailableItems(allItems);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar itens disponíveis:', error);
+      alert('Erro ao carregar itens disponíveis');
+    } finally {
+      setLoadingAvailable(false);
+    }
+  }
+
+  function closeAddModal() {
+    setShowAddModal(false);
+    setAvailableItems([]);
+    setSelectedNewItems(new Set());
+  }
+
+  function toggleSelectedItem(key: string) {
+    setSelectedNewItems(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function addSelectedItems() {
+    const toAdd = availableItems.filter(item => selectedNewItems.has(getItemKey(item)));
+    const currentKeys = new Set(items.map(getItemKey));
+    const newItems = toAdd.filter(item => !currentKeys.has(getItemKey(item)));
+    if (newItems.length > 0) {
+      const nextOrder = items.length + 1;
+      setItems(prev => [...prev, ...newItems.map((item, i) => ({
+        ...item,
+        order: nextOrder + i,
+        status: 'idle' as const
+      }))]);
+      setHasChanges(true);
+    }
+    closeAddModal();
   }
 
   async function loadSchedules() {
@@ -731,6 +810,14 @@ function OrdemAtualizacaoContent() {
 
         <div className="flex items-center gap-3">
           <Button
+            onClick={openAddModal}
+            variant="secondary"
+            icon={<Plus size={18} />}
+          >
+            Adicionar Item
+          </Button>
+
+          <Button
             onClick={refreshAllInOrder}
             disabled={refreshingAll || items.length === 0}
             loading={refreshingAll}
@@ -745,7 +832,7 @@ function OrdemAtualizacaoContent() {
             loading={saving}
             icon={!saving ? <Save size={18} /> : undefined}
           >
-            {saving ? 'Salvando...' : 'Salvar Ordem'}
+            {saving ? 'Salvando...' : 'Salvar'}
           </Button>
         </div>
       </div>
@@ -896,7 +983,6 @@ function OrdemAtualizacaoContent() {
 
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900 truncate">{item.name}</p>
-                    <p className="text-xs text-gray-500 font-mono truncate">{item.dataset_id || item.dataflow_id}</p>
                   </div>
 
                   <div className="flex items-center gap-2 min-w-[180px]">
@@ -980,6 +1066,21 @@ function OrdemAtualizacaoContent() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        refreshItemStatus(index);
+                      }}
+                      disabled={refreshingStatusIndex === index}
+                      className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                      title="Buscar informações de atualização"
+                    >
+                      {refreshingStatusIndex === index ? (
+                        <Loader2 size={18} className="animate-spin" />
+                      ) : (
+                        <RefreshCw size={18} />
+                      )}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
                         refreshItem(index);
                       }}
                       disabled={item.status === 'refreshing'}
@@ -1007,6 +1108,138 @@ function OrdemAtualizacaoContent() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Modal Adicionar Item */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between shrink-0">
+              <h2 className="text-lg font-bold text-gray-900">Adicionar Item</h2>
+              <button
+                onClick={closeAddModal}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {loadingAvailable ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <Loader2 size={40} className="animate-spin text-blue-600 mb-4" />
+                  <p className="text-gray-500">Sincronizando e carregando itens disponíveis...</p>
+                </div>
+              ) : availableItems.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-gray-500">
+                  <Database size={48} className="mb-4 text-gray-300" />
+                  <p className="font-medium">Nenhum item disponível</p>
+                  <p className="text-sm mt-1">Configure conexões e sincronize os fluxos de dados do Power BI.</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Fluxos de Dados */}
+                  {availableItems.some(i => i.type === 'dataflow') && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                        <Database size={16} className="text-purple-500" />
+                        Fluxos de Dados
+                      </h3>
+                      <div className="space-y-2">
+                        {availableItems.filter(i => i.type === 'dataflow').map((item) => {
+                          const key = getItemKey(item);
+                          const alreadyAdded = items.some(ex => getItemKey(ex) === key);
+                          return (
+                            <label
+                              key={key}
+                              className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
+                                alreadyAdded ? 'bg-gray-50 border-gray-200 opacity-75 cursor-not-allowed' : 'hover:bg-gray-50 border-gray-200'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={alreadyAdded || selectedNewItems.has(key)}
+                                disabled={alreadyAdded}
+                                onChange={() => !alreadyAdded && toggleSelectedItem(key)}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-gray-900 truncate">{item.name}</p>
+                              </div>
+                              {alreadyAdded && (
+                                <span className="shrink-0 px-2 py-0.5 text-xs font-medium rounded-full bg-gray-200 text-gray-600">
+                                  Já adicionado
+                                </span>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Modelos Semânticos */}
+                  {availableItems.some(i => i.type === 'dataset') && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                        <BarChart3 size={16} className="text-blue-500" />
+                        Modelos Semânticos
+                      </h3>
+                      <div className="space-y-2">
+                        {availableItems.filter(i => i.type === 'dataset').map((item) => {
+                          const key = getItemKey(item);
+                          const alreadyAdded = items.some(ex => getItemKey(ex) === key);
+                          return (
+                            <label
+                              key={key}
+                              className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
+                                alreadyAdded ? 'bg-gray-50 border-gray-200 opacity-75 cursor-not-allowed' : 'hover:bg-gray-50 border-gray-200'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={alreadyAdded || selectedNewItems.has(key)}
+                                disabled={alreadyAdded}
+                                onChange={() => !alreadyAdded && toggleSelectedItem(key)}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-gray-900 truncate">{item.name}</p>
+                              </div>
+                              {alreadyAdded && (
+                                <span className="shrink-0 px-2 py-0.5 text-xs font-medium rounded-full bg-gray-200 text-gray-600">
+                                  Já adicionado
+                                </span>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {!loadingAvailable && availableItems.length > 0 && (
+              <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 shrink-0">
+                <button
+                  onClick={closeAddModal}
+                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Cancelar
+                </button>
+                <Button
+                  onClick={addSelectedItems}
+                  disabled={selectedNewItems.size === 0}
+                  icon={<Plus size={16} />}
+                >
+                  Adicionar Selecionados ({selectedNewItems.size})
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1376,14 +1609,6 @@ function OrdemAtualizacaoContent() {
                   <h2 className="text-xl font-bold text-gray-900">{itemDetails.name || selectedItem?.name}</h2>
                   <p className="text-sm text-gray-500 mt-1">
                     {itemDetails.connectionName} • {itemDetails.type === 'dataflow' ? 'Dataflow' : 'Dataset'}
-                  </p>
-                </div>
-
-                {/* ID */}
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500 mb-1">ID</p>
-                  <p className="text-sm font-mono text-gray-700 break-all">
-                    {selectedItem?.type === 'dataflow' ? selectedItem?.dataflow_id : selectedItem?.dataset_id}
                   </p>
                 </div>
 

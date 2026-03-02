@@ -41,6 +41,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const groupId = searchParams.get('group_id');
+    const availableOnly = searchParams.get('available') === 'true';
 
     if (!groupId) {
       return NextResponse.json({ error: 'group_id é obrigatório' }, { status: 400 });
@@ -54,25 +55,27 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Sem permissão para acessar este grupo' }, { status: 403 });
     }
 
-    // Buscar ordem configurada
-    const { data: refreshOrder, error: orderError } = await supabase
-      .from('powerbi_refresh_order')
-      .select('*')
-      .eq('company_group_id', groupId)
-      .single();
+    // Se available=true, sempre buscar lista completa (para modal "Adicionar Item")
+    if (!availableOnly) {
+      const { data: refreshOrder, error: orderError } = await supabase
+        .from('powerbi_refresh_order')
+        .select('*')
+        .eq('company_group_id', groupId)
+        .single();
 
-    if (orderError && orderError.code !== 'PGRST116') {
-      throw orderError;
+      if (orderError && orderError.code !== 'PGRST116') {
+        throw orderError;
+      }
+
+      // Se houver ordem configurada, retornar
+      if (refreshOrder && refreshOrder.items && refreshOrder.items.length > 0) {
+        return NextResponse.json({
+          items: refreshOrder.items
+        });
+      }
     }
 
-    // Se houver ordem configurada, retornar
-    if (refreshOrder && refreshOrder.items && refreshOrder.items.length > 0) {
-      return NextResponse.json({
-        items: refreshOrder.items
-      });
-    }
-
-    // Se não houver ordem configurada, buscar dataflows e datasets do grupo
+    // Buscar dataflows e datasets do grupo (lista completa)
     
     // 1. Buscar conexões do grupo
     const { data: connections, error: connError } = await supabase
