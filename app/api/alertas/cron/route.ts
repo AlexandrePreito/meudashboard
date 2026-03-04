@@ -140,6 +140,16 @@ const CONDITIONS_MAP: Record<string, string> = {
   'less_or_equal': 'Menor ou igual',
 };
 
+const RESERVED_VARIABLES = new Set([
+  '{{nome_alerta}}',
+  '{{valor}}',
+  '{{data}}',
+  '{{hora}}',
+  '{{condicao}}',
+  '{{threshold}}',
+  '{{periodo}}',
+]);
+
 // Função para executar DAX
 async function executeDaxQuery(connectionId: string, datasetId: string, query: string, supabase: any) {
   try {
@@ -359,8 +369,16 @@ export async function GET(request: Request) {
             } else {
               formattedValue = String(value || '');
             }
-            variables[`{{${cleanKey}}}`] = formattedValue;
-            variables[`{{${key}}}`] = formattedValue;
+            const cleanPlaceholder = `{{${cleanKey}}}`;
+            const rawPlaceholder = `{{${key}}}`;
+
+            // Não sobrescrever placeholders-base (ex: {{valor}} com o texto formatado completo)
+            if (!RESERVED_VARIABLES.has(cleanPlaceholder)) {
+              variables[cleanPlaceholder] = formattedValue;
+            }
+            if (!RESERVED_VARIABLES.has(rawPlaceholder)) {
+              variables[rawPlaceholder] = formattedValue;
+            }
           }
         }
       }

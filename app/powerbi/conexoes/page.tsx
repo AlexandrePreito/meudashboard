@@ -21,7 +21,8 @@ import {
   Copy,
   Search,
   Database,
-  Share2
+  Share2,
+  BookOpen
 } from 'lucide-react';
 
 interface Connection {
@@ -316,9 +317,18 @@ function ConexoesContent() {
             <h1 className="text-2xl font-bold text-gray-900">Conexões Power BI</h1>
             <p className="text-gray-500">Gerencie as conexões com workspaces do Power BI</p>
           </div>
-          <Button onClick={() => openModal()} icon={<Plus size={20} />}>
-            Nova Conexão
-          </Button>
+          <div className="flex items-center gap-2">
+            <a
+              href="/powerbi/tutorial-conexao"
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <BookOpen size={16} />
+              Como conectar?
+            </a>
+            <Button onClick={() => openModal()} icon={<Plus size={20} />}>
+              Nova Conexão
+            </Button>
+          </div>
         </div>
 
         {/* Campo de Busca */}

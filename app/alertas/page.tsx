@@ -403,8 +403,8 @@ function AlertasContent() {
           </div>
         ) : (
           <>
-            <div className="overflow-hidden">
-              <table className="w-full table-modern">
+            <div className="overflow-hidden bg-white rounded-xl">
+              <table className="w-full table-modern bg-white">
                 <thead>
                   <tr>
                     <th>Status</th>
