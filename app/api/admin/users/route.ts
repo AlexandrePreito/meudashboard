@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
 
-// GET - Listar todos os usuarios
+// GET - Listar usuarios (master: todos, developer: dos seus grupos, admin: dos grupos onde é membro)
 export async function GET() {
   try {
     const user = await getAuthUser();
@@ -10,14 +10,55 @@ export async function GET() {
       return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
     }
 
+    const supabase = createAdminClient();
+    const developerId = await getUserDeveloperId(user.id);
+    const isDeveloper = !!developerId;
+    const isAdmin = !user.is_master && !isDeveloper;
+
+    // Determinar quais user IDs o usuário pode ver (null = todos para master)
+    let allowedUserIds: string[] | null = null;
+
     if (!user.is_master) {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+      if (isDeveloper) {
+        // Developer: buscar grupos do developer, depois usuários desses grupos
+        const { data: devGroups } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('developer_id', developerId);
+
+        const groupIds = (devGroups || []).map((g: { id: string }) => g.id);
+        if (groupIds.length > 0) {
+          const { data: groupUsers } = await supabase
+            .from('user_group_membership')
+            .select('user_id')
+            .in('company_group_id', groupIds);
+          allowedUserIds = [...new Set((groupUsers || []).map((gu: { user_id: string }) => gu.user_id))];
+        } else {
+          allowedUserIds = [];
+        }
+      } else {
+        // Admin: buscar grupos onde é membro, depois usuários desses grupos
+        const { data: adminMemberships } = await supabase
+          .from('user_group_membership')
+          .select('company_group_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+
+        const groupIds = (adminMemberships || []).map((m: { company_group_id: string }) => m.company_group_id);
+        if (groupIds.length > 0) {
+          const { data: groupUsers } = await supabase
+            .from('user_group_membership')
+            .select('user_id')
+            .in('company_group_id', groupIds);
+          allowedUserIds = [...new Set((groupUsers || []).map((gu: { user_id: string }) => gu.user_id))];
+        } else {
+          allowedUserIds = [];
+        }
+      }
     }
 
-    const supabase = createAdminClient();
-
     // Buscar usuarios
-    const { data: users, error } = await supabase
+    let usersQuery = supabase
       .from('users')
       .select(`
         id,
@@ -30,18 +71,28 @@ export async function GET() {
       `)
       .order('full_name');
 
+    if (allowedUserIds !== null) {
+      if (allowedUserIds.length === 0) {
+        return NextResponse.json({ users: [] });
+      }
+      usersQuery = usersQuery.in('id', allowedUserIds);
+    }
+
+    const { data: users, error } = await usersQuery;
+
     if (error) throw error;
 
-    // Buscar grupos de cada usuario
+    // Buscar grupos de cada usuario (user_group_membership)
     const usersWithGroups = [];
     for (const usr of users || []) {
-      const { data: userGroups } = await supabase
-        .from('user_groups')
+      const { data: userMemberships } = await supabase
+        .from('user_group_membership')
         .select('company_group_id')
-        .eq('user_id', usr.id);
+        .eq('user_id', usr.id)
+        .eq('is_active', true);
 
-      const groupIds = (userGroups || []).map(ug => ug.company_group_id);
-      
+      const groupIds = (userMemberships || []).map((m: { company_group_id: string }) => m.company_group_id);
+
       let groups: { id: string; name: string }[] = [];
       if (groupIds.length > 0) {
         const { data: groupsData } = await supabase

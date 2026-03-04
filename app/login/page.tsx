@@ -141,11 +141,11 @@ export default function LoginPage() {
             background: `linear-gradient(135deg, #f0f4f8 0%, rgba(${rgb}, 0.08) 25%, #ffffff 50%, rgba(${rgb}, 0.06) 75%, #f8fafc 100%)`,
           }}
         >
-          {/* Mesh gradient decorativo */}
-          <div className="absolute -top-32 -right-32 w-[500px] h-[500px] rounded-full blur-[100px] opacity-30" style={{ backgroundColor: color }} />
-          <div className="absolute -bottom-40 -left-40 w-[600px] h-[600px] rounded-full blur-[120px] opacity-20" style={{ backgroundColor: color }} />
-          <div className="absolute top-1/4 left-1/3 w-80 h-80 rounded-full blur-[80px] opacity-10" style={{ background: `linear-gradient(135deg, ${color}, #8b5cf6)` }} />
-          <div className="absolute bottom-1/3 right-1/4 w-64 h-64 rounded-full blur-[90px] opacity-15" style={{ background: `linear-gradient(45deg, #06b6d4, ${color})` }} />
+          {/* Luzes em movimento - mesh gradient animado */}
+          <div className="absolute -top-32 -right-32 w-[500px] h-[500px] rounded-full blur-[100px] opacity-30" style={{ backgroundColor: color, animation: 'bgLightFloat1 18s ease-in-out infinite' }} />
+          <div className="absolute -bottom-40 -left-40 w-[600px] h-[600px] rounded-full blur-[120px] opacity-20" style={{ backgroundColor: color, animation: 'bgLightFloat2 22s ease-in-out 2s infinite' }} />
+          <div className="absolute top-1/4 left-1/3 w-80 h-80 rounded-full blur-[80px] opacity-10" style={{ background: `linear-gradient(135deg, ${color}, #8b5cf6)`, animation: 'bgLightFloat3 20s ease-in-out 1s infinite' }} />
+          <div className="absolute bottom-1/3 right-1/4 w-64 h-64 rounded-full blur-[90px] opacity-15" style={{ background: `linear-gradient(45deg, #06b6d4, ${color})`, animation: 'bgLightFloat4 16s ease-in-out 3s infinite' }} />
           <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle, #000 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
 
           <div className="relative z-10 bg-white/90 backdrop-blur-md rounded-3xl shadow-2xl shadow-black/10 p-10 max-w-md w-full text-center border border-white/80">

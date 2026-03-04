@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Trash2, Upload, MessageSquare, Database, Download, Loader2 } from 'lucide-react';
+import { X, Trash2, Upload, MessageSquare, Database, Download, Loader2, BookOpen } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import FeatureGate from '@/components/ui/FeatureGate';
 import PermissionGuard from '@/components/assistente-ia/PermissionGuard';
@@ -40,7 +40,6 @@ function ContextosContent() {
   const [loadingContexts, setLoadingContexts] = useState(false);
   const [resolvedGroupId, setResolvedGroupId] = useState<string>('');
   
-  const [showHelp, setShowHelp] = useState(false);
   const [showChatModal, setShowChatModal] = useState(false);
   const [showDaxModal, setShowDaxModal] = useState(false);
   
@@ -371,21 +370,25 @@ function ContextosContent() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => handleDownload('prompt-documentacao-chat.md')}
-                className="p-2 text-[#686d76] hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors"
                 title="Baixar prompt de Documentação Chat"
               >
                 <Download size={20} />
               </button>
               <button
                 onClick={() => handleDownload('prompt-extrair-dax.md')}
-                className="p-2 text-[#686d76] hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors"
                 title="Baixar prompt de Extrair DAX"
               >
                 <Download size={20} />
               </button>
-              <Button onClick={() => setShowHelp(true)} variant="secondary">
-                Como usar
-              </Button>
+              <a
+                href="/assistente-ia/tutorial-contextos"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <BookOpen size={16} />
+                Como configurar?
+              </a>
             </div>
           </div>
 
@@ -549,46 +552,6 @@ function ContextosContent() {
             </div>
           )}
       </div>
-
-      {/* Modal de Ajuda */}
-        {showHelp && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl p-6 max-w-2xl w-full shadow-xl border border-gray-100">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-semibold text-gray-900">Como Configurar</h3>
-                <button onClick={() => setShowHelp(false)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-                  <X size={20} className="text-gray-500" />
-                </button>
-              </div>
-              
-              <div className="space-y-4">
-                <div className="p-5 bg-blue-50 rounded-lg border border-blue-200">
-                  <h4 className="font-semibold text-gray-900 mb-3">Documentação para Chat</h4>
-                  <ol className="text-sm text-gray-700 space-y-2 list-decimal list-inside ml-2">
-                    <li>Baixe o prompt &quot;Documentação Chat&quot;</li>
-                    <li>Execute no Claude + MCP Power BI</li>
-                    <li>Importe o arquivo .md gerado nesta tela</li>
-                  </ol>
-                  <p className="text-xs text-gray-600 mt-3 font-medium">Usada pela IA para responder perguntas dos usuários</p>
-                </div>
-                
-                <div className="p-5 bg-purple-50 rounded-lg border border-purple-200">
-                  <h4 className="font-semibold text-gray-900 mb-3">Base de DAX</h4>
-                  <ol className="text-sm text-gray-700 space-y-2 list-decimal list-inside ml-2">
-                    <li>Baixe o prompt &quot;Extrair DAX&quot;</li>
-                    <li>Execute no Claude + MCP Power BI</li>
-                    <li>Importe o arquivo .json gerado nesta tela</li>
-                  </ol>
-                  <p className="text-xs text-gray-600 mt-3 font-medium">Base completa para tela de Treinamento</p>
-                </div>
-              </div>
-              
-              <Button onClick={() => setShowHelp(false)} className="w-full mt-6">
-                Entendi
-              </Button>
-            </div>
-          </div>
-        )}
 
         {/* Modal Chat */}
         {showChatModal && (

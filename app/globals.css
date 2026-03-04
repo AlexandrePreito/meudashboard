@@ -205,3 +205,30 @@ body {
   animation: spinnerFadeIn 0.4s ease-out 0.2s forwards;
   opacity: 0;
 }
+
+/* Luzes em movimento - fundo login subdomínio */
+@keyframes bgLightFloat1 {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(40px, -30px); }
+  50% { transform: translate(-30px, 25px); }
+  75% { transform: translate(25px, 35px); }
+}
+
+@keyframes bgLightFloat2 {
+  0%, 100% { transform: translate(0, 0); }
+  33% { transform: translate(-50px, -20px); }
+  66% { transform: translate(45px, 15px); }
+}
+
+@keyframes bgLightFloat3 {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-35px, 40px); }
+  50% { transform: translate(30px, -25px); }
+  75% { transform: translate(-20px, -35px); }
+}
+
+@keyframes bgLightFloat4 {
+  0%, 100% { transform: translate(0, 0); }
+  33% { transform: translate(55px, 30px); }
+  66% { transform: translate(-40px, -20px); }
+}
