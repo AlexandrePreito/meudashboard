@@ -103,14 +103,14 @@ export async function POST(request: NextRequest) {
 
     const supabase = createAdminClient();
 
-    // Validar limite de grupos
+    // Validar limite de grupos (buscar por developer_id para garantir consistência)
     const { data: developer } = await supabase
       .from('developers')
       .select('max_companies')
-      .eq('user_id', user.id)
+      .eq('id', developerId)
       .single();
 
-    const groupLimit = developer?.max_companies || 5;
+    const groupLimit = developer?.max_companies ?? 5;
 
     // Contar grupos ativos deste developer
     const { count: groupsCount } = await supabase
