@@ -394,6 +394,18 @@ export async function POST(request: Request) {
         .eq('id', sessionResult.session.context_id)
         .maybeSingle();
       aiContext = ctx;
+      // DEBUG - remover depois
+      console.log('[Webhook] DEBUG aiContext via context_id:', {
+        found: !!ctx,
+        context_id: sessionResult.session.context_id,
+        has_section_base: !!ctx?.section_base,
+        has_section_medidas: !!ctx?.section_medidas,
+        section_base_type: typeof ctx?.section_base,
+        section_medidas_type: typeof ctx?.section_medidas,
+        section_medidas_length: ctx?.section_medidas?.length,
+        section_queries_length: ctx?.section_queries?.length,
+        section_exemplos_length: ctx?.section_exemplos?.length,
+      });
     } else {
       const { data: ctx } = await supabase
         .from('ai_model_contexts')
@@ -403,6 +415,16 @@ export async function POST(request: Request) {
         .eq('is_active', true)
         .maybeSingle();
       aiContext = ctx;
+      // DEBUG - remover depois
+      console.log('[Webhook] DEBUG aiContext via dataset_id:', {
+        found: !!ctx,
+        has_section_base: !!ctx?.section_base,
+        has_section_medidas: !!ctx?.section_medidas,
+        section_base_type: typeof ctx?.section_base,
+        section_medidas_type: typeof ctx?.section_medidas,
+        section_medidas_length: ctx?.section_medidas?.length,
+        section_queries_length: ctx?.section_queries?.length,
+      });
       if (!aiContext && developerId) {
         aiContext = await resolveAIContextForGroup(
           authorizedNumber.company_group_id,
