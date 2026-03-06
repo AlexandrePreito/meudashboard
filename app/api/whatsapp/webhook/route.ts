@@ -612,7 +612,7 @@ export async function POST(request: Request) {
       .eq('company_group_id', authorizedNumber.company_group_id)
       .eq('archived', false)
       .order('created_at', { ascending: false })
-      .limit(10);
+      .limit(6);
 
     // ========== BUSCAR QUERIES SIMILARES E EXEMPLOS DE TREINAMENTO ==========
     const queryContext = await getQueryContext(
@@ -721,7 +721,7 @@ Use a ferramenta execute_dax para consultar dados. Leia o contexto acima para no
         
         conversationHistory.push({
           role: msg.direction === 'incoming' ? 'user' : 'assistant',
-          content: msg.message_content.slice(0, 800)
+          content: msg.message_content.slice(0, 400)
         });
       }
     }
@@ -739,7 +739,7 @@ Use a ferramenta execute_dax para consultar dados. Leia o contexto acima para no
     try {
       response = await callClaude({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 2048,
+        max_tokens: 1024,
         system: systemPrompt,
         messages: conversationHistory,
         tools
@@ -868,7 +868,7 @@ Use a ferramenta execute_dax para consultar dados. Leia o contexto acima para no
       try {
         response = await callClaude({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 2048,
+          max_tokens: 1024,
           system: systemPrompt,
           messages,
           tools
