@@ -29,7 +29,8 @@ export async function GET(
         max_ai_credits_per_day, max_daily_refreshes,
         subdomain, subdomain_enabled, subdomain_approved, subdomain_allowed,
         landing_title, landing_description,
-        allow_powerbi_connections, allow_whatsapp_instances
+        allow_powerbi_connections, allow_whatsapp_instances,
+        allow_shared_tenant
       `)
       .eq('id', id)
       .single();

@@ -220,39 +220,94 @@ export async function POST(request: Request) {
     const body = await request.json();
     const supabase = createAdminClient();
 
-    // Action: link_groups (apenas Master)
+    // Action: link_groups (Master ou Developer)
     if (body.action === 'link_groups') {
-      if (!user.is_master) {
-        return NextResponse.json({ error: 'Apenas Master pode vincular grupos' }, { status: 403 });
-      }
-
       const { instance_id, group_ids } = body;
 
       if (!instance_id || !Array.isArray(group_ids)) {
         return NextResponse.json({ error: 'instance_id e group_ids são obrigatórios' }, { status: 400 });
       }
 
-      // Remover vínculos antigos
-      await supabase
-        .from('whatsapp_instance_groups')
-        .delete()
-        .eq('instance_id', instance_id);
+      if (user.is_master) {
+        // scope_group_ids define quais grupos o master está gerenciando neste modal
+        // (apenas os do developer da instância), preservando vínculos de outros developers
+        const scopeIds: string[] = body.scope_group_ids || [];
 
-      // Criar novos vínculos
-      if (group_ids.length > 0) {
-        const inserts = group_ids.map(gid => ({
-          instance_id,
-          company_group_id: gid,
-          created_by: user.id
-        }));
+        if (scopeIds.length > 0) {
+          // Remover apenas os vínculos dentro do escopo (grupos deste developer)
+          await supabase
+            .from('whatsapp_instance_groups')
+            .delete()
+            .eq('instance_id', instance_id)
+            .in('company_group_id', scopeIds);
+        } else {
+          // Fallback: remover todos (comportamento antigo)
+          await supabase
+            .from('whatsapp_instance_groups')
+            .delete()
+            .eq('instance_id', instance_id);
+        }
 
-        const { error } = await supabase
+        if (group_ids.length > 0) {
+          const inserts = group_ids.map(gid => ({
+            instance_id,
+            company_group_id: gid,
+            created_by: user.id
+          }));
+
+          const { error } = await supabase
+            .from('whatsapp_instance_groups')
+            .insert(inserts);
+
+          if (error) {
+            console.error('Erro ao vincular grupos:', error);
+            return NextResponse.json({ error: error.message }, { status: 500 });
+          }
+        }
+      } else {
+        // Developer: só pode vincular/desvincular seus próprios grupos
+        const developerId = await getUserDeveloperId(user.id);
+        if (!developerId) {
+          return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+        }
+
+        const { data: devGroups } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('developer_id', developerId)
+          .eq('status', 'active');
+
+        const devGroupIds = devGroups?.map(g => g.id) || [];
+
+        // Validar que todos os group_ids pertencem ao developer
+        const invalidGroups = group_ids.filter(gid => !devGroupIds.includes(gid));
+        if (invalidGroups.length > 0) {
+          return NextResponse.json({ error: 'Alguns grupos não pertencem a você' }, { status: 403 });
+        }
+
+        // Remover apenas vínculos dos grupos do developer (preservar de outros)
+        await supabase
           .from('whatsapp_instance_groups')
-          .insert(inserts);
+          .delete()
+          .eq('instance_id', instance_id)
+          .in('company_group_id', devGroupIds);
 
-        if (error) {
-          console.error('Erro ao vincular grupos:', error);
-          return NextResponse.json({ error: error.message }, { status: 500 });
+        // Criar novos vínculos com os grupos selecionados
+        if (group_ids.length > 0) {
+          const inserts = group_ids.map(gid => ({
+            instance_id,
+            company_group_id: gid,
+            created_by: user.id
+          }));
+
+          const { error } = await supabase
+            .from('whatsapp_instance_groups')
+            .insert(inserts);
+
+          if (error) {
+            console.error('Erro ao vincular grupos:', error);
+            return NextResponse.json({ error: error.message }, { status: 500 });
+          }
         }
       }
 

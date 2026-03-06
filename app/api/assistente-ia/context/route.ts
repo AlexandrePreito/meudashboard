@@ -126,13 +126,15 @@ export async function POST(request: NextRequest) {
     const groupId = await resolveGroupId(supabase, requestedGroupId, membership);
 
     // Verificar se já existe contexto deste tipo para este dataset
-    const { data: existing } = await supabase
+    const { data: existingRows } = await supabase
       .from('ai_model_contexts')
       .select('id')
       .eq('company_group_id', groupId)
       .eq('dataset_id', datasetId)
       .eq('context_type', contextType)
-      .single();
+      .limit(1);
+
+    const existing = existingRows?.[0] || null;
 
     let contextData: any = {
       company_group_id: groupId,
@@ -200,6 +202,7 @@ export async function POST(request: NextRequest) {
 
     let result;
     if (existing) {
+      console.log('[context POST] Atualizando contexto existente:', existing.id);
       const { data, error } = await supabase
         .from('ai_model_contexts')
         .update(contextData)
@@ -207,9 +210,13 @@ export async function POST(request: NextRequest) {
         .select()
         .single();
       
-      if (error) throw error;
+      if (error) {
+        console.error('[context POST] Erro ao atualizar:', error);
+        return NextResponse.json({ error: error.message, details: error.details, hint: error.hint }, { status: 500 });
+      }
       result = data;
     } else {
+      console.log('[context POST] Inserindo novo contexto para dataset:', datasetId, 'tipo:', contextType, 'grupo:', groupId);
       const { data, error } = await supabase
         .from('ai_model_contexts')
         .insert({
@@ -221,7 +228,10 @@ export async function POST(request: NextRequest) {
         .select()
         .single();
       
-      if (error) throw error;
+      if (error) {
+        console.error('[context POST] Erro ao inserir:', error);
+        return NextResponse.json({ error: error.message, details: error.details, hint: error.hint }, { status: 500 });
+      }
       result = data;
     }
 
@@ -231,7 +241,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('Erro ao salvar contexto:', error);
+    console.error('[context POST] Erro geral:', error);
     return NextResponse.json({ error: error.message || 'Erro interno' }, { status: 500 });
   }
 }

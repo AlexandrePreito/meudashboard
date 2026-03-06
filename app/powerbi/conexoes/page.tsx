@@ -201,7 +201,6 @@ function ConexoesContent() {
 
   function handleCopy(connection: Connection) {
     setEditingConnection(null);
-    const isShared = connection.developer_id && !connection.company_group_id;
     setForm({
       name: `${connection.name} (Cópia)`,
       tenant_id: connection.tenant_id,
@@ -209,7 +208,7 @@ function ConexoesContent() {
       client_secret: '',
       workspace_id: connection.workspace_id,
       show_page_navigation: connection.show_page_navigation,
-      company_group_id: isShared ? 'shared' : (connection.company_group?.id || connection.company_group_id || '')
+      company_group_id: '' // Deixar vazio para o dev escolher o grupo destino
     });
     setShowModal(true);
   }

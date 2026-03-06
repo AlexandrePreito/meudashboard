@@ -35,6 +35,16 @@ export async function GET(request: NextRequest) {
         document,
         email,
         phone,
+        responsible_name,
+        responsible_email,
+        responsible_phone,
+        address_street,
+        address_number,
+        address_complement,
+        address_neighborhood,
+        address_city,
+        address_state,
+        address_zip,
         quota_whatsapp_per_day,
         quota_ai_credits_per_day,
         quota_alert_executions_per_day,
@@ -129,21 +139,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const {
-      name,
-      slug,
-      logo_url,
-      primary_color,
-      secondary_color,
-      use_developer_logo,
-      use_developer_colors,
-      quota_users,
-      quota_screens,
-      quota_alerts,
-      quota_whatsapp_per_day,
-      quota_ai_credits_per_day,
-      quota_alert_executions_per_day,
-    } = body;
+    const { name, slug } = body;
 
     if (!name || !slug) {
       return NextResponse.json(
@@ -166,25 +162,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const insertData: Record<string, unknown> = {
+      name,
+      slug: slug.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+      developer_id: developerId,
+      status: 'active',
+      use_developer_logo: body.use_developer_logo ?? true,
+      use_developer_colors: body.use_developer_colors ?? true,
+    };
+
+    const optionalFields = [
+      'document', 'email', 'phone',
+      'logo_url', 'primary_color', 'secondary_color',
+      'responsible_name', 'responsible_email', 'responsible_phone',
+      'address_street', 'address_number', 'address_complement',
+      'address_neighborhood', 'address_city', 'address_state', 'address_zip',
+      'quota_users', 'quota_screens', 'quota_alerts',
+      'quota_whatsapp_per_day', 'quota_ai_credits_per_day', 'quota_alert_executions_per_day',
+    ];
+
+    for (const field of optionalFields) {
+      if (body[field] !== undefined) insertData[field] = body[field];
+    }
+
     const { data: group, error } = await supabase
       .from('company_groups')
-      .insert({
-        name,
-        slug: slug.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
-        developer_id: developerId,
-        logo_url,
-        primary_color,
-        secondary_color,
-        use_developer_logo: use_developer_logo ?? true,
-        use_developer_colors: use_developer_colors ?? true,
-        quota_users,
-        quota_screens,
-        quota_alerts,
-        quota_whatsapp_per_day,
-        quota_ai_credits_per_day,
-        quota_alert_executions_per_day,
-        status: 'active',
-      })
+      .insert(insertData)
       .select()
       .single();
 

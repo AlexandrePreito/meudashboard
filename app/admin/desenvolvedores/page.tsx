@@ -1231,6 +1231,37 @@ export default function AdminDesenvolvedoresPage() {
                       }`} />
                     </button>
                   </div>
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Permitir Tenant ID compartilhado</p>
+                      <p className="text-xs text-gray-500">Permite usar um Tenant ID já utilizado por outro developer</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const newValue = !(editingLimitsDeveloper!.allow_shared_tenant ?? false);
+                        try {
+                          const res = await fetch(`/api/admin/developers/${editingLimitsDeveloper!.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ allow_shared_tenant: newValue })
+                          });
+                          if (res.ok) {
+                            setEditingLimitsDeveloper(prev => prev ? { ...prev, allow_shared_tenant: newValue } : null);
+                            showToast(newValue ? 'Tenant ID compartilhado habilitado' : 'Tenant ID compartilhado desabilitado', 'success');
+                            loadData();
+                          } else showToast((await res.json()).error || 'Erro', 'error');
+                        } catch { showToast('Erro ao atualizar', 'error'); }
+                      }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        (editingLimitsDeveloper!.allow_shared_tenant ?? false) ? 'bg-blue-600' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${
+                        (editingLimitsDeveloper!.allow_shared_tenant ?? false) ? 'translate-x-6' : 'translate-x-1'
+                      }`} />
+                    </button>
+                  </div>
                 </div>
               </div>
 

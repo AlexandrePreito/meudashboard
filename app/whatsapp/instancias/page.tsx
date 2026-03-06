@@ -120,6 +120,7 @@ function InstanciasContent() {
       } else if (data.user.is_developer) {
         setUserRole('developer');
         await loadDeveloperGroups();
+        await loadDeveloperGroupsFull();
       } else if (data.user.role === 'admin') {
         setUserRole('admin');
         setUserGroupIds(data.groupIds || []);
@@ -157,6 +158,18 @@ function InstanciasContent() {
       }
     } catch (err) {
       console.error('Erro ao carregar grupos do desenvolvedor:', err);
+    }
+  }
+
+  async function loadDeveloperGroupsFull() {
+    try {
+      const res = await fetch('/api/dev/groups');
+      if (res.ok) {
+        const data = await res.json();
+        setAllGroups((data.groups || []).map((g: any) => ({ id: g.id, name: g.name })));
+      }
+    } catch (err) {
+      console.error('Erro ao carregar grupos completos do developer:', err);
     }
   }
 
@@ -248,10 +261,48 @@ function InstanciasContent() {
     setShowModal(true);
   }
 
-  function openLinkGroupsModal(instance: Instance) {
+  async function openLinkGroupsModal(instance: Instance) {
     setSelectedInstance(instance);
-    setSelectedGroupIds(instance.groups?.map((g: any) => g.company_group?.id).filter(Boolean) || []);
     setLinkGroupsModal(true);
+
+    // Carregar grupos disponíveis para vincular
+    let availableGroups: any[] = [];
+
+    if (userRole === 'master') {
+      // Master: carregar todos os grupos
+      try {
+        const res = await fetch('/api/company-groups');
+        if (res.ok) {
+          const data = await res.json();
+          availableGroups = (data.groups || []).map((g: any) => ({ id: g.id, name: g.name }));
+        }
+      } catch (err) {
+        console.error('Erro ao carregar grupos:', err);
+      }
+    } else {
+      // Developer: usar os grupos já carregados (allGroups vem de loadDeveloperGroupsFull)
+      // Se allGroups está vazio, recarregar
+      if (allGroups.length === 0) {
+        try {
+          const res = await fetch('/api/dev/groups');
+          if (res.ok) {
+            const data = await res.json();
+            availableGroups = (data.groups || []).map((g: any) => ({ id: g.id, name: g.name }));
+          }
+        } catch (err) {
+          console.error('Erro ao carregar grupos do dev:', err);
+        }
+      } else {
+        availableGroups = allGroups;
+      }
+    }
+
+    setAllGroups(availableGroups);
+
+    // Marcar os grupos já vinculados (filtrado pelo escopo do usuário)
+    const availableIds = new Set(availableGroups.map((g: any) => g.id));
+    const currentLinked = instance.groups?.map((g: any) => g.company_group?.id).filter(Boolean) || [];
+    setSelectedGroupIds(currentLinked.filter((id: string) => availableIds.has(id)));
   }
 
   async function handleLinkGroups() {
@@ -259,13 +310,18 @@ function InstanciasContent() {
     
     setSaving(true);
     try {
+      // Enviar os IDs dos grupos disponíveis no modal para que a API
+      // saiba quais vínculos gerenciar (sem afetar grupos de outros developers)
+      const scopeGroupIds = allGroups.map((g: any) => g.id);
+
       const res = await fetch('/api/whatsapp/instances', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'link_groups',
           instance_id: selectedInstance.id,
-          group_ids: selectedGroupIds
+          group_ids: selectedGroupIds,
+          scope_group_ids: scopeGroupIds
         })
       });
       
@@ -538,23 +594,30 @@ function InstanciasContent() {
                     <span className="text-gray-600">{formatDate(instance.last_connected_at)}</span>
                   </div>
                   
-                  {/* Grupos Vinculados - Apenas Master */}
-                  {userRole === 'master' && (
+                  {/* Grupos Vinculados */}
+                  {(userRole === 'master' || userRole === 'developer') && (
                     <div className="pt-2 border-t border-gray-100">
                       <span className="text-xs text-gray-500 block mb-1">Grupos:</span>
                       <div className="flex flex-wrap gap-1">
-                        {instance.groups && instance.groups.length > 0 ? (
-                          instance.groups.map((g: any) => (
-                            <span 
-                              key={g.company_group?.id} 
-                              className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full"
-                            >
-                              {g.company_group?.name}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-gray-400 text-xs">Nenhum</span>
-                        )}
+                        {(() => {
+                          // Master vê todos, dev/admin vê só os seus
+                          const visibleGroups = userRole === 'master'
+                            ? (instance.groups || [])
+                            : (instance.groups || []).filter((g: any) => userGroupIds.includes(g.company_group?.id));
+                          
+                          return visibleGroups.length > 0 ? (
+                            visibleGroups.map((g: any) => (
+                              <span
+                                key={g.company_group?.id}
+                                className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full"
+                              >
+                                {g.company_group?.name}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-gray-400 text-xs">Nenhum</span>
+                          );
+                        })()}
                       </div>
                     </div>
                   )}
@@ -589,8 +652,8 @@ function InstanciasContent() {
                         <Power size={16} />
                       </button>
                     )}
-                    {/* Botão Vincular Grupos - Apenas Master */}
-                    {userRole === 'master' && (
+                    {/* Botão Vincular Grupos */}
+                    {(userRole === 'master' || userRole === 'developer') && (
                       <button
                         onClick={() => openLinkGroupsModal(instance)}
                         className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
@@ -728,8 +791,8 @@ function InstanciasContent() {
           </div>
         )}
 
-        {/* Modal Vincular Grupos - Apenas Master */}
-        {linkGroupsModal && userRole === 'master' && (
+        {/* Modal Vincular Grupos */}
+        {linkGroupsModal && (userRole === 'master' || userRole === 'developer') && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl w-full max-w-md">
               <div className="flex items-center justify-between p-4 border-b border-gray-200">

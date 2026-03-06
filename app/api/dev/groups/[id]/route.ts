@@ -126,36 +126,26 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const {
-      name,
-      logo_url,
-      primary_color,
-      secondary_color,
-      use_developer_logo,
-      use_developer_colors,
-      status,
-      quota_users,
-      quota_screens,
-      quota_alerts,
-      quota_whatsapp_per_day,
-      quota_ai_credits_per_day,
-      quota_alert_executions_per_day,
-    } = body;
 
     const updateData: any = {};
-    if (name !== undefined) updateData.name = name;
-    if (logo_url !== undefined) updateData.logo_url = logo_url;
-    if (primary_color !== undefined) updateData.primary_color = primary_color;
-    if (secondary_color !== undefined) updateData.secondary_color = secondary_color;
-    if (use_developer_logo !== undefined) updateData.use_developer_logo = use_developer_logo ?? true;
-    if (use_developer_colors !== undefined) updateData.use_developer_colors = use_developer_colors ?? true;
-    if (status !== undefined) updateData.status = status;
-    if (quota_users !== undefined) updateData.quota_users = quota_users;
-    if (quota_screens !== undefined) updateData.quota_screens = quota_screens;
-    if (quota_alerts !== undefined) updateData.quota_alerts = quota_alerts;
-    if (quota_whatsapp_per_day !== undefined) updateData.quota_whatsapp_per_day = quota_whatsapp_per_day;
-    if (quota_ai_credits_per_day !== undefined) updateData.quota_ai_credits_per_day = quota_ai_credits_per_day;
-    if (quota_alert_executions_per_day !== undefined) updateData.quota_alert_executions_per_day = quota_alert_executions_per_day;
+
+    const directFields = [
+      'name', 'document', 'email', 'phone', 'slug',
+      'logo_url', 'primary_color', 'secondary_color',
+      'status',
+      'responsible_name', 'responsible_email', 'responsible_phone',
+      'address_street', 'address_number', 'address_complement',
+      'address_neighborhood', 'address_city', 'address_state', 'address_zip',
+      'quota_users', 'quota_screens', 'quota_alerts',
+      'quota_whatsapp_per_day', 'quota_ai_credits_per_day', 'quota_alert_executions_per_day',
+    ];
+
+    for (const field of directFields) {
+      if (body[field] !== undefined) updateData[field] = body[field];
+    }
+
+    if (body.use_developer_logo !== undefined) updateData.use_developer_logo = body.use_developer_logo ?? true;
+    if (body.use_developer_colors !== undefined) updateData.use_developer_colors = body.use_developer_colors ?? true;
 
     const { data: group, error } = await supabase
       .from('company_groups')

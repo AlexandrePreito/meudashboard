@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import FeatureGate from '@/components/ui/FeatureGate';
+import { useMenu } from '@/contexts/MenuContext';
 import MessageEditor from '@/components/whatsapp/MessageEditor';
 import { 
   FileText,
@@ -89,9 +90,20 @@ const FORM_TABS = [
 type TabId = typeof FORM_TABS[number]['id'];
 
 export default function EditarAlertaPage() {
+  return (
+    <MainLayout>
+      <FeatureGate feature="alerts">
+        <EditarAlertaContent />
+      </FeatureGate>
+    </MainLayout>
+  );
+}
+
+function EditarAlertaContent() {
   const router = useRouter();
   const params = useParams();
   const alertId = params.id as string;
+  const { activeGroup } = useMenu();
   
   const [connections, setConnections] = useState<Connection[]>([]);
   const [authorizedNumbers, setAuthorizedNumbers] = useState<AuthorizedNumber[]>([]);
@@ -125,7 +137,7 @@ export default function EditarAlertaPage() {
     check_days_of_month: [] as number[],
     connection_id: '',
     dataset_id: '',
-    notify_whatsapp: false,
+    notify_whatsapp: true,
     whatsapp_numbers: [] as string[],
     whatsapp_group_ids: [] as string[],
     message_template: '🔔 *{{nome_alerta}}*\n\n📊 Valor: *{{valor}}*\n📅 {{data}} às {{hora}}'
@@ -144,11 +156,9 @@ export default function EditarAlertaPage() {
 
   async function loadData() {
     try {
-      const [alertRes, connectionsRes, numbersRes, groupsRes] = await Promise.all([
+      const [alertRes, connectionsRes] = await Promise.all([
         fetch(`/api/alertas/${alertId}`),
-        fetch('/api/powerbi/connections'),
-        fetch('/api/whatsapp/authorized-numbers'),
-        fetch('/api/whatsapp/groups')
+        fetch('/api/powerbi/connections')
       ]);
 
       if (connectionsRes.ok) {
@@ -156,21 +166,17 @@ export default function EditarAlertaPage() {
         setConnections(data.connections || []);
       }
 
-      if (numbersRes.ok) {
-        const data = await numbersRes.json();
-        setAuthorizedNumbers(data.numbers || []);
-      }
-
-      if (groupsRes.ok) {
-        const data = await groupsRes.json();
-        setAuthorizedGroups(data.groups || []);
-      }
+      let alertGroupId = activeGroup?.id || '';
 
       if (alertRes.ok) {
         const data = await alertRes.json();
         const alert = data.alert;
         
         if (alert) {
+          if (alert.company_group_id) {
+            alertGroupId = alert.company_group_id;
+          }
+
           setFormData({
             name: alert.name || '',
             description: alert.description || '',
@@ -190,13 +196,28 @@ export default function EditarAlertaPage() {
             message_template: alert.message_template || '🔔 *{{nome_alerta}}*\n\n📊 Valor: *{{valor}}*\n📅 {{data}} às {{hora}}'
           });
 
-          // Determinar tipo de WhatsApp
           const hasNumbers = alert.whatsapp_number?.length > 0;
           const hasGroups = alert.whatsapp_group_id?.length > 0;
           if (hasNumbers && hasGroups) setWhatsappType('both');
           else if (hasGroups) setWhatsappType('group');
           else setWhatsappType('number');
         }
+      }
+
+      const groupFilter = alertGroupId ? `?group_id=${alertGroupId}` : '';
+      const [numbersRes, groupsRes] = await Promise.all([
+        fetch(`/api/whatsapp/authorized-numbers${groupFilter}`),
+        fetch(`/api/whatsapp/groups${groupFilter}`)
+      ]);
+
+      if (numbersRes.ok) {
+        const data = await numbersRes.json();
+        setAuthorizedNumbers(data.numbers || []);
+      }
+
+      if (groupsRes.ok) {
+        const data = await groupsRes.json();
+        setAuthorizedGroups(data.groups || []);
       }
     } catch (err) {
       console.error('Erro ao carregar dados:', err);
@@ -494,19 +515,13 @@ export default function EditarAlertaPage() {
 
   if (loading) {
     return (
-      <MainLayout>
-        <FeatureGate feature="alerts">
-          <div className="flex items-center justify-center h-96">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-          </div>
-        </FeatureGate>
-      </MainLayout>
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
     );
   }
 
   return (
-    <MainLayout>
-      <FeatureGate feature="alerts">
       <div className="space-y-6">
         {/* Header */}
         <div>
@@ -963,138 +978,64 @@ export default function EditarAlertaPage() {
 
                     {formData.notify_whatsapp && (
                       <div className="space-y-4 pl-7">
-                        <div className="flex gap-2">
-                          {['number', 'group', 'both'].map(type => (
-                            <button
-                              key={type}
-                              type="button"
-                              onClick={() => setWhatsappType(type as any)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
-                                whatsappType === type
-                                  ? 'bg-green-600 text-white'
-                                  : 'bg-gray-100 text-gray-600'
-                              }`}
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Números</label>
+                          <div className="flex gap-2">
+                            <select
+                              value={selectedNumberToAdd}
+                              onChange={(e) => setSelectedNumberToAdd(e.target.value)}
+                              className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
                             >
-                              {type === 'number' ? 'Números' : type === 'group' ? 'Grupos' : 'Ambos'}
+                              <option value="">Selecione um número</option>
+                              {authorizedNumbers
+                                .filter(n => !formData.whatsapp_numbers.includes(n.phone_number))
+                                .map(n => (
+                                  <option key={n.id} value={n.phone_number}>{n.name}</option>
+                                ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (selectedNumberToAdd) {
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    whatsapp_numbers: [...prev.whatsapp_numbers, selectedNumberToAdd]
+                                  }));
+                                  setSelectedNumberToAdd('');
+                                }
+                              }}
+                              disabled={!selectedNumberToAdd}
+                              className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:bg-gray-300"
+                            >
+                              Adicionar
                             </button>
-                          ))}
+                          </div>
+                          {authorizedNumbers.length === 0 && (
+                            <p className="text-xs text-amber-600 mt-1">Nenhum número cadastrado para este grupo. Cadastre na tela de Números.</p>
+                          )}
+                          {formData.whatsapp_numbers.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {formData.whatsapp_numbers.map(num => {
+                                const contact = authorizedNumbers.find(n => n.phone_number === num);
+                                return (
+                                  <span key={num} className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded text-xs">
+                                    {contact?.name || num}
+                                    <button
+                                      type="button"
+                                      onClick={() => setFormData(prev => ({
+                                        ...prev,
+                                        whatsapp_numbers: prev.whatsapp_numbers.filter(n => n !== num)
+                                      }))}
+                                      className="hover:text-green-900"
+                                    >
+                                      <X size={12} />
+                                    </button>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-
-                        {(whatsappType === 'number' || whatsappType === 'both') && (
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Números</label>
-                            <div className="flex gap-2">
-                              <select
-                                value={selectedNumberToAdd}
-                                onChange={(e) => setSelectedNumberToAdd(e.target.value)}
-                                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                              >
-                                <option value="">Selecione um número</option>
-                                {authorizedNumbers
-                                  .filter(n => !formData.whatsapp_numbers.includes(n.phone_number))
-                                  .map(n => (
-                                    <option key={n.id} value={n.phone_number}>{n.name}</option>
-                                  ))}
-                              </select>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (selectedNumberToAdd) {
-                                    setFormData(prev => ({
-                                      ...prev,
-                                      whatsapp_numbers: [...prev.whatsapp_numbers, selectedNumberToAdd]
-                                    }));
-                                    setSelectedNumberToAdd('');
-                                  }
-                                }}
-                                disabled={!selectedNumberToAdd}
-                                className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:bg-gray-300"
-                              >
-                                Adicionar
-                              </button>
-                            </div>
-                            {formData.whatsapp_numbers.length > 0 && (
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {formData.whatsapp_numbers.map(num => {
-                                  const contact = authorizedNumbers.find(n => n.phone_number === num);
-                                  return (
-                                    <span key={num} className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded text-xs">
-                                      {contact?.name || num}
-                                      <button
-                                        type="button"
-                                        onClick={() => setFormData(prev => ({
-                                          ...prev,
-                                          whatsapp_numbers: prev.whatsapp_numbers.filter(n => n !== num)
-                                        }))}
-                                        className="hover:text-green-900"
-                                      >
-                                        <X size={12} />
-                                      </button>
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {(whatsappType === 'group' || whatsappType === 'both') && (
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Grupos</label>
-                            <div className="flex gap-2">
-                              <select
-                                value={selectedGroupToAdd}
-                                onChange={(e) => setSelectedGroupToAdd(e.target.value)}
-                                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                              >
-                                <option value="">Selecione um grupo</option>
-                                {authorizedGroups
-                                  .filter(g => !formData.whatsapp_group_ids.includes(g.group_id))
-                                  .map(g => (
-                                    <option key={g.id} value={g.group_id}>{g.group_name}</option>
-                                  ))}
-                              </select>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (selectedGroupToAdd) {
-                                    setFormData(prev => ({
-                                      ...prev,
-                                      whatsapp_group_ids: [...prev.whatsapp_group_ids, selectedGroupToAdd]
-                                    }));
-                                    setSelectedGroupToAdd('');
-                                  }
-                                }}
-                                disabled={!selectedGroupToAdd}
-                                className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:bg-gray-300"
-                              >
-                                Adicionar
-                              </button>
-                            </div>
-                            {formData.whatsapp_group_ids.length > 0 && (
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {formData.whatsapp_group_ids.map(gid => {
-                                  const group = authorizedGroups.find(g => g.group_id === gid);
-                                  return (
-                                    <span key={gid} className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
-                                      {group?.group_name || gid}
-                                      <button
-                                        type="button"
-                                        onClick={() => setFormData(prev => ({
-                                          ...prev,
-                                          whatsapp_group_ids: prev.whatsapp_group_ids.filter(g => g !== gid)
-                                        }))}
-                                        className="hover:text-purple-900"
-                                      >
-                                        <X size={12} />
-                                      </button>
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>
@@ -1157,8 +1098,5 @@ export default function EditarAlertaPage() {
           </form>
         </div>
       </div>
-      </FeatureGate>
-    </MainLayout>
   );
 }
-

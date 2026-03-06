@@ -67,25 +67,51 @@ function formatDaxResult(results: any[]): string {
     }
   }
 
-  // Segundo: encontrar a coluna de LABEL (texto/dimensão)
+  // Segundo: encontrar a coluna de LABEL (texto/dimensão) - 2 passadas por prioridade
+  // Prioridade 1: colunas que são claramente labels formatados
+  const highPriorityLabels = ['periodo', 'descricao', 'label', 'nome', 'filial', 'empresa',
+    'cliente', 'produto', 'vendedor', 'categoria', 'regiao', 'loja', 'unidade'];
+  // Prioridade 2: colunas temporais (menos ideais como label pois podem ser formato raw)
+  const lowPriorityLabels = ['mes', 'dia', 'semana', 'ano', 'tipo', 'status', 'grupo'];
+
   for (const key of keys) {
-    if (key === valueKey) continue; // Pular a coluna de valor
+    if (key === valueKey) continue;
     const clean = cleanColumnName(key);
-    if (clean.includes('filial') || clean.includes('nome') || clean.includes('empresa') ||
-        clean.includes('cliente') || clean.includes('produto') || clean.includes('vendedor') ||
-        clean.includes('categoria') || clean.includes('grupo') || clean.includes('regiao') ||
-        clean.includes('loja') || clean.includes('unidade')) {
+    if (highPriorityLabels.some(term => clean.includes(term))) {
       labelKey = key;
       break;
     }
   }
 
-  // Se não encontrou por nome, pegar a primeira coluna que NÃO é a de valor
+  // Se não achou com alta prioridade, tentar baixa prioridade
   if (!labelKey) {
     for (const key of keys) {
-      if (key !== valueKey) {
+      if (key === valueKey) continue;
+      const clean = cleanColumnName(key);
+      if (lowPriorityLabels.some(term => clean.includes(term))) {
         labelKey = key;
         break;
+      }
+    }
+  }
+
+  // Se não encontrou por nome, preferir coluna com valores string
+  if (!labelKey) {
+    for (const key of keys) {
+      if (key === valueKey) continue;
+      const hasString = results.some(row => typeof row[key] === 'string' && row[key] !== null);
+      if (hasString) {
+        labelKey = key;
+        break;
+      }
+    }
+    // Último fallback: primeira coluna que não é valor
+    if (!labelKey) {
+      for (const key of keys) {
+        if (key !== valueKey) {
+          labelKey = key;
+          break;
+        }
       }
     }
   }
@@ -100,8 +126,32 @@ function formatDaxResult(results: any[]): string {
     const label = labelKey ? String(row[labelKey] ?? '') : '';
     const rawValue = valueKey ? row[valueKey] : null;
 
-    // Pular linhas onde o label é null/vazio E o valor também é null
-    if (!label && rawValue === null) continue;
+    // Pular linhas onde TODOS os campos são null/vazio
+    if (!label && (rawValue === null || rawValue === undefined)) {
+      // Verificar se alguma outra coluna tem valor de TOTAL
+      const allValues = Object.values(row);
+      const hasTotalMarker = allValues.some(v => typeof v === 'string' && v.toUpperCase().includes('TOTAL'));
+      if (!hasTotalMarker) continue;
+      // Se tem marcador TOTAL em outra coluna, usar como label
+      const totalVal = allValues.find(v => typeof v === 'string' && v.toUpperCase().includes('TOTAL'));
+      if (totalVal) {
+        const adjustedLabel = String(totalVal);
+        const formattedVal = typeof rawValue === 'number' ? formatCurrency(rawValue) : 'R$ 0,00';
+        totalLine = `━━━━━━━━━━━━━━\n*${adjustedLabel}*: ${formattedVal}`;
+        continue;
+      }
+    }
+    // Se label vazio mas existe TOTAL em outra coluna (e tem valor), tratar como linha de total
+    if (!label && rawValue !== null && rawValue !== undefined) {
+      const allValues = Object.values(row);
+      const totalVal = allValues.find(v => typeof v === 'string' && v.toUpperCase().includes('TOTAL'));
+      if (totalVal) {
+        const adjustedLabel = String(totalVal);
+        const formattedVal = typeof rawValue === 'number' ? formatCurrency(rawValue) : String(rawValue);
+        totalLine = `━━━━━━━━━━━━━━\n*${adjustedLabel}*: ${formattedVal}`;
+        continue;
+      }
+    }
 
     // Formatar valor
     let formattedValue = '';
@@ -133,7 +183,8 @@ function formatDaxResult(results: any[]): string {
 }
 
 // Função para executar DAX
-async function executeDaxQuery(connectionId: string, datasetId: string, query: string, supabase: any): Promise<{ success: boolean; results?: any[]; error?: string }> {
+async function executeDaxQuery(connectionId: string, datasetId: string, query: string, supabase: any): Promise<{ success: boolean; results?: any[]; error?: string; elapsedMs?: number }> {
+  const startTime = Date.now();
   try {
     const { data: connection } = await supabase
       .from('powerbi_connections')
@@ -142,10 +193,10 @@ async function executeDaxQuery(connectionId: string, datasetId: string, query: s
       .single();
 
     if (!connection) {
-      return { success: false, error: 'Conexão não encontrada' };
+      return { success: false, error: 'Conexão não encontrada', elapsedMs: Date.now() - startTime };
     }
 
-    // Obter token
+    console.log('[DAX] Obtendo token para tenant:', connection.tenant_id);
     const tokenUrl = `https://login.microsoftonline.com/${connection.tenant_id}/oauth2/v2.0/token`;
     const tokenResponse = await fetch(tokenUrl, {
       method: 'POST',
@@ -159,16 +210,21 @@ async function executeDaxQuery(connectionId: string, datasetId: string, query: s
     });
 
     if (!tokenResponse.ok) {
-      return { success: false, error: 'Erro na autenticação' };
+      const errText = await tokenResponse.text();
+      console.error('[DAX] Erro token:', errText);
+      return { success: false, error: `Erro na autenticação: ${tokenResponse.status}`, elapsedMs: Date.now() - startTime };
     }
 
     const tokenData = await tokenResponse.json();
+    const tokenElapsed = Date.now() - startTime;
+    console.log(`[DAX] Token obtido em ${tokenElapsed}ms. Executando query no dataset ${datasetId}...`);
 
-    // Executar DAX
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    const DAX_TIMEOUT_MS = 120000;
+    const timeoutId = setTimeout(() => controller.abort(), DAX_TIMEOUT_MS);
 
     try {
+      const daxStart = Date.now();
       const daxRes = await fetch(
         `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/datasets/${datasetId}/executeQueries`,
         {
@@ -186,25 +242,31 @@ async function executeDaxQuery(connectionId: string, datasetId: string, query: s
       );
 
       clearTimeout(timeoutId);
+      const daxElapsed = Date.now() - daxStart;
+      console.log(`[DAX] Resposta Power BI em ${daxElapsed}ms - Status: ${daxRes.status}`);
 
       if (!daxRes.ok) {
         const errorText = await daxRes.text();
-        return { success: false, error: `Erro DAX: ${errorText}` };
+        console.error('[DAX] Erro resposta:', errorText.substring(0, 500));
+        return { success: false, error: `Erro DAX (${daxRes.status}): ${errorText.substring(0, 300)}`, elapsedMs: Date.now() - startTime };
       }
 
       const daxData = await daxRes.json();
       const results = daxData.results?.[0]?.tables?.[0]?.rows || [];
+      console.log(`[DAX] Query OK - ${results.length} linhas retornadas em ${daxElapsed}ms`);
 
-      return { success: true, results };
+      return { success: true, results, elapsedMs: Date.now() - startTime };
     } catch (fetchError: any) {
       clearTimeout(timeoutId);
+      const elapsed = Date.now() - startTime;
       if (fetchError.name === 'AbortError') {
-        return { success: false, error: 'Timeout: A consulta DAX demorou mais de 30 segundos' };
+        console.error(`[DAX] TIMEOUT após ${elapsed}ms (limite: ${DAX_TIMEOUT_MS}ms)`);
+        return { success: false, error: `Timeout: A consulta DAX demorou mais de ${DAX_TIMEOUT_MS / 1000} segundos`, elapsedMs: elapsed };
       }
       throw fetchError;
     }
   } catch (e: any) {
-    return { success: false, error: e.message };
+    return { success: false, error: e.message, elapsedMs: Date.now() - startTime };
   }
 }
 

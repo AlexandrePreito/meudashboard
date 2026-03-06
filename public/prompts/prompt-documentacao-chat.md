@@ -1,148 +1,195 @@
-# 📊 PROMPT v5 - Documentação Inteligente para Chat IA
-## COM CRIAÇÃO DE MEDIDAS, VALIDAÇÃO E DOCUMENTAÇÃO
+# 📊 PROMPT v7 — Documentação BI para Chat IA
+## Conexão via MCP + Validação + Regras Assertivas + Formato Padronizado
 
 ---
 
 ## 🎯 OBJETIVO
-Criar uma documentação completa e testada para o assistente de IA responder perguntas de negócio via WhatsApp/Chat. O processo tem **3 fases obrigatórias** que garantem qualidade.
+Conectar ao Power BI Desktop via MCP, analisar o modelo, validar queries com dados reais e gerar documentação no formato exato do sistema de chat IA. A documentação deve conter **regras numeradas assertivas** que a IA consiga seguir sem ambiguidade.
 
 ---
 
-## ⚡ FASE 1 — ANÁLISE E CRIAÇÃO DE MEDIDAS OTIMIZADAS
+## ⚡ FASE 1 — CONECTAR AO MODELO VIA MCP
 
-### 1.1 Analisar o modelo
-Antes de documentar qualquer coisa, analise o modelo conectado:
-- Liste todas as tabelas e seus relacionamentos
-- Liste todas as medidas existentes
-- Identifique as áreas de negócio (vendas, financeiro, RH, estoque, etc.)
-- Identifique as colunas úteis para filtros e agrupamentos
+### 1.1 Localizar instâncias abertas
+Use o MCP do Power BI para listar os modelos abertos na máquina:
+connection_operations → ListLocalInstances
+Isso retorna as instâncias do Power BI Desktop abertas com porta, connectionString e nome do arquivo.
 
-### 1.2 Criar medidas QA_ otimizadas
-Crie novas medidas DAX com prefixo **QA_** (Query Assistant) otimizadas para consultas de IA. Essas medidas são **adicionais** — NÃO altere medidas existentes.
+### 1.2 Conectar ao modelo
+Com a connectionString retornada, conecte:
+connection_operations → Connect
+connectionString: "Data Source=localhost:{porta};Application Name=MCP-PBIModeling"
 
-**Regras para criação de medidas QA_:**
+### 1.3 Confirmar conexão
+Após conectar, execute:
+model_operations → GetStats
+Anote: nome do modelo, número de tabelas, medidas, colunas e relacionamentos.
+
+---
+
+## ⚡ FASE 2 — EXPLORAR O MODELO
+
+### 2.1 Listar tabelas e medidas
+model_operations → GetStats          → visão geral de todas as tabelas
+measure_operations → List            → medidas de cada tabela relevante
+column_operations → List             → colunas das tabelas de dimensão e fatos
+
+### 2.2 Identificar medidas QA_ existentes
+Verifique se já existem medidas com prefixo `QA_` (pasta "QA_ Consultas IA" ou similar). Se existirem, use-as como base. Se não existirem, crie conforme a Fase 3.
+
+### 2.3 Mapear áreas de negócio
+Identifique as áreas cobertas pelo modelo: vendas, financeiro, DRE, fluxo de caixa, estoque, RH, etc.
+
+### 2.4 Identificar regras de negócio críticas
+- Há filtros obrigatórios? (ex: excluir contas de controle, excluir cancelamentos)
+- Há medidas que dependem do contexto? (ex: medidas que só funcionam com produto/garçom)
+- Há relacionamentos ativos/inativos que afetam filtros de data?
+- Há regimes diferentes? (Caixa vs Competência)
+- Há erros de digitação nos nomes do modelo? (ex: "Adminsitrativas" com typo) — documentar EXATAMENTE como está
+
+### 2.5 Identificar AMBIGUIDADES de medidas (CRÍTICO)
+Detecte quando existem **duas ou mais medidas para o mesmo conceito**. Exemplos comuns:
+- "Faturamento": uma medida para total geral, outra para detalhe por produto
+- "CMV": uma medida de venda, outra do DRE, outra do fluxo de caixa
+- "Vendas": medida de valor lançado vs valor recebido
+
+Para CADA ambiguidade encontrada, documente:
+- Qual medida usar em qual contexto
+- Palavras-chave que indicam cada contexto
+- Exemplos de perguntas para cada medida
+
+Isso será transformado em REGRAS NUMERADAS na documentação final.
+
+---
+
+## ⚡ FASE 3 — CRIAR MEDIDAS QA_ (SE NECESSÁRIO)
+
+Se o modelo **não tiver** medidas `QA_`, crie-as com prefixo obrigatório `QA_`. Se **já tiver**, pule esta fase.
+
+**Regras:**
 - Prefixo obrigatório: `QA_`
-- Criar na tabela mais adequada do modelo (ou em uma tabela de medidas se existir)
-- Cada medida deve ser **autossuficiente** (não depender de seleções de slicer)
-- Usar nomes descritivos em português: `QA_Faturamento`, `QA_Ticket_Medio`, `QA_Top1_Produto_Nome`
-- Incluir medidas de Rankings (Top1, Top3, Top5, Top10)
-- Incluir medidas temporais (MoM, YoY, média diária)
-- Incluir medidas de contagem (qtd clientes, qtd produtos, dias trabalhados)
+- Criar na tabela mais adequada ou em tabela de medidas existente
+- Cada medida deve ser **autossuficiente** — não depender de slicer
+- Nomes descritivos em português
+- NÃO alterar medidas existentes
 
-**Categorias obrigatórias de medidas QA_ a criar:**
+**Categorias a criar (adapte ao modelo real):**
 
-| Categoria | Medidas Sugeridas | Prioridade |
-|-----------|------------------|------------|
-| **Valores Base** | QA_Faturamento, QA_Venda_Total, QA_Quantidade | ALTA |
-| **Indicadores** | QA_Ticket_Medio, QA_Preco_Medio | ALTA |
-| **Rankings** | QA_Top1_[Dimensão]_Nome, QA_Top1_[Dimensão]_Valor | ALTA |
-| **Top N** | QA_Top3_[Dimensão], QA_Top5_[Dimensão] | MÉDIA |
-| **Custos/Margem** | QA_CMV, QA_Margem_Bruta, QA_Margem_Percentual | MÉDIA |
-| **Temporal** | QA_Variacao_MoM, QA_Variacao_YoY, QA_Media_Diaria | MÉDIA |
-| **Contadores** | QA_Dias_Trabalhados, QA_Qtd_Clientes, QA_Qtd_Produtos_Vendidos | BAIXA |
-| **Financeiro** | QA_A_Pagar, QA_A_Receber, QA_Saldo (se houver dados) | BAIXA |
-
-**Exemplo de medidas a criar:**
-
-```dax
--- Faturamento base
-QA_Faturamento = SUM(Vendas[Valor])
-
--- Top 1 produto por valor
-QA_Top1_Produto_Nome = 
-VAR TopProduto = TOPN(1, ALL(Produto[Nome]), CALCULATE(SUM(Vendas[Valor])), DESC)
-RETURN MAXX(TopProduto, Produto[Nome])
-
-QA_Top1_Produto_Valor = 
-VAR TopProduto = TOPN(1, ALL(Produto[Nome]), CALCULATE(SUM(Vendas[Valor])), DESC)
-RETURN MAXX(TopProduto, CALCULATE(SUM(Vendas[Valor])))
-
--- Variação MoM
-QA_Variacao_MoM = 
-VAR VendaAtual = [QA_Faturamento]
-VAR VendaAnterior = CALCULATE([QA_Faturamento], DATEADD(Calendario[Data], -1, MONTH))
-RETURN IF(VendaAnterior <> 0, DIVIDE(VendaAtual - VendaAnterior, VendaAnterior), BLANK())
-
--- Ticket Médio
-QA_Ticket_Medio = DIVIDE([QA_Faturamento], [QA_Qtd_Vendas])
-```
-
-**IMPORTANTE:** Adapte os nomes das tabelas e colunas ao modelo real. Os exemplos acima são templates.
-
-### 1.3 Testar cada medida criada
-Após criar, execute uma query DAX para validar cada medida:
-```dax
-EVALUATE ROW("Resultado", [QA_Faturamento])
-```
-
-Se der erro, corrija antes de prosseguir.
+| Categoria | Exemplos |
+|-----------|---------|
+| Valores Base | QA_Faturamento, QA_Venda_Total |
+| Indicadores | QA_Ticket_Medio, QA_Preco_Medio |
+| Rankings | QA_Top1_Produto_Nome, QA_Top1_Produto_Valor |
+| Top N | QA_Top3_Produtos, QA_Top5_Produtos |
+| Custos/Margem | QA_CMV, QA_Margem_Bruta, QA_Margem_Percentual |
+| Temporal | QA_Variacao_MoM, QA_Vendas_Mes_Anterior, QA_Media_Diaria |
+| Contadores | QA_Dias_Trabalhados, QA_Quantidades |
+| Financeiro | QA_A_Pagar, QA_A_Receber, QA_Saldo_Atual |
 
 ---
 
-## ⚡ FASE 2 — VALIDAÇÃO INTERATIVA DE PERGUNTAS
+## ⚡ FASE 4 — VALIDAR COM QUERIES REAIS
 
-### 2.1 Simular perguntas de usuários
-Faça pelo menos **20 perguntas** que um usuário típico faria e valide as respostas:
+Execute ao menos **25 queries DAX** reais via MCP para obter valores concretos do modelo:
+dax_query_operations → Execute
 
-**Perguntas obrigatórias para validar:**
-1. "Qual o faturamento total?"
-2. "Qual o faturamento deste mês?"
-3. "Faturamento por [principal dimensão]?" (filial, vendedor, produto, etc.)
-4. "Qual o produto/item mais vendido?"
-5. "Quem mais vendeu?" (vendedor/funcionário)
-6. "Top 10 produtos"
-7. "Qual o ticket médio?"
-8. "Como está comparado ao mês anterior?"
-9. "Vendas por mês"
-10. "Qual dia da semana vende mais?"
-11-20. Perguntas específicas do negócio
+**Queries obrigatórias a validar:**
 
-### 2.2 Para cada pergunta, registre:
-- A pergunta natural do usuário
-- Qual query DAX foi executada
-- O resultado obtido
-- Se o resultado faz sentido (validação)
+### Vendas (mínimo 8)
+1. Faturamento total de um período recente
+2. Faturamento do mês atual
+3. Ticket médio do período
+4. Quantidade de itens/vendas
+5. Top 3 produtos por valor
+6. Top 5 funcionários/garçons por valor
+7. Top 3 grupos/categorias por valor
+8. Margem % de um produto específico
 
-### 2.3 Corrigir problemas encontrados
-Se alguma query retornar dados incorretos ou erro:
-- Ajuste a medida QA_ correspondente
-- Crie medidas novas se necessário
-- Re-teste até funcionar
+### Financeiro (mínimo 7)
+9. Saldo atual (se aplicável)
+10. Entradas e saídas do fluxo de caixa
+11. Contas a pagar vencidas
+12. Contas a receber vencidas
+13. Contas vencendo hoje
+14. Despesa por subcategoria (top 5)
+15. Busca de credor/fornecedor por nome parcial
+
+### DRE / Estrutural (mínimo 5)
+16. Faturamento por linha do DRE (se aplicável)
+17. Resultado do fluxo de caixa
+18. Resultado operacional
+19. Comparativo com mês anterior
+20. Faturamento por dimensão principal (filial, produto, vendedor)
+
+### Testes de ambiguidade (mínimo 5)
+21. Fazer a MESMA pergunta com medidas diferentes e comparar resultados
+22. Testar "faturamento" com e sem agrupador de produto — confirmar qual medida usar em cada caso
+23. Testar query financeira COM e SEM filtro obrigatório — confirmar que o filtro é necessário
+24. Testar "CMV" em diferentes contextos (venda, DRE, fluxo) — documentar diferenças
+25. Testar busca de entidade com filtro exato vs parcial
+
+**Para cada query, registre:**
+- O DAX exato executado
+- O resultado obtido (valor real)
+- Se o resultado faz sentido
+- Se é a medida CORRETA para este tipo de pergunta
+
+**Se uma medida retornar erro:** identifique a causa, documente o problema e use medida alternativa que funcione.
 
 ---
 
-## ⚡ FASE 3 — GERAR DOCUMENTAÇÃO FINAL
+## ⚡ FASE 5 — GERAR DOCUMENTAÇÃO FINAL
 
-Somente após as Fases 1 e 2, gere a documentação no formato abaixo.
+Somente após as Fases 1–4, gere a documentação no formato exato abaixo.
 
-### FORMATO OBRIGATÓRIO DE SAÍDA
+**ATENÇÃO:** A seção "Instruções para a IA" deve usar formato de REGRAS NUMERADAS (não bullets genéricos). Cada regra deve ser assertiva e sem ambiguidade.
 
+---
+
+## 📄 FORMATO OBRIGATÓRIO DE SAÍDA
+
+O arquivo .md deve começar DIRETAMENTE com `<!-- SECTION:BASE -->`, sem nenhum título ou texto antes.
 ```markdown
 <!-- SECTION:BASE -->
-# [Nome do Modelo/Empresa]
+# Visão Geral
 
-## Sobre
-[Descrição detalhada do modelo - o que é, para que serve, qual negócio atende]
-[Mencionar prefixo QA_ e que essas medidas são otimizadas para consultas de IA]
-[Descrever qual medida usar para cada conceito principal - ex: "Para faturamento real, use QA_Faturamento"]
+## Sobre o Modelo
+[Descrição detalhada: o que é, para que serve, qual negócio atende, quantas tabelas/medidas]
+[Mencionar medidas QA_ e que são otimizadas para consultas de IA]
+[Descrever qual medida usar para cada conceito principal]
+[Se houver regras de contexto críticas, explicar aqui]
 
 ## Áreas Cobertas
-- **[Área 1]:** [lista de métricas disponíveis]
-- **[Área 2]:** [lista de métricas disponíveis]
-- **[Área 3]:** [lista de métricas disponíveis]
+- **[Área 1]:** [métricas disponíveis]
+- **[Área 2]:** [métricas disponíveis]
+- **[Área N]:** [métricas disponíveis]
 
 ## Regras de Negócio
-- [Regra 1 - ex: Faturamento = valor recebido, não valor lançado]
-- [Regra 2 - ex: Vendas válidas excluem cancelamentos]
-- [Regra 3 - ex: CMV = quantidade × custo unitário]
-- [Regra 4 - ex: Margem = Vendas - CMV]
+- [Regra 1]
+- [Regra 2]
+- [Regra N — incluir TODAS as regras críticas identificadas na Fase 2]
 
 ## Instruções para a IA
-- Sempre usar medidas com prefixo QA_ quando disponíveis
-- Para rankings, usar QA_Top1_ ou QA_Top3_ ao invés de construir TOPN manualmente
-- Para comparativos temporais, usar QA_Variacao_MoM e QA_Variacao_YoY
-- Quando o usuário pedir "faturamento", usar QA_Faturamento (não QA_Venda_Total)
-- [Outras instruções específicas do modelo]
+
+### REGRA 1 — [TÍTULO] (CRÍTICO)
+[Descrição clara e assertiva da regra]
+- Quando aplica: [exemplos de perguntas]
+- Quando NÃO aplica: [exemplos contrários]
+- Na dúvida: [comportamento padrão]
+
+### REGRA 2 — [TÍTULO] (CRÍTICO)
+[Se for filtro obrigatório, listar TODAS as medidas afetadas]
+[Se for escolha de medida, dar exemplos concretos de perguntas para cada opção]
+
+### REGRA N — [TÍTULO]
+[Cada modelo terá suas regras específicas. Exemplos comuns:]
+- Escolha de medida de faturamento (quando há mais de uma)
+- Filtros obrigatórios (contas a excluir, cancelamentos)
+- Formato de filtro de data correto para o modelo
+- DRE: perguntar regime antes de responder
+- Busca de entidades (usar SEARCH parcial)
+- Rankings: ordenação correta (DESC/ASC)
+- Saldo: ignora filtro de data
 <!-- END:BASE -->
 
 <!-- SECTION:MEDIDAS -->
@@ -150,12 +197,13 @@ Somente após as Fases 1 e 2, gere a documentação no formato abaixo.
 
 | Medida | Descrição | Quando Usar | Área |
 |--------|-----------|-------------|------|
-| QA_Faturamento | [Descrição] | faturamento, receita, quanto faturou | Vendas |
-| QA_Venda_Total | [Descrição] | vendas, quanto vendeu, total vendido | Vendas |
+| QA_[Nome] | [Descrição] | [palavras-chave que o usuário usaria] | [Área] |
+| [Medida existente] | [Descrição — incluir "REQUER filtro de [X]" se houver filtro obrigatório] | [palavras-chave] | [Área] |
 | ... | ... | ... | ... |
 
-(Incluir TODAS as medidas QA_ criadas + medidas existentes úteis. Mínimo 20.)
-(A coluna "Quando Usar" deve ter palavras-chave que o usuário usaria na pergunta)
+(Mínimo 30 medidas. Incluir todas as QA_ + medidas existentes relevantes.
+A coluna "Quando Usar" deve ter as palavras que o usuário digitaria no chat.
+Se a medida depende de contexto, incluir na descrição: "usar quando HÁ produto/garçom" ou "usar quando NÃO há produto".)
 <!-- END:MEDIDAS -->
 
 <!-- SECTION:TABELAS -->
@@ -163,14 +211,12 @@ Somente após as Fases 1 e 2, gere a documentação no formato abaixo.
 
 | Coluna | Tipo | Uso | Valores |
 |--------|------|-----|---------|
-| Calendario.Data | DateTime | Filtro | [Range de datas] |
-| Calendario.Ano | Int64 | Filtro, Agrupar | [Anos disponíveis] |
-| Calendario.Mês | Int64 | Filtro, Agrupar | 1 a 12 |
-| Calendario.Nome do Mês | String | Agrupar, Exibir | Janeiro, Fevereiro... |
-| [Tabela].[Coluna] | [Tipo] | [Uso] | [Exemplos de valores reais] |
+| Tabela.Coluna | Tipo | Filtro / Agrupar / Exibir | [valores reais do modelo] |
 | ... | ... | ... | ... |
 
-(Mínimo 10 colunas. Use formato Tabela.Coluna. Inclua valores reais, não genéricos.)
+(Mínimo 20 colunas. Formato obrigatório: Tabela.Coluna.
+Incluir valores reais, não genéricos. Consultar o modelo para obter exemplos de valores.
+Se houver typos nos nomes do modelo, documentar exatamente como estão.)
 <!-- END:TABELAS -->
 
 <!-- SECTION:QUERIES -->
@@ -178,14 +224,11 @@ Somente após as Fases 1 e 2, gere a documentação no formato abaixo.
 
 | ID | Pergunta | Medidas | Agrupadores | Filtros |
 |----|----------|---------|-------------|---------|
-| Q01 | Qual o faturamento total? | QA_Faturamento | - | - |
-| Q02 | Quanto vendemos este mês? | QA_Venda_Total | - | Calendario.Mês = atual |
-| Q03 | Faturamento por filial | QA_Faturamento | [Dimensão].Nome | - |
-| Q04 | Top 10 produtos | QA_Venda_Total | Produto.Nome | TOP 10 |
+| Q01 | [Pergunta natural] | [Medida] | [Coluna ou -] | [Filtro ou -] |
 | ... | ... | ... | ... | ... |
 
-(Mínimo 20 queries. Usar as perguntas VALIDADAS na Fase 2.)
-(Cada query deve ter sido testada e confirmada que retorna dados corretos.)
+(Mínimo 35 queries. Usar APENAS queries validadas na Fase 4.
+Incluir pelo menos 7 queries financeiras com filtro obrigatório documentado.)
 <!-- END:QUERIES -->
 
 <!-- SECTION:EXEMPLOS -->
@@ -193,18 +236,19 @@ Somente após as Fases 1 e 2, gere a documentação no formato abaixo.
 
 ## Exemplo 1
 **Pergunta:** [Pergunta natural do usuário]
-**Medidas:** [QA_Medida usada]
+**Medidas:** [Medida usada]
 **Agrupadores:** [Coluna ou -]
 **Filtros:** [Filtro ou -]
-**Resposta:** "[Resposta formatada com valores REAIS obtidos na validação]"
-**DAX usado:** `EVALUATE ROW("Faturamento", [QA_Faturamento])`
+**Resposta:** "[Resposta formatada com valores REAIS da Fase 4]"
+**DAX usado:** `[DAX exato executado na Fase 4]`
 
 ## Exemplo 2
 ...
 
-(Mínimo 15 exemplos. Usar dados REAIS da Fase 2, não inventados.)
-(INCLUIR o DAX usado após a Resposta em cada exemplo — isso ajuda a IA a montar queries similares.)
-(O formato dos campos Pergunta/Medidas/Agrupadores/Filtros/Resposta deve ser IDÊNTICO ao modelo abaixo:)
+(Mínimo 25 exemplos. Todos com valores REAIS. Todos com DAX usado.
+Incluir pelo menos 5 exemplos financeiros com filtro obrigatório aplicado no DAX.
+Incluir pelo menos 2 exemplos de ranking com ordenação correta.
+Incluir pelo menos 1 exemplo de busca parcial de entidade.)
 <!-- END:EXEMPLOS -->
 ```
 
@@ -213,45 +257,40 @@ Somente após as Fases 1 e 2, gere a documentação no formato abaixo.
 ## ⚠️ REGRAS CRÍTICAS
 
 ### OBRIGATÓRIO:
-- [ ] Fase 1 executada: medidas QA_ criadas e testadas no modelo
-- [ ] Fase 2 executada: pelo menos 20 perguntas validadas com respostas corretas
-- [ ] Seção BASE tem instruções específicas para a IA
-- [ ] Seção MEDIDAS tem tabela com pelo menos 20 medidas (incluindo QA_)
-- [ ] Seção TABELAS tem tabela com pelo menos 10 colunas com valores reais
-- [ ] Seção QUERIES tem tabela com pelo menos 20 perguntas VALIDADAS
-- [ ] Seção EXEMPLOS tem pelo menos 15 exemplos com DAX usado e valores reais
-- [ ] Todos os exemplos usam dados REAIS obtidos na Fase 2
+- [ ] Conectou ao BI via MCP (`connection_operations → ListLocalInstances → Connect`)
+- [ ] Explorou tabelas, medidas e colunas do modelo real
+- [ ] Identificou ambiguidades de medidas (Fase 2.5) e testou cada uma (Fase 4.21-25)
+- [ ] Identificou e documentou TODAS as regras de negócio críticas
+- [ ] Executou e validou ao menos 25 queries com dados reais
+- [ ] Seção BASE contém "Instruções para a IA" com REGRAS NUMERADAS (não bullets genéricos)
+- [ ] Seção MEDIDAS com mínimo 30 medidas, com "REQUER filtro" onde aplicável
+- [ ] Seção TABELAS com mínimo 20 colunas com valores reais do modelo
+- [ ] Seção QUERIES com mínimo 35 perguntas validadas (7+ financeiras)
+- [ ] Seção EXEMPLOS com mínimo 25 exemplos com DAX e valores reais (5+ financeiros)
+- [ ] Documentou medidas que causaram erro e a alternativa usada
+- [ ] Arquivo começa com `<!-- SECTION:BASE -->` sem título antes
 
 ### PROIBIDO:
-- ❌ Gerar documentação sem ter criado medidas QA_
-- ❌ Gerar documentação sem ter validado perguntas
-- ❌ Usar valores inventados nos exemplos (usar valores reais da validação)
-- ❌ Deixar seção TABELAS sem colunas
+- ❌ Gerar documentação sem conectar ao modelo via MCP
+- ❌ Inventar valores nos exemplos — usar APENAS dados reais
+- ❌ Inventar nomes de tabelas, colunas ou medidas — usar APENAS o que existe no modelo
+- ❌ Alterar ou deletar medidas existentes
 - ❌ Omitir o DAX usado nos exemplos
-- ❌ Alterar medidas existentes do modelo (criar novas com prefixo QA_)
-
-### DIFERENÇAS DO v4 → v5:
-| Aspecto | v4 (antigo) | v5 (novo) |
-|---------|-------------|-----------|
-| Medidas | Documenta o que existe | **Cria medidas QA_ otimizadas** |
-| Validação | Nenhuma | **20+ perguntas testadas** |
-| Exemplos | Valores fictícios | **Valores reais do modelo** |
-| DAX nos exemplos | Não inclui | **Inclui DAX usado após Resposta** |
-| Instruções IA | Não tem | **Seção de instruções na BASE** |
-| Mínimo queries | 10 | **20 validadas** |
-| Mínimo exemplos | 5 | **15 com DAX** |
+- ❌ Omitir regras de negócio críticas (filtros obrigatórios, contextos de medidas, etc.)
+- ❌ Usar bullets genéricos nas "Instruções para a IA" — usar REGRAS NUMERADAS
+- ❌ Colocar título ou texto ANTES de `<!-- SECTION:BASE -->`
 
 ---
 
 ## 🔄 FLUXO RESUMIDO
 
-```
-1. ANALISAR modelo → Entender tabelas, medidas, relacionamentos
-2. CRIAR medidas QA_ → Adicionar ao modelo (não alterar existentes)  
-3. TESTAR medidas → Executar DAX e validar resultados
-4. FAZER 20+ PERGUNTAS → Simular usuário, anotar respostas
-5. CORRIGIR problemas → Ajustar medidas que não funcionaram
-6. GERAR DOCUMENTAÇÃO → Usando dados reais das fases anteriores
-```
+LISTAR instâncias    → connection_operations: ListLocalInstances
+CONECTAR             → connection_operations: Connect
+EXPLORAR             → model_operations: GetStats + measure_operations: List + column_operations: List
+IDENTIFICAR REGRAS   → Ambiguidades de medidas, filtros obrigatórios, contextos
+CRIAR QA_            → measure_operations: Create (somente se não existirem)
+VALIDAR              → dax_query_operations: Execute (mínimo 25 queries + testes de ambiguidade)
+DOCUMENTAR           → Gerar .md no formato das seções com REGRAS NUMERADAS
 
-**Comece pela Fase 1. Analise o modelo conectado e me diga quais medidas QA_ você sugere criar.**
+
+**Comece pela Fase 1: liste as instâncias abertas na máquina.**

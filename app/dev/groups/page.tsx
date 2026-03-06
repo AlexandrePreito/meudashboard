@@ -39,6 +39,16 @@ interface Group {
   primary_color?: string;
   use_developer_logo?: boolean;
   use_developer_colors?: boolean;
+  responsible_name?: string;
+  responsible_email?: string;
+  responsible_phone?: string;
+  address_street?: string;
+  address_number?: string;
+  address_complement?: string;
+  address_neighborhood?: string;
+  address_city?: string;
+  address_state?: string;
+  address_zip?: string;
   users_count: number;
   screens_count: number;
   alerts_count: number;
@@ -174,16 +184,16 @@ export default function DevGroupsPage() {
       name: group.name,
       email: group.email || '',
       phone: group.phone || '',
-      responsible_name: '',
-      responsible_email: '',
-      responsible_phone: '',
-      address_street: '',
-      address_number: '',
-      address_complement: '',
-      address_neighborhood: '',
-      address_city: '',
-      address_state: '',
-      address_zip: '',
+      responsible_name: group.responsible_name || '',
+      responsible_email: group.responsible_email || '',
+      responsible_phone: group.responsible_phone || '',
+      address_street: group.address_street || '',
+      address_number: group.address_number || '',
+      address_complement: group.address_complement || '',
+      address_neighborhood: group.address_neighborhood || '',
+      address_city: group.address_city || '',
+      address_state: group.address_state || '',
+      address_zip: group.address_zip || '',
       quota_users: group.quota_users || 10,
       quota_screens: group.quota_screens || 10,
       quota_alerts: group.quota_alerts || 10,

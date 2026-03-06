@@ -25,7 +25,8 @@ import {
   Calendar,
   Send,
   X,
-  Copy
+  Copy,
+  Info
 } from 'lucide-react';
 import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
 import ActionsDropdown from '@/components/ui/ActionsDropdown';
@@ -89,6 +90,7 @@ function AlertasContent() {
   const [cloningId, setCloningId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string>('user');
   const [accessDenied, setAccessDenied] = useState(false);
+  const [hasContext, setHasContext] = useState<boolean | null>(null);
   const [confirmModal, setConfirmModal] = useState<{
     show: boolean;
     title: string;
@@ -106,6 +108,29 @@ function AlertasContent() {
   useEffect(() => {
     checkAccessAndLoad();
   }, []);
+
+  useEffect(() => {
+    if (activeGroup?.id) {
+      checkContext(activeGroup.id);
+    } else {
+      setHasContext(null);
+    }
+  }, [activeGroup]);
+
+  async function checkContext(groupId: string) {
+    try {
+      const res = await fetch(`/api/assistente-ia/context?company_group_id=${groupId}`);
+      if (res.ok) {
+        const data = await res.json();
+        const contexts = data.contexts || [];
+        setHasContext(contexts.length > 0);
+      } else {
+        setHasContext(null);
+      }
+    } catch {
+      setHasContext(null);
+    }
+  }
 
   useEffect(() => {
     if (userRole !== 'user') {
@@ -324,6 +349,26 @@ function AlertasContent() {
             </Button>
           </Link>
         </div>
+
+        {hasContext === false && (
+          <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+            <Info className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-800">
+                Contexto não configurado{activeGroup ? ` para ${activeGroup.name}` : ''}
+              </p>
+              <p className="text-sm text-amber-700 mt-1">
+                Para que os alertas funcionem corretamente, é necessário criar um contexto de IA com as conexões e datasets do grupo.
+              </p>
+              <Link
+                href="/assistente-ia/contextos"
+                className="inline-flex items-center gap-1 mt-2 text-sm font-medium text-amber-800 hover:text-amber-900 underline"
+              >
+                Configurar Contexto
+              </Link>
+            </div>
+          </div>
+        )}
 
         {/* Cards de Estatísticas */}
         <div className="grid grid-cols-4 gap-4">

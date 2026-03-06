@@ -307,10 +307,13 @@ function ContextosContent() {
         loadContexts();
         toast.success('Base de DAX salva com sucesso!');
       } else {
-        toast.error('Erro: ' + (data.error || 'Erro desconhecido'));
+        console.error('[handleSaveDax] Erro da API:', data);
+        const detail = data.details ? ` (${data.details})` : '';
+        const hint = data.hint ? ` Dica: ${data.hint}` : '';
+        toast.error('Erro: ' + (data.error || 'Erro desconhecido') + detail + hint);
       }
     } catch (error) {
-      console.error('Erro:', error);
+      console.error('[handleSaveDax] Erro:', error);
       toast.error('Erro ao salvar base de DAX');
     } finally {
       setSaving(false);
