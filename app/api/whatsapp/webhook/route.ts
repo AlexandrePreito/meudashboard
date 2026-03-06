@@ -16,6 +16,10 @@ import { generateAudio, downloadWhatsAppAudio, transcribeAudio } from '@/lib/wha
 import { identifyQuestionIntent, getWorkingQueries, saveQueryResult, isFailureResponse, identifyFailureReason } from '@/lib/ai/learning';
 import { getDeveloperIdForGroup, resolveAIContextForGroup } from '@/lib/shared-resources';
 
+// Modelos para estratégia híbrida de custo
+const MODEL_FAST = 'claude-haiku-4-5-20241022'; // Rápido e barato - primeira tentativa
+const MODEL_SMART = 'claude-sonnet-4-20250514'; // Inteligente - fallback quando Haiku falha
+
 // ============================================
 // FUNÇÃO PARA SALVAR MENSAGEM NA FILA
 // ============================================
@@ -732,40 +736,56 @@ Use a ferramenta execute_dax para consultar dados. Leia o contexto acima para no
     console.log('[Webhook] System prompt length:', systemPrompt.length);
     console.log('[Webhook] Contexto carregado:', modelContext ? modelContext.length + ' chars' : 'NENHUM');
 
-    // ========== CHAMAR CLAUDE ==========
+    // ========== CHAMAR CLAUDE (ESTRATÉGIA HÍBRIDA) ==========
+    // 1ª tentativa: Haiku (barato) | Se falhar: Sonnet (inteligente)
     let response;
     let daxError: string | null = null;
-    
+    let currentModel = MODEL_FAST;
+    let escalatedToSmart = false;
+
     try {
       response = await callClaude({
-        model: 'claude-sonnet-4-20250514',
+        model: currentModel,
         max_tokens: 1024,
         system: systemPrompt,
         messages: conversationHistory,
         tools
       });
-      console.log('[Webhook] Claude respondeu | Tempo:', Date.now() - startTime, 'ms');
+      console.log(`[Webhook] Claude (${currentModel}) respondeu | Tempo: ${Date.now() - startTime} ms`);
     } catch (claudeError: any) {
       console.error('[Webhook] Claude erro COMPLETO:', JSON.stringify({
         message: claudeError.message,
         status: claudeError.status,
-        type: claudeError.type,
-        stack: claudeError.stack?.substring(0, 500)
+        stack: claudeError.stack?.substring(0, 200)
       }));
-      
+
+      // Detectar erro de créditos da API
+      const errorMsg = (claudeError?.message || '').toLowerCase();
+      const isCreditError = errorMsg.includes('credit balance') ||
+                            errorMsg.includes('purchase credits') ||
+                            errorMsg.includes('insufficient_quota');
+
+      if (isCreditError) {
+        const creditErrorMsg = `⚠️ O assistente está temporariamente indisponível por questões técnicas.\n\nPor favor, entre em contato com o administrador do sistema.`;
+        await sendWhatsAppMessage(instance, phone, creditErrorMsg);
+        await supabase.from('whatsapp_messages').insert({
+          company_group_id: authorizedNumber.company_group_id,
+          phone_number: phone,
+          message_content: creditErrorMsg,
+          direction: 'outgoing',
+          sender_name: 'Assistente IA',
+          instance_id: instance.id
+        });
+        return NextResponse.json({ status: 'error', reason: 'api_credits_exhausted' });
+      }
+
+      // Salvar na fila para retry
       const errorInfo = classifyError(claudeError);
-      
-      // Se é erro temporário, salvar na fila
       if (errorInfo.isTemporary && errorInfo.shouldRetry) {
         const queueId = await saveMessageToQueue(
-          supabase,
-          phone,
-          authorizedNumber.company_group_id,
-          processedMessage,
-          conversationHistory,
-          systemPrompt,
-          connectionId || null,
-          datasetId || null,
+          supabase, phone, authorizedNumber.company_group_id,
+          processedMessage, conversationHistory, systemPrompt,
+          connectionId || null, datasetId || null,
           {
             isTemporary: true,
             retryAfter: errorInfo.retryAfter,
@@ -773,15 +793,13 @@ Use a ferramenta execute_dax para consultar dados. Leia o contexto acima para no
           },
           respondWithAudio
         );
-        
         if (queueId) {
-          // Enviar mensagem informando que vai tentar novamente
           const userName = authorizedNumber.name?.split(' ')[0] || '';
-          await sendWhatsAppMessage(instance, phone, errorInfo.userMessage.replace('[Nome]', userName));
+          await sendWhatsAppMessage(instance, phone, errorInfo.userMessage?.replace('[Nome]', userName) || `Desculpe ${userName}, tive um problema. Vou tentar novamente em breve.`);
           await supabase.from('whatsapp_messages').insert({
             company_group_id: authorizedNumber.company_group_id,
             phone_number: phone,
-            message_content: errorInfo.userMessage.replace('[Nome]', userName),
+            message_content: errorInfo.userMessage?.replace('[Nome]', userName) || `Desculpe, tive um problema. Vou tentar novamente em breve.`,
             direction: 'outgoing',
             sender_name: 'Assistente IA',
             instance_id: instance.id
@@ -789,176 +807,132 @@ Use a ferramenta execute_dax para consultar dados. Leia o contexto acima para no
           return NextResponse.json({ status: 'queued', queue_id: queueId, reason: 'temporary_error' });
         }
       }
-      
-      // Se não conseguiu salvar na fila ou é erro permanente, enviar mensagem de erro
-      const userName = authorizedNumber.name?.split(' ')[0] || '';
-      const errorMsg = errorInfo.isTemporary 
-        ? `Desculpe ${userName}, ainda estou com dificuldades técnicas. 🔧\n\nPor favor, tente novamente em alguns minutos. Se persistir, entre em contato com o suporte.`
-        : errorInfo.userMessage.replace('[Nome]', userName);
-      
-      await sendWhatsAppMessage(instance, phone, errorMsg);
+
+      const errorResponseMsg = `Desculpe ${authorizedNumber.name?.split(' ')[0] || ''}, tive um problema técnico. Sua pergunta foi salva e será respondida em breve. 🔄`;
+      await sendWhatsAppMessage(instance, phone, errorResponseMsg);
       await supabase.from('whatsapp_messages').insert({
         company_group_id: authorizedNumber.company_group_id,
         phone_number: phone,
-        message_content: errorMsg,
+        message_content: errorResponseMsg,
         direction: 'outgoing',
         sender_name: 'Assistente IA',
         instance_id: instance.id
       });
-      return NextResponse.json({ status: 'error', reason: errorInfo.isTemporary ? 'temporary_error' : 'permanent_error' });
+      return NextResponse.json({ status: 'error', reason: 'claude_error' });
     }
 
-    // ========== PROCESSAR TOOL CALLS (MÁXIMO 3 ITERAÇÕES) ==========
-    const messages: any[] = [...conversationHistory];
-    let iterations = 0;
-    const maxIterations = 3;
+    // ========== LOOP DE TOOL USE (DAX) ==========
+    const MAX_ITERATIONS = 3;
+    let iteration = 0;
 
-    while (response.stop_reason === 'tool_use' && iterations < maxIterations) {
-      iterations++;
-      console.log(`[Webhook] Tool call iteração ${iterations}/${maxIterations}`);
+    while (hasToolUse(response) && iteration < MAX_ITERATIONS) {
+      iteration++;
+      const toolBlocks = getToolUseBlocks(response);
 
-      const toolUseBlocks = response.content.filter((block: any) => block.type === 'tool_use');
       const toolResults: any[] = [];
+      let hadDaxError = false;
 
-      for (const toolUse of toolUseBlocks) {
-        if (toolUse.type === 'tool_use' && toolUse.name === 'execute_dax') {
-          const toolInput = toolUse.input as { query?: string };
-          if (!toolInput.query) continue;
+      for (const toolBlock of toolBlocks) {
+        if (toolBlock.name === 'execute_dax') {
+          const query = toolBlock.input?.query;
+          console.log(`[Webhook] DAX query (iteração ${iteration}/${MAX_ITERATIONS}):`, query?.substring(0, 300));
 
-          console.log(`[Webhook] DAX query (iteração ${iterations}):`, toolInput.query?.substring(0, 300));
-          const daxResult = await executeDaxQuery(connectionId, datasetId, toolInput.query, supabase);
-          console.log('[Webhook] DAX resultado:', daxResult.success ? `✅ ${daxResult.results?.length || 0} linhas` : `❌ ${daxResult.error}`);
+          if (query) {
+            const daxResult = await executeDaxQuery(connectionId, datasetId, query, supabase);
 
-          // Salvar resultado para aprendizado
-          if (toolInput.query) {
-            await saveQueryLearning(supabase, {
-              company_group_id: authorizedNumber.company_group_id,
-              connection_id: connectionId || undefined,
-              dataset_id: datasetId,
-              user_question: processedMessage,
-              dax_query: toolInput.query,
-              was_successful: daxResult.success,
-              source: 'whatsapp',
-              created_by: authorizedNumber.user_id || undefined
-            });
-          }
+            if (daxResult.success) {
+              console.log(`[Webhook] DAX resultado: ✅ ${daxResult.results?.length || 0} linhas`);
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: toolBlock.id,
+                content: JSON.stringify(daxResult.results?.slice(0, 50) || [])
+              });
 
-          if (daxResult.success) {
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: toolUse.id,
-              content: JSON.stringify(daxResult.results?.slice(0, 20), null, 2)
-            });
-          } else {
-            daxError = daxResult.error || 'Erro desconhecido';
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: toolUse.id,
-              content: `Erro na query DAX: ${daxError}. Analise o erro, corrija a query e tente novamente com nomes corretos de tabelas/colunas conforme o contexto do modelo.`
-            });
+              await saveQueryLearning(supabase, {
+                company_group_id: authorizedNumber.company_group_id,
+                connection_id: connectionId || undefined,
+                dataset_id: datasetId,
+                user_question: processedMessage,
+                dax_query: query,
+                was_successful: true,
+                source: 'whatsapp',
+                created_by: authorizedNumber.user_id || undefined
+              });
+            } else {
+              console.log(`[Webhook] DAX resultado: ❌ ${daxResult.error?.substring(0, 200)}`);
+              hadDaxError = true;
+              daxError = daxResult.error || 'Erro desconhecido';
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: toolBlock.id,
+                content: `Erro: ${daxResult.error}`,
+                is_error: true
+              });
+
+              await saveQueryLearning(supabase, {
+                company_group_id: authorizedNumber.company_group_id,
+                connection_id: connectionId || undefined,
+                dataset_id: datasetId,
+                user_question: processedMessage,
+                dax_query: query,
+                was_successful: false,
+                source: 'whatsapp',
+                created_by: authorizedNumber.user_id || undefined
+              });
+            }
           }
         }
       }
 
-      if (toolResults.length === 0) break;
+      // Se Haiku errou a DAX E ainda não escalou → escalar para Sonnet
+      if (hadDaxError && !escalatedToSmart && currentModel === MODEL_FAST) {
+        console.log(`[Webhook] 🔄 Haiku errou DAX na iteração ${iteration}, escalando para Sonnet...`);
+        currentModel = MODEL_SMART;
+        escalatedToSmart = true;
 
-      messages.push({ role: 'assistant', content: response.content });
-      messages.push({ role: 'user', content: toolResults });
+        const messagesWithError = [
+          ...conversationHistory,
+          { role: 'assistant', content: response.content },
+          { role: 'user', content: toolResults }
+        ];
+
+        try {
+          response = await callClaude({
+            model: currentModel,
+            max_tokens: 1024,
+            system: systemPrompt,
+            messages: messagesWithError,
+            tools
+          });
+          console.log(`[Webhook] Claude (${currentModel}) resposta após escalação | Tempo: ${Date.now() - startTime} ms`);
+          continue;
+        } catch (smartError: any) {
+          console.error(`[Webhook] Sonnet também falhou:`, smartError.message?.substring(0, 200));
+        }
+      }
+
+      const messagesForNextIteration = [
+        ...conversationHistory,
+        { role: 'assistant', content: response.content },
+        { role: 'user', content: toolResults }
+      ];
 
       try {
         response = await callClaude({
-          model: 'claude-sonnet-4-20250514',
+          model: currentModel,
           max_tokens: 1024,
           system: systemPrompt,
-          messages,
+          messages: messagesForNextIteration,
           tools
         });
-        console.log(`[Webhook] Claude resposta iteração ${iterations} | Tempo:`, Date.now() - startTime, 'ms');
-      } catch (retryError: any) {
-        console.error(`[Webhook] Claude erro na iteração ${iterations}:`, retryError.message);
-
-        const errorInfo = classifyError(retryError);
-
-        // Se é erro temporário na primeira iteração e tem dados, tentar mostrar
-        if (errorInfo.isTemporary && errorInfo.shouldRetry) {
-          const queueId = await saveMessageToQueue(
-            supabase,
-            phone,
-            authorizedNumber.company_group_id,
-            processedMessage,
-            messages,
-            systemPrompt,
-            connectionId || null,
-            datasetId || null,
-            {
-              isTemporary: true,
-              retryAfter: errorInfo.retryAfter,
-              errorMessage: retryError.message || 'Erro na iteração ' + iterations
-            },
-            respondWithAudio
-          );
-
-          if (queueId) {
-            const userName = authorizedNumber.name?.split(' ')[0] || '';
-            const msg = `Olá ${userName}! Estou processando sua pergunta. ⏳\n\nVou tentar novamente em alguns segundos.`;
-            await sendWhatsAppMessage(instance, phone, msg);
-            await supabase.from('whatsapp_messages').insert({
-              company_group_id: authorizedNumber.company_group_id,
-              phone_number: phone,
-              message_content: msg,
-              direction: 'outgoing',
-              sender_name: 'Assistente IA',
-              instance_id: instance.id
-            });
-            return NextResponse.json({ status: 'queued', queue_id: queueId });
-          }
-        }
-
-        // Tentar extrair dados brutos dos toolResults se disponíveis
-        let hasData = false;
-        let dataToShow: any[] = [];
-
-        for (const toolResult of toolResults) {
-          if (toolResult.content && !toolResult.content.includes('Erro')) {
-            try {
-              const parsed = JSON.parse(toolResult.content);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                hasData = true;
-                dataToShow = parsed;
-                break;
-              }
-            } catch (e) {}
-          }
-        }
-
-        if (hasData && dataToShow.length > 0) {
-          const basicResponse = `📊 *Dados encontrados:*\n\n${JSON.stringify(dataToShow.slice(0, 5), null, 2)}\n\nDesculpe, tive dificuldade para formatar. Tente novamente.`;
-          await sendWhatsAppMessage(instance, phone, basicResponse);
-          await supabase.from('whatsapp_messages').insert({
-            company_group_id: authorizedNumber.company_group_id,
-            phone_number: phone,
-            message_content: basicResponse,
-            direction: 'outgoing',
-            sender_name: 'Assistente IA',
-            instance_id: instance.id
-          });
-          return NextResponse.json({ status: 'partial_success' });
-        }
-
-        const userName = authorizedNumber.name?.split(' ')[0] || '';
-        const errorMsg = `Desculpe ${userName}, não consegui processar sua solicitação. Por favor, tente novamente.`;
-        await sendWhatsAppMessage(instance, phone, errorMsg);
-        await supabase.from('whatsapp_messages').insert({
-          company_group_id: authorizedNumber.company_group_id,
-          phone_number: phone,
-          message_content: errorMsg,
-          direction: 'outgoing',
-          sender_name: 'Assistente IA',
-          instance_id: instance.id
-        });
-        return NextResponse.json({ status: 'error', reason: 'tool_call_failed' });
+        console.log(`[Webhook] Claude (${currentModel}) resposta iteração ${iteration} | Tempo: ${Date.now() - startTime} ms`);
+      } catch (iterError: any) {
+        console.error(`[Webhook] Erro na iteração ${iteration}:`, iterError.message?.substring(0, 200));
+        break;
       }
     }
+
+    console.log(`[Webhook] Modelo final: ${currentModel} | Escalou: ${escalatedToSmart} | Iterações: ${iteration}`);
 
     // ========== EXTRAIR RESPOSTA ==========
     let assistantMessage = '';
