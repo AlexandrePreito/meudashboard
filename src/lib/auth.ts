@@ -87,7 +87,7 @@ export async function getAuthUser(): Promise<AuthUser | null> {
     const adminSupabase = createAdminClient();
     const { data: user, error } = await adminSupabase
       .from('users')
-      .select('id, email, full_name, is_master, status, avatar_url, current_session_id')
+      .select('id, email, full_name, is_master, is_developer_user, status, avatar_url, current_session_id')
       .eq('id', userId)
       .single();
     if (error || !user) {
@@ -104,6 +104,7 @@ export async function getAuthUser(): Promise<AuthUser | null> {
       email: user.email,
       full_name: user.full_name || '',
       is_master: user.is_master || false,
+      is_developer: user.is_developer_user || false,
       status: user.status,
       avatar_url: user.avatar_url || undefined,
     } as AuthUser;

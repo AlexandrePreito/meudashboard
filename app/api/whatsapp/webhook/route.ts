@@ -660,13 +660,13 @@ Quando o usuário NÃO especificar período, use ${currentMonth}.
 SEMPRE inicie a resposta com: 📅 *${currentMonth}*
 
 # REGRAS DAX OBRIGATÓRIAS
-- NUNCA execute query sem filtro de período
-- EVALUATE ROW("Nome", CALCULATE([Medida], filtros)) para valor único
-- EVALUATE SUMMARIZECOLUMNS(Coluna, "Total", [Medida]) para agrupamentos
-- TOPN(N, ...) para rankings
-- NUNCA invente nomes — use SOMENTE o que está no contexto abaixo
+- **REGRA CRÍTICA DE DATA:** TODA query DEVE ter filtro de período dentro de CALCULATE(). NUNCA use [Medida] diretamente sem CALCULATE com filtro de mês/ano. Formato: CALCULATE([Medida], MONTH(Calendario[Data]) = N, YEAR(Calendario[Data]) = AAAA)
+- EVALUATE ROW("Nome", CALCULATE([Medida], MONTH(Calendario[Data]) = ${currentMonthNumber}, YEAR(Calendario[Data]) = ${currentYear})) para valor único
+- EVALUATE TOPN(N, SUMMARIZECOLUMNS(Coluna, "Total", CALCULATE([Medida], MONTH(Calendario[Data]) = ${currentMonthNumber}, YEAR(Calendario[Data]) = ${currentYear})), [Total], DESC) para rankings
+- EVALUATE SUMMARIZECOLUMNS(Coluna, "Total", CALCULATE([Medida], MONTH(Calendario[Data]) = ${currentMonthNumber}, YEAR(Calendario[Data]) = ${currentYear})) para agrupamentos
+- NUNCA invente nomes de colunas ou medidas – use SOMENTE o que está no contexto
 - Se a query falhar, analise o erro, corrija e tente novamente
-- Se valor individual > total, a query está ERRADA (faltou filtro)
+- Se valores parecem muito altos (milhões quando deveria ser milhares), provavelmente FALTOU filtro de data — adicione CALCULATE com MONTH/YEAR
 
 # FORMATAÇÃO
 - *negrito* para destaques (asterisco simples)
