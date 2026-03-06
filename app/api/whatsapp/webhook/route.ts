@@ -412,6 +412,7 @@ export async function POST(request: Request) {
         .select('*')
         .eq('dataset_id', datasetId)
         .eq('company_group_id', authorizedNumber.company_group_id)
+        .eq('context_type', 'chat')
         .eq('is_active', true)
         .maybeSingle();
       aiContext = ctx;
@@ -549,6 +550,7 @@ export async function POST(request: Request) {
           .select('context_content, section_base, section_medidas, connection_id, dataset_id')
           .eq('dataset_id', datasetId)
           .eq('company_group_id', authorizedNumber.company_group_id)
+          .eq('context_type', 'chat')
           .eq('is_active', true)
           .limit(1)
           .maybeSingle();
