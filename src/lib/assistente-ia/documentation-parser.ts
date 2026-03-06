@@ -1,4 +1,4 @@
-﻿// Parser de documentação estruturada
+// Parser de documentação estruturada
 
 export interface ParsedDocumentation {
   raw?: string;  // Conteúdo original (opcional)
@@ -209,20 +209,45 @@ export function generateOptimizedContext(
   // Extrair palavras-chave da pergunta
   const keywords: string[] = [];
   
-  // Palavras relacionadas a medidas
-  const medidaKeywords = ['faturamento', 'venda', 'receita', 'ticket', 'margem', 'lucro', 'custo', 'cmv', 'quantidade', 'total', 'soma'];
+  // Palavras relacionadas a medidas (incluindo sinônimos e plurais)
+  const medidaKeywords = [
+    'faturamento', 'faturou', 'venda', 'vendas', 'vendeu', 'vendemos',
+    'receita', 'receitas', 'ticket', 'margem', 'margens', 'lucro', 'lucros',
+    'custo', 'custos', 'cmv', 'quantidade', 'quantidades', 'qtd',
+    'total', 'soma', 'media', 'medio', 'preco', 'desconto', 'descontos',
+    'top', 'ranking', 'mais vendido', 'mais vendidos', 'campeao', 'melhor', 'melhores', 'maior', 'maiores',
+    'pagar', 'pago', 'pagamos', 'pagamento', 'pagamentos', 'despesa', 'despesas',
+    'receber', 'recebido', 'recebemos', 'recebimento', 'recebimentos',
+    'saldo', 'banco', 'caixa', 'fluxo',
+    'dre', 'resultado', 'operacional',
+    'vencido', 'vencidos', 'vencendo', 'atrasado', 'atrasados', 'atraso',
+    'servico', 'gorjeta', 'taxa'
+  ];
   medidaKeywords.forEach(kw => {
     if (questionLower.includes(kw)) keywords.push(kw);
   });
-  
-  // Palavras relacionadas a dimensões
-  const dimensaoKeywords = ['filial', 'loja', 'vendedor', 'garcom', 'funcionario', 'produto', 'cliente', 'fornecedor', 'categoria', 'grupo'];
+
+  // Palavras relacionadas a dimensões (incluindo plurais e variações)
+  const dimensaoKeywords = [
+    'filial', 'filiais', 'loja', 'lojas', 'unidade', 'unidades',
+    'vendedor', 'vendedores', 'garcom', 'garcons', 'garcoms', 'funcionario', 'funcionarios', 'empregado',
+    'produto', 'produtos', 'item', 'itens', 'material',
+    'cliente', 'clientes', 'fornecedor', 'fornecedores', 'credor', 'credores',
+    'categoria', 'categorias', 'grupo', 'grupos', 'subcategoria',
+    'regiao', 'regioes', 'cidade', 'estado',
+    'conta', 'contas', 'banco', 'bancos'
+  ];
   dimensaoKeywords.forEach(kw => {
     if (questionLower.includes(kw)) keywords.push(kw);
   });
-  
+
   // Palavras relacionadas a tempo
-  const tempoKeywords = ['mes', 'ano', 'dia', 'semana', 'periodo', 'data'];
+  const tempoKeywords = [
+    'mes', 'meses', 'ano', 'anos', 'dia', 'dias', 'semana', 'semanas',
+    'periodo', 'data', 'hoje', 'ontem', 'janeiro', 'fevereiro', 'marco', 'abril',
+    'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+    'trimestre', 'bimestre', 'quinzena', 'mensal', 'anual', 'diario', 'semanal'
+  ];
   tempoKeywords.forEach(kw => {
     if (questionLower.includes(kw)) keywords.push(kw);
   });
@@ -241,10 +266,10 @@ export function generateOptimizedContext(
     });
   }
 
-  // Se não encontrou medidas relevantes, usar top 10 mais comuns
-  const measuresToInclude = relevantMeasures.length > 0 
-    ? relevantMeasures.slice(0, 15)  // Limitar a 15 medidas
-    : (parsed.medidas || []).slice(0, 10);
+  // Se não encontrou medidas relevantes, incluir TODAS (a pergunta pode ser sobre qualquer coisa)
+  const measuresToInclude = relevantMeasures.length > 0
+    ? relevantMeasures.slice(0, 25)  // Limitar a 25 medidas relevantes
+    : (parsed.medidas || []).slice(0, 25); // Fallback: top 25
 
   // Filtrar queries relevantes
   const relevantQueries: QueryInfo[] = [];
@@ -258,7 +283,9 @@ export function generateOptimizedContext(
       }
     });
   }
-  const queriesToInclude = relevantQueries.slice(0, 5); // Limitar a 5 queries
+  const queriesToInclude = relevantQueries.length > 0
+    ? relevantQueries.slice(0, 10)  // Mais queries relevantes
+    : (parsed.queries || []).slice(0, 8); // Fallback
 
   // Filtrar exemplos relevantes
   const relevantExemplos: ExemploInfo[] = [];
@@ -272,7 +299,9 @@ export function generateOptimizedContext(
       }
     });
   }
-  const exemplosToInclude = relevantExemplos.slice(0, 3); // Limitar a 3 exemplos
+  const exemplosToInclude = relevantExemplos.length > 0
+    ? relevantExemplos.slice(0, 5)  // Mais exemplos relevantes
+    : (parsed.exemplos || []).slice(0, 5); // Fallback
 
   // Construir o contexto otimizado
   let optimizedContext = parsed.base;
@@ -290,9 +319,9 @@ export function generateOptimizedContext(
 
   if (parsed.tabelas && parsed.tabelas.length > 0) {
     optimizedContext += '\n\n## Tabelas e Colunas Principais\n';
-    parsed.tabelas.slice(0, 5).forEach(tabela => { // Limitar a 5 tabelas
+    parsed.tabelas.slice(0, 8).forEach(tabela => { // Limitar a 8 tabelas
       optimizedContext += `### Tabela: ${tabela.table}\n`;
-      tabela.columns.slice(0, 5).forEach(coluna => { // Limitar a 5 colunas por tabela
+      tabela.columns.slice(0, 8).forEach(coluna => { // Limitar a 8 colunas por tabela
         optimizedContext += `- ${coluna.name} (Tipo: ${coluna.type}, Uso: ${coluna.usage.join('/')})\n`;
       });
     });
