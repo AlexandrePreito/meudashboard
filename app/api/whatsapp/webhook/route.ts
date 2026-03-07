@@ -17,7 +17,7 @@ import { identifyQuestionIntent, getWorkingQueries, saveQueryResult, isFailureRe
 import { getDeveloperIdForGroup, resolveAIContextForGroup } from '@/lib/shared-resources';
 
 // Modelos para estratégia híbrida de custo
-const MODEL_FAST = 'claude-haiku-4-5-20241022'; // Rápido e barato - primeira tentativa
+const MODEL_FAST = 'claude-haiku-4-5-20251001'; // Rápido e barato - primeira tentativa
 const MODEL_SMART = 'claude-sonnet-4-20250514'; // Inteligente - fallback quando Haiku falha
 
 // ============================================
