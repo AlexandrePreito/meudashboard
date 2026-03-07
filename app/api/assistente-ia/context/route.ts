@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getUserGroupMembership, getAuthUser, getUserDeveloperId } from '@/lib/auth';
+import { logActivity } from '@/lib/activity-logger';
 
 async function resolveGroupId(supabase: any, requestedGroupId: string | null, membership: { user_id: string; company_group_id: string }) {
   let groupId = membership.company_group_id;
@@ -235,6 +236,19 @@ export async function POST(request: NextRequest) {
       result = data;
     }
 
+    try {
+      const user = await getAuthUser();
+      await logActivity({
+        userId: user?.id,
+        companyGroupId: groupId,
+        actionType: existing ? 'update' : 'create',
+        module: 'assistente-ia',
+        description: existing ? 'Contexto IA atualizado' : `Contexto IA criado: ${contextType}`,
+        entityType: 'context',
+        entityId: result?.id,
+      });
+    } catch (_) {}
+
     return NextResponse.json({ 
       success: true, 
       context: result,
@@ -290,6 +304,19 @@ export async function DELETE(request: NextRequest) {
       console.error('Erro ao excluir contexto:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    try {
+      const user = await getAuthUser();
+      await logActivity({
+        userId: user?.id,
+        companyGroupId: groupId,
+        actionType: 'delete',
+        module: 'assistente-ia',
+        description: 'Contexto IA excluído',
+        entityType: 'context',
+        entityId: id,
+      });
+    } catch (_) {}
 
     return NextResponse.json({ success: true });
 

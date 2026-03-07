@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createToken } from '@/lib/auth';
+import { logActivity } from '@/lib/activity-logger';
 import bcrypt from 'bcryptjs';
 
 export async function POST(request: NextRequest) {
@@ -186,6 +187,50 @@ export async function POST(request: NextRequest) {
       }
     }
     response.cookies.set('auth-token', token, cookieOptions);
+
+    try {
+      await logActivity({
+        userId: user.id,
+        companyGroupId: groupIds?.[0],
+        actionType: 'login',
+        module: 'auth',
+        description: `Login realizado: ${user.email}`,
+        entityType: 'user',
+        entityId: user.id,
+        ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined,
+        userAgent: request.headers.get('user-agent') || undefined,
+      });
+    } catch (_) {}
+
+    // Encerrar sessões órfãs do mesmo usuário (abertas há mais de 12h)
+    try {
+      const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+      await supabase
+        .from('user_sessions')
+        .update({
+          ended_at: new Date().toISOString(),
+          duration_minutes: 0,
+        })
+        .eq('user_id', user.id)
+        .is('ended_at', null)
+        .lt('started_at', twelveHoursAgo);
+    } catch (e) {
+      console.error('[Session] Erro ao encerrar sessões órfãs:', e);
+    }
+
+    // Criar sessão de uso
+    const primaryGroupId = groupIds?.[0] ?? null;
+    try {
+      await supabase.from('user_sessions').insert({
+        user_id: user.id,
+        company_group_id: primaryGroupId,
+        started_at: new Date().toISOString(),
+        ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+        user_agent: request.headers.get('user-agent') || null,
+      });
+    } catch (e) {
+      console.error('[Session] Erro ao criar sessão:', e);
+    }
 
     return response;
   } catch (error: any) {

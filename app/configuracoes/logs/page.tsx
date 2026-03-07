@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
 import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
-import { useMenu } from '@/contexts/MenuContext';
 import {
   FileText,
   Search,
@@ -39,7 +38,8 @@ interface UserSummary {
   user_id: string;
   full_name: string;
   email: string;
-  group_name: string;
+  company_group_id: string | null;
+  group_name: string | null;
   days_active: number;
   total_actions: number;
   chat_queries: number;
@@ -78,13 +78,76 @@ const MODULE_ICONS: Record<string, any> = {
   config: Settings
 };
 
+// Cores por módulo na lista de atividades (Power BI amarelo, demais distintas)
+const MODULE_COLORS: Record<string, string> = {
+  auth: 'bg-sky-100 text-sky-700',
+  powerbi: 'bg-amber-100 text-amber-700',
+  whatsapp: 'bg-emerald-100 text-emerald-700',
+  alertas: 'bg-orange-100 text-orange-700',
+  chat_ia: 'bg-violet-100 text-violet-700',
+  config: 'bg-slate-100 text-slate-700'
+};
+
+const MODULE_ICON_BG: Record<string, string> = {
+  auth: 'bg-sky-100',
+  powerbi: 'bg-amber-100',
+  whatsapp: 'bg-emerald-100',
+  alertas: 'bg-orange-100',
+  chat_ia: 'bg-violet-100',
+  config: 'bg-slate-100'
+};
+
+const MODULE_ICON_TEXT: Record<string, string> = {
+  auth: 'text-sky-600',
+  powerbi: 'text-amber-600',
+  whatsapp: 'text-emerald-600',
+  alertas: 'text-orange-600',
+  chat_ia: 'text-violet-600',
+  config: 'text-slate-600'
+};
+
+function getModuleColor(module: string) {
+  return MODULE_COLORS[module] ?? 'bg-gray-100 text-gray-700';
+}
+
+function getModuleIconStyle(module: string) {
+  return {
+    bg: MODULE_ICON_BG[module] ?? 'bg-gray-100',
+    text: MODULE_ICON_TEXT[module] ?? 'text-gray-600'
+  };
+}
+
+const LOGS_PAGE_SIZE = 20;
+
+function formatDateISO(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+
+function getDateRangeForPreset(preset: string): { from: string; to: string } {
+  const now = new Date();
+  const to = formatDateISO(now);
+  if (preset === 'today') return { from: to, to };
+  if (preset === 'week') {
+    const day = now.getDay();
+    const diff = day === 0 ? 6 : day - 1;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - diff);
+    return { from: formatDateISO(monday), to };
+  }
+  if (preset === 'month') {
+    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { from: formatDateISO(first), to };
+  }
+  return { from: '', to: '' };
+}
+
 function LogsContent() {
-  const { activeGroup } = useMenu();
   const [activeTab, setActiveTab] = useState<'logs' | 'usage'>('logs');
   const [logs, setLogs] = useState<Log[]>([]);
   const [summary, setSummary] = useState<UserSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [users, setUsers] = useState<{ id: string; full_name: string }[]>([]);
+  const [users, setUsers] = useState<{ id: string; full_name: string; memberships?: { company_group?: { id: string } }[] }[]>([]);
+  const [filteredUsersForUsage, setFilteredUsersForUsage] = useState<{ id: string; full_name: string }[]>([]);
   
   // Paginação
   const [page, setPage] = useState(1);
@@ -94,13 +157,22 @@ function LogsContent() {
   // Filtros
   const [filters, setFilters] = useState({
     user_id: '',
+    group_id: '',
     module: '',
     action_type: '',
+    date_preset: 'today' as 'today' | 'week' | 'month' | 'period',
     date_from: '',
     date_to: ''
   });
+  const [groups, setGroups] = useState<{ id: string; name: string }[]>([]);
   const [currentUser, setCurrentUser] = useState<{ id?: string; is_master?: boolean; role?: string } | null>(null);
   const [pageUsage, setPageUsage] = useState(1);
+
+  // Filtros da aba Uso por Usuário
+  const [usageFilters, setUsageFilters] = useState({
+    group_id: '',
+    user_id: ''
+  });
 
   // Verifica se é usuário comum (declarado antes do useEffect)
   const isRegularUser = !currentUser?.is_master && currentUser?.role === 'user';
@@ -131,29 +203,40 @@ function LogsContent() {
   }
 
   useEffect(() => {
-    // Só carregar usuários se não for usuário comum e se currentUser já foi carregado
     if (currentUser && !isRegularUser) {
       loadUsers();
+      loadGroups();
     }
   }, [currentUser]);
 
+  // Quando o grupo da aba Uso muda, carregar usuários daquele grupo para o dropdown
   useEffect(() => {
-    // Só carregar logs depois que currentUser foi definido
+    if (isRegularUser) return;
+    if (usageFilters.group_id) {
+      loadUsersForGroup(usageFilters.group_id);
+    } else {
+      setFilteredUsersForUsage(users.map(u => ({ id: u.id, full_name: u.full_name })));
+    }
+  }, [usageFilters.group_id]);
+
+  // Manter filteredUsersForUsage em sync com users quando users carrega e não há filtro de grupo
+  useEffect(() => {
+    if (!usageFilters.group_id && users.length > 0) {
+      setFilteredUsersForUsage(users.map(u => ({ id: u.id, full_name: u.full_name })));
+    }
+  }, [users]);
+
+  useEffect(() => {
     if (!currentUser) return;
-    
     if (activeTab === 'logs') {
-      loadLogs(activeGroup);
+      loadLogs();
     } else {
       loadSummary();
     }
-  }, [activeTab, page, filters, activeGroup, currentUser]);
+  }, [activeTab, page, filters, usageFilters, currentUser]);
 
   async function loadUsers() {
-    // Usuários comuns não precisam carregar lista de usuários
-    if (isRegularUser) {
-      return;
-    }
-    
+    if (isRegularUser) return;
     try {
       const res = await fetch('/api/config/users');
       if (res.ok) {
@@ -165,28 +248,54 @@ function LogsContent() {
     }
   }
 
-  async function loadLogs(currentGroup?: { id: string; name: string } | null) {
+  async function loadUsersForGroup(groupId: string) {
+    try {
+      const res = await fetch(`/api/config/users?group_id=${groupId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setFilteredUsersForUsage((data.users || []).map((u: any) => ({ id: u.id, full_name: u.full_name })));
+      }
+    } catch (err) {
+      console.error('Erro ao carregar usuários do grupo:', err);
+      setFilteredUsersForUsage([]);
+    }
+  }
+
+  async function loadGroups() {
+    if (isRegularUser) return;
+    try {
+      const res = await fetch('/api/user/groups');
+      if (res.ok) {
+        const data = await res.json();
+        setGroups(data.groups || []);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar grupos:', err);
+    }
+  }
+
+  async function loadLogs() {
     setLoading(true);
     try {
       const params = new URLSearchParams({
         page: page.toString(),
-        limit: '30'
+        limit: LOGS_PAGE_SIZE.toString()
       });
-      
-      // Se for usuário comum, passar only_mine=true e NÃO passar group_id
+
       if (isRegularUser) {
         params.append('only_mine', 'true');
       } else {
-        // Apenas para admins/masters/dev: permitir filtros e group_id
         if (filters.user_id) params.append('user_id', filters.user_id);
-        if (currentGroup) params.append('group_id', currentGroup.id);
+        if (filters.group_id) params.append('group_id', filters.group_id);
       }
-      
-      // Filtros que todos podem usar
+
       if (filters.module) params.append('module', filters.module);
       if (filters.action_type) params.append('action_type', filters.action_type);
-      if (filters.date_from) params.append('date_from', filters.date_from);
-      if (filters.date_to) params.append('date_to', filters.date_to);
+
+      const dateFrom = filters.date_preset === 'period' ? filters.date_from : getDateRangeForPreset(filters.date_preset).from;
+      const dateTo = filters.date_preset === 'period' ? filters.date_to : getDateRangeForPreset(filters.date_preset).to;
+      if (dateFrom) params.append('date_from', dateFrom);
+      if (dateTo) params.append('date_to', dateTo);
 
       const res = await fetch(`/api/config/logs?${params}`);
       if (res.ok) {
@@ -205,7 +314,11 @@ function LogsContent() {
   async function loadSummary() {
     setLoading(true);
     try {
-      const res = await fetch('/api/config/logs/summary');
+      const params = new URLSearchParams();
+      if (usageFilters.group_id) params.append('group_id', usageFilters.group_id);
+      if (usageFilters.user_id) params.append('user_id', usageFilters.user_id);
+
+      const res = await fetch(`/api/config/logs/summary?${params}`);
       if (res.ok) {
         const data = await res.json();
         setSummary(data.summary || []);
@@ -237,13 +350,20 @@ function LogsContent() {
   function clearFilters() {
     setFilters({
       user_id: '',
+      group_id: '',
       module: '',
       action_type: '',
+      date_preset: 'today',
       date_from: '',
       date_to: ''
     });
     setPage(1);
   }
+
+  // Usuários disponíveis no dropdown da aba Atividades (filtrar por grupo quando selecionado)
+  const usersForLogsDropdown = filters.group_id
+    ? users.filter((u) => u.memberships?.some((m: any) => m.company_group?.id === filters.group_id))
+    : users;
 
   function getActionColor(action: string) {
     switch (action) {
@@ -269,7 +389,7 @@ function LogsContent() {
               {isRegularUser ? 'Histórico das suas ações no sistema' : 'Acompanhe as atividades e uso do sistema'}
             </p>
           </div>
-          <Button onClick={() => activeTab === 'logs' ? loadLogs(activeGroup) : loadSummary()} icon={<RefreshCw size={18} />}>
+          <Button onClick={() => activeTab === 'logs' ? loadLogs() : loadSummary()} icon={<RefreshCw size={18} />}>
             Atualizar
           </Button>
         </div>
@@ -313,7 +433,7 @@ function LogsContent() {
                 <Filter size={18} className="text-gray-400" />
                 <span className="text-sm font-medium text-gray-700">Filtros</span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
                 {!isRegularUser && (
                   <select
                     value={filters.user_id}
@@ -321,8 +441,20 @@ function LogsContent() {
                     className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
                   >
                     <option value="">Todos os usuários</option>
-                    {users.map(u => (
+                    {usersForLogsDropdown.map(u => (
                       <option key={u.id} value={u.id}>{u.full_name}</option>
+                    ))}
+                  </select>
+                )}
+                {!isRegularUser && (
+                  <select
+                    value={filters.group_id}
+                    onChange={(e) => { setFilters({ ...filters, group_id: e.target.value, user_id: '' }); setPage(1); }}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">Todos os grupos</option>
+                    {groups.map(g => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
                     ))}
                   </select>
                 )}
@@ -348,24 +480,42 @@ function LogsContent() {
                     <option key={key} value={key}>{label}</option>
                   ))}
                 </select>
-                
-                <input
-                  type="date"
-                  value={filters.date_from}
-                  onChange={(e) => { setFilters({ ...filters, date_from: e.target.value }); setPage(1); }}
+
+                <select
+                  value={filters.date_preset}
+                  onChange={(e) => {
+                    const val = e.target.value as 'today' | 'week' | 'month' | 'period';
+                    setFilters({ ...filters, date_preset: val, date_from: val === 'period' ? filters.date_from : '', date_to: val === 'period' ? filters.date_to : '' });
+                    setPage(1);
+                  }}
                   className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
-                  placeholder="Data início"
-                />
-                
-                <input
-                  type="date"
-                  value={filters.date_to}
-                  onChange={(e) => { setFilters({ ...filters, date_to: e.target.value }); setPage(1); }}
-                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
-                  placeholder="Data fim"
-                />
+                >
+                  <option value="today">Hoje</option>
+                  <option value="week">Esta semana</option>
+                  <option value="month">Este mês</option>
+                  <option value="period">Período</option>
+                </select>
+
+                {filters.date_preset === 'period' && (
+                  <>
+                    <input
+                      type="date"
+                      value={filters.date_from}
+                      onChange={(e) => { setFilters({ ...filters, date_from: e.target.value }); setPage(1); }}
+                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                      placeholder="Data início"
+                    />
+                    <input
+                      type="date"
+                      value={filters.date_to}
+                      onChange={(e) => { setFilters({ ...filters, date_to: e.target.value }); setPage(1); }}
+                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                      placeholder="Data fim"
+                    />
+                  </>
+                )}
               </div>
-              {(filters.user_id || filters.module || filters.action_type || filters.date_from || filters.date_to) && (
+              {(filters.user_id || filters.group_id || filters.module || filters.action_type || filters.date_preset !== 'today' || (filters.date_preset === 'period' && (filters.date_from || filters.date_to))) && (
                 <button
                   onClick={clearFilters}
                   className="mt-3 text-sm text-gray-500 hover:text-gray-700"
@@ -395,11 +545,12 @@ function LogsContent() {
                   <div className="divide-y divide-gray-100">
                     {logs.map((log) => {
                       const ModuleIcon = MODULE_ICONS[log.module] || Activity;
+                      const iconStyle = getModuleIconStyle(log.module);
                       return (
                         <div key={log.id} className="p-4 hover:bg-gray-50">
                           <div className="flex items-start gap-4">
-                            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                              <ModuleIcon size={20} className="text-gray-600" />
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${iconStyle.bg}`}>
+                              <ModuleIcon size={20} className={iconStyle.text} />
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
@@ -407,7 +558,9 @@ function LogsContent() {
                                   {ACTION_LABELS[log.action_type] || log.action_type}
                                 </span>
                                 <span className="text-xs text-gray-400">•</span>
-                                <span className="text-xs text-gray-500">{MODULE_LABELS[log.module] || log.module}</span>
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${getModuleColor(log.module)}`}>
+                                  {MODULE_LABELS[log.module] || log.module}
+                                </span>
                               </div>
                               <p className="text-sm text-gray-900">{log.description || '-'}</p>
                               <div className="flex items-center gap-4 mt-1">
@@ -460,6 +613,46 @@ function LogsContent() {
         {/* Tab: Uso por Usuário */}
         {activeTab === 'usage' && (
           <>
+            {!isRegularUser && (
+              <div className="card-modern p-4 mb-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Filter size={18} className="text-gray-400" />
+                  <span className="text-sm font-medium text-gray-700">Filtros</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {groups.length > 0 && (
+                    <select
+                      value={usageFilters.group_id}
+                      onChange={(e) => { setUsageFilters(prev => ({ ...prev, group_id: e.target.value, user_id: '' })); setPageUsage(1); }}
+                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="">Todos os grupos</option>
+                      {groups.map(g => (
+                        <option key={g.id} value={g.id}>{g.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  <select
+                    value={usageFilters.user_id}
+                    onChange={(e) => { setUsageFilters(prev => ({ ...prev, user_id: e.target.value })); setPageUsage(1); }}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">Todos os usuários</option>
+                    {filteredUsersForUsage.map(u => (
+                      <option key={u.id} value={u.id}>{u.full_name}</option>
+                    ))}
+                  </select>
+                </div>
+                {(usageFilters.group_id || usageFilters.user_id) && (
+                  <button
+                    onClick={() => { setUsageFilters({ group_id: '', user_id: '' }); setPageUsage(1); }}
+                    className="mt-3 text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    Limpar filtros
+                  </button>
+                )}
+              </div>
+            )}
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
@@ -472,11 +665,12 @@ function LogsContent() {
               </div>
             ) : (
               <>
-                <div className="overflow-hidden">
+                <div className="overflow-hidden bg-white rounded-lg border border-gray-200">
                   <table className="w-full table-modern">
                     <thead>
                       <tr>
                         <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Usuário</th>
+                        <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Grupo</th>
                         <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Dias Ativos</th>
                         <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Logins</th>
                         <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Ações</th>
@@ -487,13 +681,14 @@ function LogsContent() {
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {summary.slice((pageUsage - 1) * PAGE_SIZE, pageUsage * PAGE_SIZE).map((user) => (
-                        <tr key={user.user_id} className="hover:bg-gray-50">
+                        <tr key={`${user.user_id}-${user.company_group_id ?? 'none'}`} className="hover:bg-gray-50">
                           <td className="px-4 py-3">
                             <div>
                               <p className="font-medium text-gray-900">{user.full_name}</p>
                               <p className="text-sm text-gray-500">{user.email}</p>
                             </div>
                           </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{user.group_name || '-'}</td>
                           <td className="px-4 py-3 text-center">
                             <span className="font-medium text-gray-900">{user.days_active}</span>
                           </td>

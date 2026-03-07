@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
 import { getUserAdminGroups, isUserAdminOfGroup } from '@/lib/admin-helpers';
+import { logActivity } from '@/lib/activity-logger';
 
 // GET - Listar telas
 export async function GET(request: Request) {
@@ -282,6 +283,18 @@ export async function POST(request: Request) {
       }));
       await supabase.from('powerbi_screen_companies').insert(companyInserts);
     }
+
+    try {
+      await logActivity({
+        userId: user.id,
+        companyGroupId,
+        actionType: 'create',
+        module: 'powerbi',
+        description: `Tela criada: ${title}`,
+        entityType: 'screen',
+        entityId: screen?.id,
+      });
+    } catch (_) {}
 
     return NextResponse.json({ screen }, { status: 201 });
   } catch (error) {

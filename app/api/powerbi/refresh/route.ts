@@ -17,6 +17,7 @@ export async function POST(request: Request) {
     let connection: any = null;
     let datasetId = dataset_id;
     let dataflowId = dataflow_id;
+    let companyGroupId: string | null = null;
 
     // Se passou screen_id, busca a conexão pela tela
     if (screen_id) {
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
 
       connection = screen.report?.connection;
       datasetId = screen.report?.dataset_id;
+      companyGroupId = screen.company_group_id ?? null;
     }
     // Se passou connection_id diretamente
     else if (connection_id) {
@@ -48,6 +50,7 @@ export async function POST(request: Request) {
         .eq('id', connection_id)
         .single();
       connection = conn;
+      companyGroupId = connection?.company_group_id ?? null;
     }
 
     if (!connection) {
@@ -135,6 +138,15 @@ export async function POST(request: Request) {
         }, { status: refreshResponse.status });
       }
 
+      try {
+        if (companyGroupId) {
+          await supabase.rpc('increment_daily_usage', {
+            p_group_id: companyGroupId,
+            p_refreshes: 1,
+          });
+        }
+      } catch (_) {}
+
       return NextResponse.json({ 
         success: true, 
         message: 'Atualização do dataflow iniciada',
@@ -199,6 +211,15 @@ export async function POST(request: Request) {
           details: errorText 
         }, { status: refreshResponse.status });
       }
+
+      try {
+        if (companyGroupId) {
+          await supabase.rpc('increment_daily_usage', {
+            p_group_id: companyGroupId,
+            p_refreshes: 1,
+          });
+        }
+      } catch (_) {}
 
       return NextResponse.json({ 
         success: true, 

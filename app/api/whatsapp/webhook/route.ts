@@ -15,6 +15,7 @@ import { sendWhatsAppMessage, sendWhatsAppAudio, sendTypingIndicator, getInstanc
 import { generateAudio, downloadWhatsAppAudio, transcribeAudio } from '@/lib/whatsapp/audio';
 import { identifyQuestionIntent, getWorkingQueries, saveQueryResult, isFailureResponse, identifyFailureReason } from '@/lib/ai/learning';
 import { getDeveloperIdForGroup, resolveAIContextForGroup } from '@/lib/shared-resources';
+import { logActivity } from '@/lib/activity-logger';
 
 // Modelos para estratégia híbrida de custo
 const MODEL_FAST = 'claude-haiku-4-5-20251001'; // Rápido e barato - primeira tentativa
@@ -1168,6 +1169,25 @@ Use a ferramenta execute_dax para consultar dados. Leia o contexto acima para no
         sender_name: 'Assistente IA',
         instance_id: instance.id
       });
+
+      try {
+        await logActivity({
+          companyGroupId: authorizedNumber.company_group_id,
+          actionType: 'execute',
+          module: 'whatsapp',
+          description: 'Mensagem IA processada via WhatsApp',
+          metadata: { phone, model: currentModel, escalated: escalatedToSmart },
+        });
+      } catch (_) {}
+
+      try {
+        await supabase.rpc('increment_daily_usage', {
+          p_group_id: authorizedNumber.company_group_id,
+          p_whatsapp: 1,
+          p_tokens_in: 0,
+          p_tokens_out: 0,
+        });
+      } catch (_) {}
     }
 
     console.log('[Webhook] ✅ Finalizado | Tempo total:', Date.now() - startTime, 'ms');

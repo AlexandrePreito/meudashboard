@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
+import { logActivity } from '@/lib/activity-logger';
 
 // GET - Listar conexões
 export async function GET(request: Request) {
@@ -232,6 +233,18 @@ export async function POST(request: Request) {
       console.error('Erro ao criar conexão:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    try {
+      await logActivity({
+        userId: user.id,
+        companyGroupId: isShared ? undefined : company_group_id,
+        actionType: 'create',
+        module: 'powerbi',
+        description: `Conexão Power BI criada: ${name || 'sem nome'}`,
+        entityType: 'connection',
+        entityId: data?.id,
+      });
+    } catch (_) {}
 
     return NextResponse.json({ connection: data }, { status: 201 });
   } catch (error) {

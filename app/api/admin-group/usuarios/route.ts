@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser } from '@/lib/auth';
 import { isUserAdminOfGroup } from '@/lib/admin-helpers';
+import { logActivity } from '@/lib/activity-logger';
 import bcrypt from 'bcryptjs';
 
 // GET - Listar usuários do grupo
@@ -337,6 +338,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: membershipError.message }, { status: 500 });
     }
 
+    try {
+      await logActivity({
+        userId: user.id,
+        companyGroupId,
+        actionType: 'create',
+        module: 'config',
+        description: `Usuário adicionado ao grupo: ${email}`,
+        entityType: 'user',
+        entityId: userId,
+      });
+    } catch (_) {}
+
     return NextResponse.json({ success: true, user_id: userId });
   } catch (error: any) {
     console.error('Erro:', error);
@@ -395,6 +408,18 @@ export async function PUT(request: NextRequest) {
         .eq('id', membership_id);
     }
 
+    try {
+      await logActivity({
+        userId: user.id,
+        companyGroupId,
+        actionType: 'update',
+        module: 'config',
+        description: 'Usuário do grupo atualizado',
+        entityType: 'user',
+        entityId: user_id,
+      });
+    } catch (_) {}
+
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Erro:', error);
@@ -427,6 +452,13 @@ export async function DELETE(request: NextRequest) {
 
     const supabase = createAdminClient();
 
+    // Buscar user_id do membership para o log (antes de excluir)
+    const { data: membershipRow } = await supabase
+      .from('user_group_membership')
+      .select('user_id')
+      .eq('id', membershipId)
+      .single();
+
     // Remover membership
     const { error } = await supabase
       .from('user_group_membership')
@@ -436,6 +468,18 @@ export async function DELETE(request: NextRequest) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    try {
+      await logActivity({
+        userId: user.id,
+        companyGroupId: groupId,
+        actionType: 'delete',
+        module: 'config',
+        description: 'Usuário removido do grupo',
+        entityType: 'user',
+        entityId: membershipRow?.user_id,
+      });
+    } catch (_) {}
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

@@ -471,6 +471,13 @@ export async function GET(request: Request) {
         .update({ last_triggered_at: now.toISOString(), last_checked_at: now.toISOString() })
         .eq('id', alert.id);
 
+      try {
+        await supabase.rpc('increment_daily_usage', {
+          p_group_id: alert.company_group_id,
+          p_alerts: 1,
+        });
+      } catch (_) {}
+
       // Registrar histórico
       const { data: historyInsert, error: historyError } = await supabase
         .from('ai_alert_history')

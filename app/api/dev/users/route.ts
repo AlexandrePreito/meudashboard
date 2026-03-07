@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
+import { logActivity } from '@/lib/activity-logger';
 import bcrypt from 'bcryptjs';
 
 // GET - Listar usuários dos grupos do desenvolvedor
@@ -361,6 +362,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: membershipError.message }, { status: 500 });
     }
 
+    try {
+      await logActivity({
+        userId: user.id,
+        companyGroupId,
+        actionType: 'create',
+        module: 'config',
+        description: `Usuário adicionado ao grupo: ${email}`,
+        entityType: 'user',
+        entityId: userId,
+      });
+    } catch (_) {}
+
     return NextResponse.json({ success: true, user_id: userId });
   } catch (error: any) {
     console.error('Erro:', error);
@@ -432,6 +445,18 @@ export async function PUT(request: NextRequest) {
         .eq('id', membership_id);
     }
 
+    try {
+      await logActivity({
+        userId: user.id,
+        companyGroupId: membership?.company_group_id,
+        actionType: 'update',
+        module: 'config',
+        description: 'Usuário do grupo atualizado',
+        entityType: 'user',
+        entityId: user_id,
+      });
+    } catch (_) {}
+
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Erro:', error);
@@ -466,6 +491,8 @@ export async function DELETE(request: NextRequest) {
       .from('user_group_membership')
       .select(`
         id,
+        user_id,
+        company_group_id,
         company_groups:company_group_id (developer_id)
       `)
       .eq('id', membershipId)
@@ -475,11 +502,25 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
     }
 
+    const companyGroupId = membership.company_group_id;
+
     // Remover membership
     await supabase
       .from('user_group_membership')
       .delete()
       .eq('id', membershipId);
+
+    try {
+      await logActivity({
+        userId: user.id,
+        companyGroupId,
+        actionType: 'delete',
+        module: 'config',
+        description: 'Usuário removido do grupo',
+        entityType: 'user',
+        entityId: membership.user_id,
+      });
+    } catch (_) {}
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

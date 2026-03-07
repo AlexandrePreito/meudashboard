@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser } from '@/lib/auth';
+import { logActivity } from '@/lib/activity-logger';
 
 // Formatar valor como moeda brasileira
 function formatCurrency(value: number): string {
@@ -494,6 +495,26 @@ export async function POST(
         last_checked_at: new Date().toISOString()
       })
       .eq('id', id);
+
+    try {
+      await logActivity({
+        userId: user.id,
+        companyGroupId: alert.company_group_id,
+        actionType: 'execute',
+        module: 'alertas',
+        description: `Alerta disparado: ${alert.name}`,
+        entityType: 'alert',
+        entityId: alert.id,
+        metadata: { trigger: 'manual' },
+      });
+    } catch (_) {}
+
+    try {
+      await supabase.rpc('increment_daily_usage', {
+        p_group_id: alert.company_group_id,
+        p_alerts: 1,
+      });
+    } catch (_) {}
 
     // Registrar no histórico
     const successCount = 

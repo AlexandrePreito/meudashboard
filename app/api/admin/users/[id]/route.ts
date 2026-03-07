@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
+import { logActivity } from '@/lib/activity-logger';
 import bcrypt from 'bcryptjs';
 
 interface RouteParams {
@@ -132,6 +133,17 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     if (error) throw error;
 
+    try {
+      await logActivity({
+        userId: user.id,
+        actionType: 'update',
+        module: 'admin',
+        description: `Usuário atualizado: ${userData?.email || id}`,
+        entityType: 'user',
+        entityId: id,
+      });
+    } catch (_) {}
+
     return NextResponse.json({
       user: userData,
       ...(tempPassword ? { temp_password: tempPassword } : {})
@@ -178,6 +190,18 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       .eq('id', id);
 
     if (error) throw error;
+
+    try {
+      await logActivity({
+        userId: user.id,
+        actionType: 'delete',
+        module: 'admin',
+        description: 'Usuário excluído',
+        entityType: 'user',
+        entityId: id,
+      });
+    } catch (_) {}
+
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Erro ao excluir usuario:', error);

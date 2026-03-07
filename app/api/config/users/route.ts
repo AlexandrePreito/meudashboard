@@ -125,10 +125,17 @@ export async function GET(request: Request) {
         if (u.is_master) return false;
         
         // Verificar se usuário pertence a algum grupo que o admin/developer gerencia
-        return u.memberships?.some((m: any) => 
+        return u.memberships?.some((m: any) =>
           m.company_group?.id && adminGroupIds.includes(m.company_group.id)
         );
       });
+    }
+
+    // Se group_id foi passado, filtrar apenas usuários que pertencem a esse grupo
+    if (groupId) {
+      filteredUsers = filteredUsers.filter(u =>
+        u.memberships?.some((m: any) => m.company_group?.id === groupId)
+      );
     }
 
     // Se group_id foi passado, enriquecer cada usuário com screen_ids e screen_titles desse grupo

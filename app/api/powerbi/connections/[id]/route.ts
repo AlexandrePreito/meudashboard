@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
+import { logActivity } from '@/lib/activity-logger';
 
 // GET - Buscar conexão por ID
 export async function GET(
@@ -101,6 +102,16 @@ export async function PUT(
       console.error('Erro ao atualizar conexão:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+    try {
+      await logActivity({
+        userId: user.id,
+        actionType: 'update',
+        module: 'powerbi',
+        description: 'Conexão Power BI atualizada',
+        entityType: 'connection',
+        entityId: id,
+      });
+    } catch (_) {}
     return NextResponse.json({ connection: data });
   } catch (error) {
     console.error('Erro:', error);
@@ -168,6 +179,16 @@ export async function DELETE(
       console.error('Erro ao excluir conexão:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+    try {
+      await logActivity({
+        userId: user.id,
+        actionType: 'delete',
+        module: 'powerbi',
+        description: 'Conexão Power BI excluída',
+        entityType: 'connection',
+        entityId: id,
+      });
+    } catch (_) {}
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Erro:', error);

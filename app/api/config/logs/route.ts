@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
 
 // GET - Listar logs
 export async function GET(request: Request) {
@@ -31,16 +31,31 @@ export async function GET(request: Request) {
     if (user.is_master) {
       userRole = 'master';
     } else {
-      const { data: memberships } = await supabase
-        .from('user_group_membership')
-        .select('company_group_id, role')
-        .eq('user_id', user.id)
-        .eq('is_active', true);
+      // Verificar se é developer
+      const developerId = await getUserDeveloperId(user.id);
 
-      userGroupIds = memberships?.map(m => m.company_group_id) || [];
-      
-      if (memberships?.some(m => m.role === 'admin')) {
-        userRole = 'admin';
+      if (developerId) {
+        userRole = 'developer';
+        // Developer: buscar todos os grupos vinculados ao developer
+        const { data: devGroups } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('developer_id', developerId)
+          .eq('status', 'active');
+        userGroupIds = devGroups?.map((g: any) => g.id) || [];
+      } else {
+        // Buscar por membership normal
+        const { data: memberships } = await supabase
+          .from('user_group_membership')
+          .select('company_group_id, role')
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+
+        userGroupIds = memberships?.map(m => m.company_group_id) || [];
+
+        if (memberships?.some(m => m.role === 'admin')) {
+          userRole = 'admin';
+        }
       }
     }
 

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser, getUserDeveloperId } from '@/lib/auth';
 import { isUserAdminOfGroup } from '@/lib/admin-helpers';
+import { logActivity } from '@/lib/activity-logger';
 
 // GET - Buscar tela por ID
 export async function GET(
@@ -197,6 +198,18 @@ export async function PUT(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    try {
+      await logActivity({
+        userId: user.id,
+        companyGroupId: currentScreen?.company_group_id,
+        actionType: 'update',
+        module: 'powerbi',
+        description: 'Tela Power BI atualizada',
+        entityType: 'screen',
+        entityId: id,
+      });
+    } catch (_) {}
+
     if (user_ids !== undefined) {
       await supabase.from('powerbi_screen_users').delete().eq('screen_id', id);
       if (user_ids.length > 0) {
@@ -285,6 +298,18 @@ export async function DELETE(
       console.error('Erro ao excluir tela:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    try {
+      await logActivity({
+        userId: user.id,
+        companyGroupId: currentScreen?.company_group_id,
+        actionType: 'delete',
+        module: 'powerbi',
+        description: 'Tela Power BI excluída',
+        entityType: 'screen',
+        entityId: id,
+      });
+    } catch (_) {}
 
     return NextResponse.json({ success: true });
   } catch (error) {

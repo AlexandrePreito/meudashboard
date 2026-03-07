@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser } from '@/lib/auth';
 import { isUserAdminOfGroup } from '@/lib/admin-helpers';
+import { logActivity } from '@/lib/activity-logger';
 
 // GET - Listar alertas
 export async function GET(request: Request) {
@@ -379,6 +380,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    try {
+      await logActivity({
+        userId: user.id,
+        companyGroupId,
+        actionType: 'create',
+        module: 'alertas',
+        description: `Alerta criado: ${body.name || 'sem nome'}`,
+        entityType: 'alert',
+        entityId: alert?.id,
+      });
+    } catch (_) {}
+
     return NextResponse.json({ alert });
   } catch (error: any) {
     console.error('Erro:', error);
@@ -484,6 +497,18 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    try {
+      await logActivity({
+        userId: user.id,
+        companyGroupId: existingAlert?.company_group_id,
+        actionType: 'update',
+        module: 'alertas',
+        description: 'Alerta atualizado',
+        entityType: 'alert',
+        entityId: id,
+      });
+    } catch (_) {}
+
     return NextResponse.json({ alert });
   } catch (error: any) {
     console.error('Erro:', error);
@@ -560,6 +585,18 @@ export async function DELETE(request: Request) {
       console.error('Erro ao excluir alerta:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    try {
+      await logActivity({
+        userId: user.id,
+        companyGroupId: existingAlert?.company_group_id,
+        actionType: 'delete',
+        module: 'alertas',
+        description: 'Alerta excluído',
+        entityType: 'alert',
+        entityId: id,
+      });
+    } catch (_) {}
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

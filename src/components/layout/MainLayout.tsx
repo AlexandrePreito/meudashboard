@@ -37,6 +37,24 @@ function MainContent({ children, user }: MainLayoutProps & { user: User | null }
       });
     }
   }, [user, setContextUser]);
+
+  // Heartbeat a cada 5 minutos para manter sessão (Tempo Online)
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
+      fetch('/api/auth/heartbeat', { method: 'POST', credentials: 'include' }).catch(() => {});
+    }, 5 * 60 * 1000);
+
+    const handleBeforeUnload = () => {
+      fetch('/api/auth/heartbeat', { method: 'POST', credentials: 'include', keepalive: true }).catch(() => {});
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [user]);
   
   return (
     <main className={`pt-16 min-h-screen bg-[#f8f9fb] transition-all duration-300 ${
