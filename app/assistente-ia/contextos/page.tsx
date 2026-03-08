@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button';
 import { parseDocumentation, getDocumentationStats, ParsedDocumentation } from '@/lib/assistente-ia/documentation-parser';
 import { useToast } from '@/contexts/ToastContext';
 import { useMenu } from '@/contexts/MenuContext';
+import { Share2 } from 'lucide-react';
 
 interface Dataset {
   id: string;
@@ -56,12 +57,25 @@ function ContextosContent() {
   
   const [saving, setSaving] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [shareToAllGroups, setShareToAllGroups] = useState(false);
+  const [userRole, setUserRole] = useState<string>('user');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const daxFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadDatasets();
+    checkUserRole();
   }, [activeGroup?.id]);
+
+  const checkUserRole = async () => {
+    try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      if (data.user?.is_master) setUserRole('master');
+      else if (data.user?.is_developer) setUserRole('developer');
+      else setUserRole('user');
+    } catch {}
+  };
 
   useEffect(() => {
     if (selectedDataset) {
@@ -258,7 +272,8 @@ function ContextosContent() {
             queries: chatParsed.queries,
             exemplos: chatParsed.exemplos
           },
-          group_id: activeGroup?.id
+          group_id: activeGroup?.id,
+          share_to_all_groups: shareToAllGroups
         })
       });
       
@@ -269,8 +284,9 @@ function ContextosContent() {
         setChatFileName(null);
         setChatParsed(null);
         setChatStats(null);
+        setShareToAllGroups(false);
         loadContexts();
-        toast.success('Documentação salva com sucesso!');
+        toast.success(shareToAllGroups ? 'Documentação compartilhada com todos os grupos!' : 'Documentação salva com sucesso!');
       } else {
         toast.error('Erro: ' + (data.error || 'Erro desconhecido'));
       }
@@ -294,7 +310,8 @@ function ContextosContent() {
           datasetId: selectedDataset,
           contextType: 'dax',
           daxData: daxParsed,
-          group_id: activeGroup?.id
+          group_id: activeGroup?.id,
+          share_to_all_groups: shareToAllGroups
         })
       });
       
@@ -304,8 +321,9 @@ function ContextosContent() {
         setDaxContent('');
         setDaxFileName(null);
         setDaxParsed(null);
+        setShareToAllGroups(false);
         loadContexts();
-        toast.success('Base de DAX salva com sucesso!');
+        toast.success(shareToAllGroups ? 'Base de DAX compartilhada com todos os grupos!' : 'Base de DAX salva com sucesso!');
       } else {
         console.error('[handleSaveDax] Erro da API:', data);
         const detail = data.details ? ` (${data.details})` : '';
@@ -668,6 +686,19 @@ function ContextosContent() {
                 </div>
               )}
 
+              {userRole === 'developer' && (
+                <label className="flex items-center gap-3 mt-4 p-3 bg-amber-50 border border-amber-100 rounded-xl cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={shareToAllGroups}
+                    onChange={(e) => setShareToAllGroups(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 accent-blue-600"
+                  />
+                  <Share2 size={16} className="text-amber-600" />
+                  <span className="text-sm text-amber-800 font-medium">Compartilhar com todos os meus grupos</span>
+                </label>
+              )}
+
               <div className="flex gap-3 mt-6">
                 <Button
                   variant="secondary"
@@ -677,6 +708,7 @@ function ContextosContent() {
                     setChatFileName(null);
                     setChatParsed(null);
                     setChatStats(null);
+                    setShareToAllGroups(false);
                   }}
                   className="flex-1"
                 >
@@ -688,7 +720,7 @@ function ContextosContent() {
                   loading={saving}
                   className="flex-1"
                 >
-                  {saving ? 'Salvando...' : 'Salvar Documentação'}
+                  {saving ? 'Salvando...' : shareToAllGroups ? 'Salvar em Todos os Grupos' : 'Salvar Documentação'}
                 </Button>
               </div>
             </div>
@@ -802,6 +834,19 @@ function ContextosContent() {
                 </div>
               )}
 
+              {userRole === 'developer' && (
+                <label className="flex items-center gap-3 mt-4 p-3 bg-amber-50 border border-amber-100 rounded-xl cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={shareToAllGroups}
+                    onChange={(e) => setShareToAllGroups(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 accent-blue-600"
+                  />
+                  <Share2 size={16} className="text-amber-600" />
+                  <span className="text-sm text-amber-800 font-medium">Compartilhar com todos os meus grupos</span>
+                </label>
+              )}
+
               <div className="flex gap-3 mt-6">
                 <Button
                   variant="secondary"
@@ -810,6 +855,7 @@ function ContextosContent() {
                     setDaxContent(''); 
                     setDaxFileName(null);
                     setDaxParsed(null);
+                    setShareToAllGroups(false);
                   }}
                   className="flex-1"
                 >
@@ -821,7 +867,7 @@ function ContextosContent() {
                   loading={saving}
                   className="flex-1"
                 >
-                  {saving ? 'Salvando...' : 'Salvar Base de DAX'}
+                  {saving ? 'Salvando...' : shareToAllGroups ? 'Salvar em Todos os Grupos' : 'Salvar Base de DAX'}
                 </Button>
               </div>
             </div>

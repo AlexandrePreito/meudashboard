@@ -16,9 +16,43 @@ export async function GET(request: Request) {
 
     const supabase = createAdminClient();
 
-    // Se tem filtro de grupo, primeiro buscar as conexões desse grupo
+    // Determinar grupos permitidos para o usuário
+    let allowedGroupIds: string[] | null = null; // null = sem restrição (master)
+
+    if (!user.is_master) {
+      const developerId = await getUserDeveloperId(user.id);
+
+      if (developerId) {
+        const { data: devGroups } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('developer_id', developerId)
+          .eq('status', 'active');
+
+        allowedGroupIds = devGroups?.map(g => g.id) || [];
+      } else {
+        const { data: memberships } = await supabase
+          .from('user_group_membership')
+          .select('company_group_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+
+        allowedGroupIds = memberships?.map(m => m.company_group_id) || [];
+      }
+
+      if (allowedGroupIds.length === 0) {
+        return NextResponse.json({ reports: [] });
+      }
+
+      // Se passou group_id, validar que o usuário tem acesso a esse grupo
+      if (groupId && !allowedGroupIds.includes(groupId)) {
+        return NextResponse.json({ error: 'Sem permissão para este grupo' }, { status: 403 });
+      }
+    }
+
+    // Buscar conexões válidas baseado nos filtros
     let validConnectionIds: string[] = [];
-    
+
     if (groupId) {
       const { data: groupConnections } = await supabase
         .from('powerbi_connections')
@@ -26,11 +60,18 @@ export async function GET(request: Request) {
         .eq('company_group_id', groupId);
       
       validConnectionIds = groupConnections?.map(c => c.id) || [];
-      
-      // Se não tem conexões nesse grupo, retorna vazio
-      if (validConnectionIds.length === 0) {
-        return NextResponse.json({ reports: [] });
-      }
+    } else if (allowedGroupIds) {
+      // Não-master sem group_id: buscar conexões de todos os seus grupos
+      const { data: groupConnections } = await supabase
+        .from('powerbi_connections')
+        .select('id')
+        .in('company_group_id', allowedGroupIds);
+
+      validConnectionIds = groupConnections?.map(c => c.id) || [];
+    }
+
+    if ((groupId || allowedGroupIds) && validConnectionIds.length === 0) {
+      return NextResponse.json({ reports: [] });
     }
 
     // Buscar relatórios
@@ -41,8 +82,11 @@ export async function GET(request: Request) {
 
     if (connectionId) {
       reportsQuery = reportsQuery.eq('connection_id', connectionId);
-    } else if (groupId && validConnectionIds.length > 0) {
-      // Filtrar por conexões do grupo
+      // Mesmo com connection_id, validar acesso para não-master
+      if (allowedGroupIds && validConnectionIds.length > 0 && !validConnectionIds.includes(connectionId)) {
+        return NextResponse.json({ reports: [] });
+      }
+    } else if (validConnectionIds.length > 0) {
       reportsQuery = reportsQuery.in('connection_id', validConnectionIds);
     }
 
@@ -58,7 +102,7 @@ export async function GET(request: Request) {
     }
 
     // Buscar detalhes das conexões e grupos
-    const connectionIds = [...new Set(reports.map((r: any) => r.connection_id).filter(Boolean))];
+    const reportConnectionIds = [...new Set(reports.map((r: any) => r.connection_id).filter(Boolean))];
     
     const { data: connections } = await supabase
       .from('powerbi_connections')
@@ -68,7 +112,7 @@ export async function GET(request: Request) {
         company_group_id,
         company_group:company_groups(id, name)
       `)
-      .in('id', connectionIds);
+      .in('id', reportConnectionIds);
 
     // Combinar os dados
     const reportsWithConnection = reports.map((report: any) => ({

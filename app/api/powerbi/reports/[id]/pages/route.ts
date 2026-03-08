@@ -41,7 +41,6 @@ export async function GET(
       const developerId = await getUserDeveloperId(user.id);
       
       if (developerId) {
-        // Developer: verificar se o grupo pertence ao developer
         if (report.connection?.company_group_id) {
           const { data: group } = await supabase
             .from('company_groups')
@@ -56,9 +55,22 @@ export async function GET(
               { status: 403 }
             );
           }
+        } else {
+          // Conexão compartilhada: verificar developer_id
+          const { data: conn } = await supabase
+            .from('powerbi_connections')
+            .select('developer_id')
+            .eq('id', report.connection_id)
+            .single();
+
+          if (!conn || conn.developer_id !== developerId) {
+            return NextResponse.json(
+              { error: 'Sem permissão para acessar este relatório' },
+              { status: 403 }
+            );
+          }
         }
       } else {
-        // Usuário comum: verificar membership
         if (report.connection?.company_group_id) {
           const { data: membership } = await supabase
             .from('user_group_membership')
@@ -74,6 +86,11 @@ export async function GET(
               { status: 403 }
             );
           }
+        } else {
+          return NextResponse.json(
+            { error: 'Sem permissão para acessar este relatório' },
+            { status: 403 }
+          );
         }
       }
     }

@@ -23,9 +23,47 @@ export async function GET(
       `)
       .eq('id', id)
       .single();
-    if (error) {
+    if (error || !data) {
       return NextResponse.json({ error: 'Conexão não encontrada' }, { status: 404 });
     }
+
+    if (!user.is_master) {
+      const developerId = await getUserDeveloperId(user.id);
+
+      if (developerId) {
+        const isShared = data.developer_id && !data.company_group_id;
+        if (isShared) {
+          if (data.developer_id !== developerId) {
+            return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+          }
+        } else if (data.company_group_id) {
+          const { data: group } = await supabase
+            .from('company_groups')
+            .select('id')
+            .eq('id', data.company_group_id)
+            .eq('developer_id', developerId)
+            .single();
+          if (!group) {
+            return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+          }
+        }
+      } else {
+        if (!data.company_group_id) {
+          return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+        }
+        const { data: membership } = await supabase
+          .from('user_group_membership')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('company_group_id', data.company_group_id)
+          .eq('is_active', true)
+          .single();
+        if (!membership) {
+          return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+        }
+      }
+    }
+
     return NextResponse.json({ connection: data });
   } catch (error) {
     console.error('Erro:', error);
@@ -84,10 +122,23 @@ export async function PUT(
     }
 
     const body = await request.json();
-    if (!user.is_master && body.developer_id) {
+    if (!user.is_master) {
       const devId = await getUserDeveloperId(user.id);
-      if (body.developer_id !== devId) {
+
+      if (body.developer_id && body.developer_id !== devId) {
         return NextResponse.json({ error: 'developer_id inválido' }, { status: 403 });
+      }
+
+      if (body.company_group_id) {
+        const { data: targetGroup } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('id', body.company_group_id)
+          .eq('developer_id', devId)
+          .single();
+        if (!targetGroup) {
+          return NextResponse.json({ error: 'Grupo de destino não pertence a você' }, { status: 403 });
+        }
       }
     }
 

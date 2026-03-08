@@ -117,37 +117,44 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { datasetId, contextType = 'chat', content, sections, daxData, group_id: requestedGroupId } = body;
+    const { datasetId, contextType = 'chat', content, sections, daxData, group_id: requestedGroupId, share_to_all_groups } = body;
 
     if (!datasetId) {
       return NextResponse.json({ error: 'Dataset é obrigatório' }, { status: 400 });
     }
 
     const supabase = createAdminClient();
+    const user = await getAuthUser();
     const groupId = await resolveGroupId(supabase, requestedGroupId, membership);
 
-    // Verificar se já existe contexto deste tipo para este dataset
-    const { data: existingRows } = await supabase
-      .from('ai_model_contexts')
-      .select('id')
-      .eq('company_group_id', groupId)
-      .eq('dataset_id', datasetId)
-      .eq('context_type', contextType)
-      .limit(1);
+    // Determinar grupos-alvo
+    let targetGroupIds = [groupId];
 
-    const existing = existingRows?.[0] || null;
+    if (share_to_all_groups && user) {
+      const developerId = await getUserDeveloperId(user.id);
+      if (developerId) {
+        const { data: devGroups } = await supabase
+          .from('company_groups')
+          .select('id')
+          .eq('developer_id', developerId)
+          .eq('status', 'active');
+        
+        if (devGroups && devGroups.length > 0) {
+          targetGroupIds = devGroups.map(g => g.id);
+        }
+      }
+    }
 
-    let contextData: any = {
-      company_group_id: groupId,
+    // Montar dados base do contexto
+    let baseContextData: any = {
       dataset_id: datasetId,
       context_type: contextType,
       updated_at: new Date().toISOString(),
     };
 
-    // Se for documentação (MD)
     if (content && sections) {
-      contextData = {
-        ...contextData,
+      baseContextData = {
+        ...baseContextData,
         context_content: content,
         section_base: sections.base || null,
         section_medidas: sections.medidas || null,
@@ -158,9 +165,7 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    // Se for base de DAX (JSON)
     if (daxData) {
-      // Converter medidas do formato JSON para o formato esperado
       const medidas = daxData.medidas?.map((m: any) => ({
         name: m.nome,
         description: m.descricao || '',
@@ -172,7 +177,6 @@ export async function POST(request: NextRequest) {
         format: m.formato || ''
       })) || [];
 
-      // Converter colunas do formato JSON para o formato esperado
       const colunasPorTabela = new Map<string, any[]>();
       daxData.colunas?.forEach((col: any) => {
         if (!colunasPorTabela.has(col.tabela)) {
@@ -192,8 +196,8 @@ export async function POST(request: NextRequest) {
         columns
       }));
 
-      contextData = {
-        ...contextData,
+      baseContextData = {
+        ...baseContextData,
         context_content: JSON.stringify(daxData),
         section_medidas: medidas,
         section_tabelas: tabelas,
@@ -201,49 +205,69 @@ export async function POST(request: NextRequest) {
       };
     }
 
+    // Salvar para cada grupo-alvo
     let result;
-    if (existing) {
-      console.log('[context POST] Atualizando contexto existente:', existing.id);
-      const { data, error } = await supabase
+    for (const targetGid of targetGroupIds) {
+      const contextData = { ...baseContextData, company_group_id: targetGid };
+
+      const { data: existingRows } = await supabase
         .from('ai_model_contexts')
-        .update(contextData)
-        .eq('id', existing.id)
-        .select()
-        .single();
-      
-      if (error) {
-        console.error('[context POST] Erro ao atualizar:', error);
-        return NextResponse.json({ error: error.message, details: error.details, hint: error.hint }, { status: 500 });
+        .select('id')
+        .eq('company_group_id', targetGid)
+        .eq('dataset_id', datasetId)
+        .eq('context_type', contextType)
+        .limit(1);
+
+      const existing = existingRows?.[0] || null;
+
+      if (existing) {
+        const { data, error } = await supabase
+          .from('ai_model_contexts')
+          .update(contextData)
+          .eq('id', existing.id)
+          .select()
+          .single();
+        
+        if (error) {
+          console.error('[context POST] Erro ao atualizar grupo', targetGid, ':', error);
+          if (targetGid === groupId) {
+            return NextResponse.json({ error: error.message, details: error.details, hint: error.hint }, { status: 500 });
+          }
+          continue;
+        }
+        if (targetGid === groupId) result = data;
+      } else {
+        const { data, error } = await supabase
+          .from('ai_model_contexts')
+          .insert({
+            ...contextData,
+            context_name: contextType === 'chat' ? 'Documentação para Chat' : 'Base de DAX',
+            is_active: true,
+            created_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+        
+        if (error) {
+          console.error('[context POST] Erro ao inserir grupo', targetGid, ':', error);
+          if (targetGid === groupId) {
+            return NextResponse.json({ error: error.message, details: error.details, hint: error.hint }, { status: 500 });
+          }
+          continue;
+        }
+        if (targetGid === groupId) result = data;
       }
-      result = data;
-    } else {
-      console.log('[context POST] Inserindo novo contexto para dataset:', datasetId, 'tipo:', contextType, 'grupo:', groupId);
-      const { data, error } = await supabase
-        .from('ai_model_contexts')
-        .insert({
-          ...contextData,
-          context_name: contextType === 'chat' ? 'Documentação para Chat' : 'Base de DAX',
-          is_active: true,
-          created_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-      
-      if (error) {
-        console.error('[context POST] Erro ao inserir:', error);
-        return NextResponse.json({ error: error.message, details: error.details, hint: error.hint }, { status: 500 });
-      }
-      result = data;
     }
 
     try {
-      const user = await getAuthUser();
       await logActivity({
         userId: user?.id,
         companyGroupId: groupId,
-        actionType: existing ? 'update' : 'create',
+        actionType: 'create',
         module: 'assistente-ia',
-        description: existing ? 'Contexto IA atualizado' : `Contexto IA criado: ${contextType}`,
+        description: share_to_all_groups
+          ? `Contexto IA compartilhado (${contextType}) para ${targetGroupIds.length} grupos`
+          : `Contexto IA salvo: ${contextType}`,
         entityType: 'context',
         entityId: result?.id,
       });
@@ -252,6 +276,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ 
       success: true, 
       context: result,
+      shared_count: share_to_all_groups ? targetGroupIds.length : 1,
     });
 
   } catch (error: any) {

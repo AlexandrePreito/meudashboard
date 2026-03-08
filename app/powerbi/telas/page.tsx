@@ -212,9 +212,13 @@ function TelasContent() {
         ? `/api/powerbi/health?group_id=${currentGroup.id}`
         : '/api/powerbi/health';
       
+      const reportsUrl = currentGroup
+        ? `/api/powerbi/reports?group_id=${currentGroup.id}`
+        : '/api/powerbi/reports';
+      
       const [screensRes, reportsRes, usersRes, healthRes] = await Promise.all([
         fetch(screensUrl),
-        fetch('/api/powerbi/reports'),
+        fetch(reportsUrl),
         fetch('/api/config/users'),
         fetch(healthUrl)
       ]);

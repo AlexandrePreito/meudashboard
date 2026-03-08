@@ -72,7 +72,8 @@ function InstanciasContent() {
     name: '',
     api_url: '',
     api_key: '',
-    instance_name: ''
+    instance_name: '',
+    group_target: 'shared' as string
   });
 
   // Estados para vincular grupos (apenas Master)
@@ -192,7 +193,7 @@ function InstanciasContent() {
   }
 
   function resetForm() {
-    setFormData({ name: '', api_url: '', api_key: '', instance_name: '' });
+    setFormData({ name: '', api_url: '', api_key: '', instance_name: '', group_target: 'shared' });
     setEditingInstance(null);
     setShowApiKey(false);
     setHasExistingApiKey(false);
@@ -243,21 +244,26 @@ function InstanciasContent() {
   }
 
   function openEdit(instance: Instance) {
-    // Verificar se pode editar antes de abrir o modal
     if (!canEditInstance(instance)) {
       toast.error('Esta instância está vinculada a outros grupos. Você não pode editá-la, apenas desvinculá-la do(s) seu(s) grupo(s).');
       return;
     }
     
     setEditingInstance(instance);
+
+    const linkedGroupIds = instance.groups?.map(g => g.company_group?.id).filter(Boolean) || [];
+    const userLinkedGroups = linkedGroupIds.filter(gid => userGroupIds.includes(gid!));
+    const isShared = userLinkedGroups.length > 1 || (userLinkedGroups.length === allGroups.length && allGroups.length > 0);
+    
     setFormData({
       name: instance.name,
       api_url: instance.api_url,
       api_key: '',
-      instance_name: instance.instance_name
+      instance_name: instance.instance_name,
+      group_target: isShared ? 'shared' : (userLinkedGroups[0] || 'shared')
     });
     setShowApiKey(false);
-    setHasExistingApiKey(true); // Sempre true ao editar, pois API key é obrigatória
+    setHasExistingApiKey(true);
     setShowModal(true);
   }
 
@@ -362,24 +368,62 @@ function InstanciasContent() {
         payload.api_key = formData.api_key;
       }
 
-      if (editingInstance) {
-        payload.id = editingInstance.id;
+      // Definir group_ids baseado na seleção
+      if (formData.group_target === 'shared') {
+        payload.group_ids = allGroups.map(g => g.id);
+      } else if (formData.group_target) {
+        payload.group_ids = [formData.group_target];
       }
 
-      const res = await fetch('/api/whatsapp/instances', {
-        method: editingInstance ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      if (editingInstance) {
+        payload.id = editingInstance.id;
 
-      if (res.ok) {
-        toast.success(editingInstance ? 'Instância atualizada!' : 'Instância criada!');
+        // Atualizar dados da instância
+        const res = await fetch('/api/whatsapp/instances', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          toast.error(data.error || 'Erro ao salvar');
+          return;
+        }
+
+        // Atualizar vínculos de grupo
+        const scopeGroupIds = allGroups.map(g => g.id);
+        await fetch('/api/whatsapp/instances', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'link_groups',
+            instance_id: editingInstance.id,
+            group_ids: payload.group_ids,
+            scope_group_ids: scopeGroupIds
+          })
+        });
+
+        toast.success('Instância atualizada!');
         setShowModal(false);
         resetForm();
         loadInstances(activeGroup);
       } else {
-        const data = await res.json();
-        toast.error(data.error || 'Erro ao salvar');
+        const res = await fetch('/api/whatsapp/instances', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          toast.success('Instância criada!');
+          setShowModal(false);
+          resetForm();
+          loadInstances(activeGroup);
+        } else {
+          const data = await res.json();
+          toast.error(data.error || 'Erro ao salvar');
+        }
       }
     } catch (err) {
       toast.error('Erro ao salvar instância');
@@ -712,6 +756,28 @@ function InstanciasContent() {
               </div>
 
               <div className="p-4 space-y-4">
+                {/* Grupo */}
+                {(userRole === 'developer' || userRole === 'master') && allGroups.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Grupo</label>
+                    <select
+                      value={formData.group_target}
+                      onChange={(e) => setFormData({ ...formData, group_target: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-green-500"
+                    >
+                      <option value="shared">🔗 Compartilhado (todos os grupos)</option>
+                      {allGroups.map((group) => (
+                        <option key={group.id} value={group.id}>{group.name}</option>
+                      ))}
+                    </select>
+                    {formData.group_target === 'shared' && (
+                      <p className="text-xs text-amber-600 mt-1.5 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                        Esta instância será compartilhada com todos os seus grupos.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
                   <input
