@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthUser, getUserGroupMembership } from '@/lib/auth';
+import { getAuthUser, getUserGroupMembership, getUserDeveloperId } from '@/lib/auth';
 
 // GET - Listar datasets (baseado nos relatórios)
 export async function GET(request: Request) {
@@ -13,7 +13,6 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     let groupId = searchParams.get('group_id');
 
-    // Se não passou group_id, pegar do membership do usuário
     if (!groupId) {
       const membership = await getUserGroupMembership();
       if (membership?.company_group_id) {
@@ -30,14 +29,33 @@ export async function GET(request: Request) {
 
     const supabase = createAdminClient();
 
-    // Buscar conexões do grupo
+    // Buscar conexões do grupo (diretas)
     const { data: groupConnections } = await supabase
       .from('powerbi_connections')
       .select('id')
       .eq('company_group_id', groupId)
       .eq('is_active', true);
     
-    const validConnectionIds = groupConnections?.map(c => c.id) || [];
+    const validConnectionIds = (groupConnections?.map(c => c.id) || []);
+
+    // Incluir conexões compartilhadas do desenvolvedor (company_group_id IS NULL)
+    const developerId = await getUserDeveloperId(user.id);
+    if (developerId) {
+      const { data: sharedConnections } = await supabase
+        .from('powerbi_connections')
+        .select('id')
+        .eq('developer_id', developerId)
+        .is('company_group_id', null)
+        .eq('is_active', true);
+      
+      if (sharedConnections) {
+        sharedConnections.forEach(c => {
+          if (!validConnectionIds.includes(c.id)) {
+            validConnectionIds.push(c.id);
+          }
+        });
+      }
+    }
     const datasetsMap = new Map<string, { id: string; dataset_id: string; name: string; connection_id?: string; report_id?: string; source?: string }>();
 
     // 1. Buscar relatórios das conexões do grupo (fonte principal)
@@ -67,13 +85,30 @@ export async function GET(request: Request) {
       });
     }
 
-    // 2. Fallback: buscar datasets de contextos existentes (quando não há relatórios ou para completar)
-    const { data: contexts } = await supabase
+    // 2. Fallback: buscar datasets de contextos existentes
+    let contextQuery = supabase
       .from('ai_model_contexts')
       .select('dataset_id, context_name, dataset_name')
-      .eq('company_group_id', groupId)
       .eq('is_active', true)
       .not('dataset_id', 'is', null);
+
+    if (developerId) {
+      const { data: devGroups } = await supabase
+        .from('company_groups')
+        .select('id')
+        .eq('developer_id', developerId)
+        .eq('status', 'active');
+      const devGroupIds = devGroups?.map(g => g.id) || [];
+      if (devGroupIds.length > 0) {
+        contextQuery = contextQuery.in('company_group_id', devGroupIds);
+      } else {
+        contextQuery = contextQuery.eq('company_group_id', groupId);
+      }
+    } else {
+      contextQuery = contextQuery.eq('company_group_id', groupId);
+    }
+
+    const { data: contexts } = await contextQuery;
 
     contexts?.forEach((ctx: any) => {
       if (ctx.dataset_id && !datasetsMap.has(ctx.dataset_id)) {

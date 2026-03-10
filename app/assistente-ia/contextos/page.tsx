@@ -254,10 +254,14 @@ function ContextosContent() {
   };
 
   const handleSaveChat = async () => {
-    if (!chatParsed || chatParsed.errors.length > 0 || !selectedDataset) return;
+    if (!chatParsed || !selectedDataset) {
+      toast.error(!selectedDataset ? 'Selecione um dataset primeiro' : 'Importe ou cole uma documentação');
+      return;
+    }
     
     setSaving(true);
     try {
+      const groupId = activeGroup?.id || resolvedGroupId;
       const res = await fetch('/api/assistente-ia/context', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -272,7 +276,7 @@ function ContextosContent() {
             queries: chatParsed.queries,
             exemplos: chatParsed.exemplos
           },
-          group_id: activeGroup?.id,
+          group_id: groupId,
           share_to_all_groups: shareToAllGroups
         })
       });
@@ -299,10 +303,14 @@ function ContextosContent() {
   };
 
   const handleSaveDax = async () => {
-    if (!daxParsed || !selectedDataset) return;
+    if (!daxParsed || !selectedDataset) {
+      toast.error(!selectedDataset ? 'Selecione um dataset primeiro' : 'Importe ou cole um JSON válido');
+      return;
+    }
     
     setSaving(true);
     try {
+      const groupId = activeGroup?.id || resolvedGroupId;
       const res = await fetch('/api/assistente-ia/context', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -310,7 +318,7 @@ function ContextosContent() {
           datasetId: selectedDataset,
           contextType: 'dax',
           daxData: daxParsed,
-          group_id: activeGroup?.id,
+          group_id: groupId,
           share_to_all_groups: shareToAllGroups
         })
       });
@@ -716,7 +724,7 @@ function ContextosContent() {
                 </Button>
                 <Button
                   onClick={handleSaveChat}
-                  disabled={!chatParsed || chatParsed.errors.length > 0 || saving}
+                  disabled={!chatParsed || saving}
                   loading={saving}
                   className="flex-1"
                 >
