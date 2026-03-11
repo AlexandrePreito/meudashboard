@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     // Buscar grupos do desenvolvedor
     let groupsQuery = supabase
       .from('company_groups')
-      .select('id, name')
+      .select('id, name, logo_url')
       .eq('developer_id', developerId);
 
     if (groupId) {
@@ -146,6 +146,7 @@ export async function GET(request: NextRequest) {
         membership_id: m.id,
         company_group_id: m.company_group_id,
         company_group_name: groupData?.name || '',
+        company_group_logo: (groupData as any)?.logo_url || null,
         can_use_ai: m.can_use_ai ?? false,
         can_refresh: m.can_refresh ?? false,
         created_at: userData?.created_at || m.created_at,

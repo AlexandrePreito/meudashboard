@@ -51,6 +51,7 @@ interface User {
   membership_id: string;
   company_group_id: string;
   company_group_name: string;
+  company_group_logo?: string | null;
   created_at: string;
   screen_ids?: string[];
   screen_titles?: string[];
@@ -461,13 +462,21 @@ export default function DevUsuariosPage() {
                     </td>
                     <td>
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 text-gray-700 rounded-full text-sm">
-                        <Building2 className="w-3.5 h-3.5" />
+                        {user.company_group_logo ? (
+                          <img
+                            src={user.company_group_logo}
+                            alt={user.company_group_name}
+                            className="w-4 h-4 rounded-full object-cover"
+                          />
+                        ) : (
+                          <Building2 className="w-3.5 h-3.5" />
+                        )}
                         {user.company_group_name}
                       </span>
                     </td>
                     <td>
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                        user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700'
+                        user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-sky-100 text-sky-700'
                       }`}>
                         {roleLabels[user.role] || 'Usuário'}
                       </span>
@@ -561,8 +570,8 @@ export default function DevUsuariosPage() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <div className="bg-white rounded-xl max-w-2xl w-full">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
               <h2 className="text-xl font-bold text-gray-900">
                 {editingUser ? 'Editar Usuário' : 'Novo Usuário'}
               </h2>
@@ -599,102 +608,85 @@ export default function DevUsuariosPage() {
                 </div>
               )}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nome <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.full_name}
-                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Nome completo"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nome <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.full_name}
+                    onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Nome completo"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="email@exemplo.com"
+                  />
+                </div>
               </div>
 
-              {!editingUser && (
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Email <span className="text-red-500">*</span>
+                    {editingUser ? 'Nova Senha (vazio = manter)' : 'Senha'} {!editingUser && <span className="text-red-500">*</span>}
                   </label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="email@exemplo.com"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder={editingUser ? '••••••••' : 'Mínimo 6 caracteres'}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
-              )}
 
-              {editingUser && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Email <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Função</label>
+                  <select
+                    value={formData.role}
+                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="email@exemplo.com"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {editingUser ? 'Nova Senha (deixe vazio para manter)' : 'Senha'} {!editingUser && <span className="text-red-500">*</span>}
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder={editingUser ? '••••••••' : 'Mínimo 6 caracteres'}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+                    <option value="viewer">Visualizador</option>
+                    <option value="admin">Administrador</option>
+                  </select>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Função</label>
-                <select
-                  value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="viewer">Visualizador</option>
-                  <option value="admin">Administrador</option>
-                </select>
-              </div>
-
               {editingUser && (
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="is_active"
-                    checked={formData.is_active}
-                    onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                    className="w-4 h-4 text-blue-600 rounded"
-                  />
-                  <label htmlFor="is_active" className="text-sm text-gray-700">
-                    Usuário ativo
-                  </label>
-                </div>
-              )}
-
-              {editingUser && (
-                <div className="pt-4 border-t border-gray-200 space-y-3">
-                  <p className="text-sm font-medium text-gray-700">Permissões</p>
-                  <div className="flex items-center gap-3">
+                <div className="flex items-center gap-6 pt-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="is_active"
+                      checked={formData.is_active}
+                      onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 rounded"
+                    />
+                    <label htmlFor="is_active" className="text-sm text-gray-700">
+                      Usuário ativo
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       id="can_use_ai"
@@ -706,7 +698,7 @@ export default function DevUsuariosPage() {
                       Pode usar Chat IA
                     </label>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       id="can_refresh"
@@ -722,20 +714,20 @@ export default function DevUsuariosPage() {
               )}
 
               {editingUser && (screens.length > 0 || loadingScreens) && (
-                <div className="border-t border-gray-200 pt-4 mt-4">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Telas com Acesso</h3>
-                  <p className="text-xs text-gray-500 mb-3">Selecione quais telas este usuário pode visualizar</p>
+                <div className="border-t border-gray-200 pt-3">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-1">Telas com Acesso</h3>
+                  <p className="text-xs text-gray-500 mb-2">Selecione quais telas este usuário pode visualizar</p>
                   {loadingScreens ? (
                     <div className="flex items-center gap-2 text-sm text-gray-500">
                       <Loader2 className="w-4 h-4 animate-spin" />
                       Carregando telas...
                     </div>
                   ) : (
-                    <div className="max-h-48 overflow-y-auto space-y-1">
+                    <div className="max-h-36 overflow-y-auto grid grid-cols-2 gap-x-4 gap-y-0.5">
                       {screens.map(screen => (
                         <label
                           key={screen.id}
-                          className="flex items-center gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer"
+                          className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-gray-50 cursor-pointer"
                         >
                           <input
                             type="checkbox"
@@ -752,7 +744,7 @@ export default function DevUsuariosPage() {
               )}
             </div>
 
-            <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200">
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200">
               <button
                 onClick={() => setShowModal(false)}
                 className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
