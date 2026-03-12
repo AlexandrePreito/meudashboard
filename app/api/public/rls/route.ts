@@ -1,25 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Cache-Control': 'no-cache, no-store, must-revalidate',
+};
+
 export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    },
-  });
+  return new NextResponse(null, { status: 200, headers: corsHeaders });
 }
 
 export async function GET(request: NextRequest) {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Cache-Control': 'no-cache, no-store, must-revalidate',
-  };
-
   try {
     const { searchParams } = new URL(request.url);
 
@@ -34,15 +27,14 @@ export async function GET(request: NextRequest) {
         const username = decoded.split(':')[0];
         if (username) apiKey = username;
       } catch {
-        // ignore decode errors
+        // ignore
       }
     }
 
+    // Se não tem key, retornar 200 com array vazio (compatibilidade Power BI)
+    // O Power BI faz uma requisição de teste sem credenciais antes de enviar a key
     if (!apiKey) {
-      return NextResponse.json(
-        { error: 'Chave de API não informada' },
-        { status: 401, headers: corsHeaders }
-      );
+      return NextResponse.json([], { status: 200, headers: corsHeaders });
     }
 
     const supabase = createAdminClient();
@@ -55,10 +47,8 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (!keyData) {
-      return NextResponse.json(
-        { error: 'Chave inválida ou desativada' },
-        { status: 403, headers: corsHeaders }
-      );
+      // Retornar 200 vazio em vez de 403 (Power BI interpreta qualquer erro como falha de auth)
+      return NextResponse.json([], { status: 200, headers: corsHeaders });
     }
 
     await supabase
@@ -75,15 +65,10 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    return NextResponse.json(companies || [], {
-      status: 200,
-      headers: corsHeaders,
-    });
+    return NextResponse.json(companies || [], { status: 200, headers: corsHeaders });
   } catch (error: unknown) {
     console.error('Erro na API pública RLS:', error);
-    return NextResponse.json(
-      { error: 'Erro interno' },
-      { status: 500, headers: corsHeaders }
-    );
+    // Mesmo em erro, retornar 200 vazio para não bloquear Power BI
+    return NextResponse.json([], { status: 200, headers: corsHeaders });
   }
 }
