@@ -18,9 +18,11 @@ import {
   Filter,
   UserCheck,
   UserX,
-  ListOrdered
+  ListOrdered,
+  Tv
 } from 'lucide-react';
 import ScreenOrderModal from './ScreenOrderModal';
+import PresentationConfigModal from './PresentationConfigModal';
 import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
 import ActionsDropdown from '@/components/ui/ActionsDropdown';
 
@@ -92,6 +94,7 @@ export default function DevUsuariosPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [orderingUser, setOrderingUser] = useState<User | null>(null);
+  const [presentationUser, setPresentationUser] = useState<User | null>(null);
 
   const [screens, setScreens] = useState<Screen[]>([]);
   const [userScreenIds, setUserScreenIds] = useState<string[]>([]);
@@ -520,12 +523,20 @@ export default function DevUsuariosPage() {
                       <ActionsDropdown
                         align="right"
                         actions={[
+                          { label: 'Modo TV', icon: Tv, onClick: () => setPresentationUser(user) },
                           { label: 'Ordenar Telas', icon: ListOrdered, onClick: () => setOrderingUser(user) },
                           { label: 'Editar', icon: Edit2, onClick: () => openEditUser(user) },
                           { label: 'Remover', icon: Trash2, onClick: () => setDeleteConfirm(user), className: 'text-red-600' }
                         ]}
                       >
                         <>
+                          <button
+                            onClick={() => setPresentationUser(user)}
+                            className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                            title="Modo Apresentação"
+                          >
+                            <Tv className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => setOrderingUser(user)}
                             className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -821,6 +832,15 @@ export default function DevUsuariosPage() {
           groupId={orderingUser.company_group_id}
           userName={orderingUser.full_name}
           onClose={() => setOrderingUser(null)}
+        />
+      )}
+
+      {presentationUser && (
+        <PresentationConfigModal
+          userId={presentationUser.id}
+          groupId={presentationUser.company_group_id}
+          userName={presentationUser.full_name}
+          onClose={() => setPresentationUser(null)}
         />
       )}
     </MainLayout>

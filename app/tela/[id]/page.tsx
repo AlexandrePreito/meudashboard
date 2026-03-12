@@ -18,7 +18,10 @@ import {
   Database,
   Loader2,
   CheckCircle,
-  XCircle
+  XCircle,
+  Play,
+  Pause,
+  SkipForward
 } from 'lucide-react';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
@@ -75,6 +78,20 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
   });
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  // Modo apresentação (TV) — navega entre PÁGINAS do relatório Power BI
+  interface PresentationPage {
+    name: string;
+    displayName: string;
+    is_enabled: boolean;
+    display_order: number;
+    duration_seconds: number;
+  }
+  const [presentationMode, setPresentationMode] = useState(false);
+  const [presentationPages, setPresentationPages] = useState<PresentationPage[]>([]);
+  const [currentPresentationIndex, setCurrentPresentationIndex] = useState(0);
+  const [countdown, setCountdown] = useState(0);
+  const [loadingPresentation, setLoadingPresentation] = useState(false);
+
   // Chat states
   const [chatOpen, setChatOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -105,6 +122,122 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
       }
     } catch (error) {
       console.error('Erro ao buscar permissões:', error);
+    }
+  }
+
+  async function startPresentation() {
+    if (!embedInstanceRef.current) {
+      alert('Relatório ainda não carregou. Aguarde e tente novamente.');
+      return;
+    }
+
+    setLoadingPresentation(true);
+    try {
+      const report = embedInstanceRef.current;
+      const pages = await report.getPages();
+
+      const visiblePages = pages.filter((p: any) => p.visibility === 0 || p.visibility === undefined);
+
+      if (visiblePages.length === 0) {
+        alert('Nenhuma página encontrada no relatório.');
+        return;
+      }
+
+      const screenRes = await fetch(`/api/powerbi/screens/${id}`);
+      const screenData = await screenRes.json();
+      const groupId = screenData.screen?.company_group_id;
+
+      let savedConfig: any[] = [];
+      if (groupId) {
+        try {
+          const res = await fetch(`/api/user/presentation?group_id=${groupId}&screen_id=${id}`);
+          const data = await res.json();
+          if (data.hasPresentation && data.pages?.length > 0) {
+            savedConfig = data.pages;
+          }
+        } catch {}
+      }
+
+      const configMap = new Map(savedConfig.map((c: any) => [c.page_name, c]));
+
+      const presentationList: PresentationPage[] = visiblePages
+        .map((page: any, index: number) => {
+          const config = configMap.get(page.name);
+          return {
+            name: page.name,
+            displayName: page.displayName || page.name,
+            is_enabled: config?.is_enabled ?? true,
+            display_order: config?.display_order ?? index,
+            duration_seconds: config?.duration_seconds ?? 10,
+          };
+        })
+        .sort((a: PresentationPage, b: PresentationPage) => a.display_order - b.display_order);
+
+      const enabledPages = presentationList.filter(p => p.is_enabled);
+
+      if (enabledPages.length === 0) {
+        alert('Nenhuma página habilitada para apresentação.');
+        return;
+      }
+
+      setPresentationPages(enabledPages);
+      setCurrentPresentationIndex(0);
+      setCountdown(enabledPages[0].duration_seconds);
+
+      await report.setPage(enabledPages[0].name);
+
+      if (embedContainerRef.current && !document.fullscreenElement) {
+        await embedContainerRef.current.requestFullscreen();
+      }
+
+      const newSettings = {
+        panes: {
+          filters: { visible: false },
+          pageNavigation: { visible: false },
+        },
+      };
+      await report.updateSettings(newSettings);
+
+      setPresentationMode(true);
+    } catch (err) {
+      console.error('Erro ao iniciar apresentação:', err);
+      alert('Erro ao iniciar modo apresentação. Verifique se o relatório está carregado.');
+    } finally {
+      setLoadingPresentation(false);
+    }
+  }
+
+  function stopPresentation() {
+    setPresentationMode(false);
+    setPresentationPages([]);
+    setCurrentPresentationIndex(0);
+    setCountdown(0);
+
+    if (embedInstanceRef.current && embedConfig) {
+      embedInstanceRef.current.updateSettings({
+        panes: {
+          filters: { visible: false },
+          pageNavigation: { visible: embedConfig.showPageNavigation !== false },
+        },
+      });
+    }
+
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    }
+  }
+
+  async function skipToNext() {
+    if (presentationPages.length === 0 || !embedInstanceRef.current) return;
+    const nextIndex = (currentPresentationIndex + 1) % presentationPages.length;
+    const nextPage = presentationPages[nextIndex];
+    setCurrentPresentationIndex(nextIndex);
+    setCountdown(nextPage.duration_seconds);
+
+    try {
+      await embedInstanceRef.current.setPage(nextPage.name);
+    } catch (err) {
+      console.error('Erro ao navegar para página:', err);
     }
   }
 
@@ -268,6 +401,32 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
       renderReport();
     }
   }, [embedConfig, renderReport]);
+
+  // Countdown do modo apresentação: ao chegar em 0, vai para próxima página do relatório
+  useEffect(() => {
+    if (!presentationMode || presentationPages.length === 0) return;
+
+    const timer = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          const nextIndex = (currentPresentationIndex + 1) % presentationPages.length;
+          const nextPage = presentationPages[nextIndex];
+          setCurrentPresentationIndex(nextIndex);
+
+          if (embedInstanceRef.current) {
+            embedInstanceRef.current.setPage(nextPage.name).catch((err: any) => {
+              console.error('Erro ao trocar página:', err);
+            });
+          }
+
+          return nextPage.duration_seconds;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [presentationMode, currentPresentationIndex, presentationPages]);
 
   // Scroll do chat
   useEffect(() => {
@@ -730,6 +889,24 @@ ${'='.repeat(50)}
               <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
             </button>
             <button
+              onClick={presentationMode ? stopPresentation : startPresentation}
+              disabled={loadingPresentation}
+              className={`p-2 rounded-lg transition-colors shadow-sm ${
+                presentationMode
+                  ? 'bg-purple-600 text-white hover:bg-purple-700'
+                  : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+              title={presentationMode ? 'Parar apresentação' : 'Modo TV'}
+            >
+              {loadingPresentation ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : presentationMode ? (
+                <Pause size={18} />
+              ) : (
+                <Play size={18} />
+              )}
+            </button>
+            <button
               onClick={handleFullscreen}
               className="p-2 bg-white text-gray-600 hover:bg-gray-50 rounded-lg transition-colors shadow-sm"
               title="Tela cheia"
@@ -827,6 +1004,43 @@ ${'='.repeat(50)}
               >
                 <X size={24} />
               </button>
+            )}
+
+            {/* Overlay controles modo apresentação (fullscreen) */}
+            {presentationMode && isFullscreen && (
+              <div className="absolute bottom-0 left-0 right-0 z-50 bg-gradient-to-t from-black/70 to-transparent p-4 opacity-0 hover:opacity-100 transition-opacity duration-300">
+                <div className="flex items-center justify-between max-w-md mx-auto">
+                  <button
+                    onClick={stopPresentation}
+                    className="p-2 bg-white/20 hover:bg-white/30 text-white rounded-lg"
+                    title="Parar"
+                  >
+                    <Pause size={20} />
+                  </button>
+
+                  <div className="flex items-center gap-3 text-white">
+                    <span className="text-sm font-medium">
+                      {presentationPages[currentPresentationIndex]?.displayName}
+                    </span>
+                    <span className="text-xs bg-white/20 px-2 py-1 rounded-full">
+                      {currentPresentationIndex + 1}/{presentationPages.length}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="w-10 h-10 rounded-full border-2 border-white/50 flex items-center justify-center text-white text-sm font-bold">
+                      {countdown}
+                    </div>
+                    <button
+                      onClick={skipToNext}
+                      className="p-2 bg-white/20 hover:bg-white/30 text-white rounded-lg"
+                      title="Próxima"
+                    >
+                      <SkipForward size={20} />
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>
