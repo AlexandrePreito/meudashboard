@@ -1,7 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
+}
+
 export async function GET(request: NextRequest) {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+  };
+
   try {
     const { searchParams } = new URL(request.url);
 
@@ -12,8 +30,7 @@ export async function GET(request: NextRequest) {
     if (!apiKey && authHeader?.startsWith('Basic ')) {
       try {
         const base64 = authHeader.slice(6);
-        const decoded = atob(base64);
-        // Basic auth format: username:password — usamos username como api_key
+        const decoded = Buffer.from(base64, 'base64').toString('utf-8');
         const username = decoded.split(':')[0];
         if (username) apiKey = username;
       } catch {
@@ -22,7 +39,10 @@ export async function GET(request: NextRequest) {
     }
 
     if (!apiKey) {
-      return NextResponse.json({ error: 'Chave de API não informada' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Chave de API não informada' },
+        { status: 401, headers: corsHeaders }
+      );
     }
 
     const supabase = createAdminClient();
@@ -35,7 +55,10 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (!keyData) {
-      return NextResponse.json({ error: 'Chave inválida ou desativada' }, { status: 403 });
+      return NextResponse.json(
+        { error: 'Chave inválida ou desativada' },
+        { status: 403, headers: corsHeaders }
+      );
     }
 
     await supabase
@@ -52,9 +75,15 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    return NextResponse.json(companies || []);
+    return NextResponse.json(companies || [], {
+      status: 200,
+      headers: corsHeaders,
+    });
   } catch (error: unknown) {
     console.error('Erro na API pública RLS:', error);
-    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Erro interno' },
+      { status: 500, headers: corsHeaders }
+    );
   }
 }
