@@ -18,11 +18,9 @@ import {
   Filter,
   UserCheck,
   UserX,
-  ListOrdered,
-  Tv
+  Settings
 } from 'lucide-react';
-import ScreenOrderModal from './ScreenOrderModal';
-import PresentationConfigModal from './PresentationConfigModal';
+import ScreenConfigModal from './ScreenConfigModal';
 import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
 import ActionsDropdown from '@/components/ui/ActionsDropdown';
 
@@ -33,12 +31,6 @@ const roleLabels: { [key: string]: string } = {
   developer: 'Desenvolvedor',
   master: 'Master',
 };
-
-interface Screen {
-  id: string;
-  title: string;
-  icon?: string;
-}
 
 interface User {
   id: string;
@@ -93,12 +85,7 @@ export default function DevUsuariosPage() {
 
   const [deleteConfirm, setDeleteConfirm] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [orderingUser, setOrderingUser] = useState<User | null>(null);
-  const [presentationUser, setPresentationUser] = useState<User | null>(null);
-
-  const [screens, setScreens] = useState<Screen[]>([]);
-  const [userScreenIds, setUserScreenIds] = useState<string[]>([]);
-  const [loadingScreens, setLoadingScreens] = useState(false);
+  const [configUser, setConfigUser] = useState<User | null>(null);
 
   useEffect(() => {
     loadUsers();
@@ -149,40 +136,9 @@ export default function DevUsuariosPage() {
       can_use_ai: user.can_use_ai,
       can_refresh: user.can_refresh
     });
-    setUserScreenIds(user.screen_ids || []);
     setError('');
     setShowPassword(false);
     setShowModal(true);
-    if (user.company_group_id) {
-      setLoadingScreens(true);
-      try {
-        const [screensRes, idsRes] = await Promise.all([
-          fetch(`/api/powerbi/screens?group_id=${user.company_group_id}`),
-          fetch(`/api/powerbi/screens/user-screen-ids?group_id=${user.company_group_id}&user_id=${user.id}`)
-        ]);
-        if (screensRes.ok) {
-          const d = await screensRes.json();
-          const list = (d.screens || []).filter((s: Screen) => s.id).map((s: Screen) => ({ id: s.id, title: s.title || s.id }));
-          setScreens(list);
-        }
-        if (idsRes.ok) {
-          const d = await idsRes.json();
-          setUserScreenIds(d.screen_ids || []);
-        }
-      } catch (e) {
-        console.error('Erro ao carregar telas:', e);
-      } finally {
-        setLoadingScreens(false);
-      }
-    } else {
-      setScreens([]);
-    }
-  }
-
-  function toggleScreen(screenId: string) {
-    setUserScreenIds(prev =>
-      prev.includes(screenId) ? prev.filter(id => id !== screenId) : [...prev, screenId]
-    );
   }
 
   async function handleSave() {
@@ -243,22 +199,6 @@ export default function DevUsuariosPage() {
 
       if (!res.ok) {
         throw new Error(result.error || 'Erro ao salvar');
-      }
-
-      if (editingUser && editingUser.company_group_id) {
-        try {
-          await fetch('/api/powerbi/screens/set-user-screens', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              group_id: editingUser.company_group_id,
-              user_id: editingUser.id,
-              screen_ids: userScreenIds
-            })
-          });
-        } catch (e) {
-          console.error('Erro ao salvar telas do usuário:', e);
-        }
       }
 
       setShowModal(false);
@@ -523,26 +463,18 @@ export default function DevUsuariosPage() {
                       <ActionsDropdown
                         align="right"
                         actions={[
-                          { label: 'Modo TV', icon: Tv, onClick: () => setPresentationUser(user) },
-                          { label: 'Ordenar Telas', icon: ListOrdered, onClick: () => setOrderingUser(user) },
+                          { label: 'Configurar Telas', icon: Settings, onClick: () => setConfigUser(user) },
                           { label: 'Editar', icon: Edit2, onClick: () => openEditUser(user) },
                           { label: 'Remover', icon: Trash2, onClick: () => setDeleteConfirm(user), className: 'text-red-600' }
                         ]}
                       >
                         <>
                           <button
-                            onClick={() => setPresentationUser(user)}
-                            className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                            title="Modo Apresentação"
-                          >
-                            <Tv className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => setOrderingUser(user)}
+                            onClick={() => setConfigUser(user)}
                             className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Ordenar Telas"
+                            title="Configurar Telas"
                           >
-                            <ListOrdered className="w-4 h-4" />
+                            <Settings className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => openEditUser(user)}
@@ -724,35 +656,6 @@ export default function DevUsuariosPage() {
                 </div>
               )}
 
-              {editingUser && (screens.length > 0 || loadingScreens) && (
-                <div className="border-t border-gray-200 pt-3">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-1">Telas com Acesso</h3>
-                  <p className="text-xs text-gray-500 mb-2">Selecione quais telas este usuário pode visualizar</p>
-                  {loadingScreens ? (
-                    <div className="flex items-center gap-2 text-sm text-gray-500">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Carregando telas...
-                    </div>
-                  ) : (
-                    <div className="max-h-36 overflow-y-auto grid grid-cols-2 gap-x-4 gap-y-0.5">
-                      {screens.map(screen => (
-                        <label
-                          key={screen.id}
-                          className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-gray-50 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={userScreenIds.includes(screen.id)}
-                            onChange={() => toggleScreen(screen.id)}
-                            className="rounded border-gray-300 text-blue-600"
-                          />
-                          <span className="text-sm">{screen.title}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
 
             <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200">
@@ -826,21 +729,14 @@ export default function DevUsuariosPage() {
         </div>
       )}
 
-      {orderingUser && (
-        <ScreenOrderModal
-          userId={orderingUser.id}
-          groupId={orderingUser.company_group_id}
-          userName={orderingUser.full_name}
-          onClose={() => setOrderingUser(null)}
-        />
-      )}
-
-      {presentationUser && (
-        <PresentationConfigModal
-          userId={presentationUser.id}
-          groupId={presentationUser.company_group_id}
-          userName={presentationUser.full_name}
-          onClose={() => setPresentationUser(null)}
+      {configUser && (
+        <ScreenConfigModal
+          userId={configUser.id}
+          groupId={configUser.company_group_id}
+          userName={configUser.full_name}
+          userEmail={configUser.email}
+          onClose={() => setConfigUser(null)}
+          onSaved={() => loadUsers()}
         />
       )}
     </MainLayout>

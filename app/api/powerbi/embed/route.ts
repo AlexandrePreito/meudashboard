@@ -108,6 +108,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Nenhuma conexão Power BI configurada' }, { status: 404 });
     }
 
+    // ── RLS Dinâmico ──────────────────────────────────────────
+    let rlsIdentity: { username: string; roles: string[]; datasets: string[] } | null = null;
+
+    if (screen.rls_enabled && screen.rls_role_name) {
+      const datasetId = report?.dataset_id || (connection as { dataset_id?: string })?.dataset_id;
+      if (datasetId) {
+        rlsIdentity = {
+          username: user.email,
+          roles: [screen.rls_role_name],
+          datasets: [datasetId],
+        };
+        console.log('[RLS] Aplicando identidade:', {
+          screenId: screen_id,
+          userId: user.id,
+          email: user.email,
+          role: screen.rls_role_name,
+        });
+      }
+    }
+    // ── Fim RLS ───────────────────────────────────────────────
+
     // 1. Obter token do Azure AD
     const tokenUrl = `https://login.microsoftonline.com/${connection.tenant_id}/oauth2/v2.0/token`;
     
@@ -147,6 +168,7 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         accessLevel: 'View',
         allowSaveAs: false,
+        ...(rlsIdentity ? { identities: [rlsIdentity] } : {}),
       }),
     });
 
