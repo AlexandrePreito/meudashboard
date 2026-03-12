@@ -717,14 +717,22 @@ export default function ScreenConfigModal({
   }
 
   function getMCode(): string {
-    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    if (!apiKey) return '// Gere uma chave de API primeiro.';
+
+    const supabaseUrl = 'https://szzfaqtsolucmhgjdxqx.supabase.co';
+    const anonKey = 'sb_publishable_BGCv8NxI7rXowRr8QBaRNQ_rm13XxvZ';
+
     return `let
     Fonte = Json.Document(
         Web.Contents(
-            "${baseUrl}/api/public/rls",
+            "${supabaseUrl}/rest/v1/rpc/get_rls_data",
             [
-                Query = [key = "${apiKey}"],
-                ManualStatusHandling = {400, 401, 403, 500}
+                Headers = [
+                    #"apikey" = "${anonKey}",
+                    #"Authorization" = "Bearer ${anonKey}",
+                    #"Content-Type" = "application/json"
+                ],
+                Content = Text.ToBinary("{""p_api_key"": ""${apiKey}""}")
             ]
         )
     ),
@@ -1198,8 +1206,10 @@ in
                           <strong>Como usar:</strong> No Power BI Desktop → Página Inicial → Obter
                           Dados → Consulta em Branco → Editor Avançado → Cole o código acima → OK. A
                           tabela será criada com as colunas <code>Email</code> e{' '}
-                          <code>Codigo_Filial</code>. Depois, relacione <code>Codigo_Filial</code> com
-                          a coluna de filial do seu modelo.
+                          <code>Codigo_Filial</code>. Relacione <code>Codigo_Filial</code> com a
+                          coluna de filial do seu modelo. Crie uma role RLS com filtro:{' '}
+                          <code>[Email] = USERPRINCIPALNAME()</code>. Na autenticação do Power BI,
+                          selecione <strong>Anônimo</strong>.
                         </p>
                       </div>
                     </div>
