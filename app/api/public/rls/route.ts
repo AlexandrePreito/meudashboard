@@ -4,7 +4,22 @@ import { createAdminClient } from '@/lib/supabase/admin';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const apiKey = searchParams.get('key');
+
+    // Suporte a Basic Auth (Power BI Desktop)
+    const authHeader = request.headers.get('authorization');
+    let apiKey = searchParams.get('key');
+
+    if (!apiKey && authHeader?.startsWith('Basic ')) {
+      try {
+        const base64 = authHeader.slice(6);
+        const decoded = atob(base64);
+        // Basic auth format: username:password — usamos username como api_key
+        const username = decoded.split(':')[0];
+        if (username) apiKey = username;
+      } catch {
+        // ignore decode errors
+      }
+    }
 
     if (!apiKey) {
       return NextResponse.json({ error: 'Chave de API não informada' }, { status: 401 });
