@@ -61,6 +61,28 @@ const tabs: { id: TabId; label: string; icon: typeof Monitor }[] = [
   { id: 'integration', label: 'Integração', icon: Link2 },
 ];
 
+// --- Toggle no estilo imagem 3 (azul quando ligado, bolinha branca à direita)
+function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={onChange}
+      className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+        checked ? 'bg-blue-500' : 'bg-gray-200'
+      }`}
+    >
+      <span
+        className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0 transition-transform ${
+          checked ? 'translate-x-5' : 'translate-x-0.5'
+        }`}
+        style={{ marginTop: 2 }}
+      />
+    </button>
+  );
+}
+
 // --- Componente interno: item de tela com nível 2 (páginas)
 function ScreenAccessItem({
   screen,
@@ -95,24 +117,20 @@ function ScreenAccessItem({
         isEnabled ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50/50 opacity-60'
       }`}
     >
+      {/* Linha principal: toggle + nome da tela + "Todas as páginas" (botão verde) + seta */}
       <div
         className={`flex items-center gap-3 p-3 ${
           !isEnabled ? 'border-l-4 border-l-red-300' : 'border-l-4 border-l-transparent'
         }`}
       >
-        <input
-          type="checkbox"
-          checked={isEnabled}
-          onChange={onToggle}
-          className="rounded border-gray-300 text-blue-600 accent-blue-600"
-        />
+        <Toggle checked={isEnabled} onChange={onToggle} />
         <span
           className={`flex-1 text-sm font-medium ${isEnabled ? 'text-gray-900' : 'text-gray-400'}`}
         >
           {screen.title}
         </span>
         {isEnabled && !hasCustomConfig && totalCount > 0 && (
-          <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+          <span className="text-xs font-medium text-green-700 bg-green-100 hover:bg-green-200 px-2.5 py-1 rounded-lg transition-colors">
             Todas as páginas
           </span>
         )}
@@ -135,8 +153,9 @@ function ScreenAccessItem({
         )}
       </div>
 
+      {/* Área expandida: fundo azul + PÁGINAS DO RELATÓRIO + Marcar/Desmarcar todas + lista com toggles */}
       {isExpanded && isEnabled && (
-        <div className="border-t border-gray-100 bg-gray-50 p-3">
+        <div className="border-t border-gray-100 bg-blue-50 p-3">
           {loadingPages ? (
             <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
               <Loader2 className="w-4 h-4 animate-spin" /> Carregando páginas...
@@ -144,14 +163,14 @@ function ScreenAccessItem({
           ) : pages && pages.length > 0 ? (
             <div className="space-y-1">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
                   Páginas do relatório
                 </span>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={onMarkAllPages}
-                    className="text-xs text-blue-600 hover:underline"
+                    className="text-xs text-blue-600 hover:underline font-medium"
                   >
                     Marcar todas
                   </button>
@@ -159,26 +178,26 @@ function ScreenAccessItem({
                   <button
                     type="button"
                     onClick={onUnmarkAllPages}
-                    className="text-xs text-blue-600 hover:underline"
+                    className="text-xs text-blue-600 hover:underline font-medium"
                   >
                     Desmarcar todas
                   </button>
                 </div>
               </div>
-              {pages.map((page) => (
-                <label
-                  key={page.page_name}
-                  className="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-100 cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={page.is_allowed}
-                    onChange={() => onTogglePage(page.page_name)}
-                    className="rounded border-gray-300 text-blue-600 accent-blue-600"
-                  />
-                  <span className="text-sm text-gray-700">{page.display_name}</span>
-                </label>
-              ))}
+              <div className="max-h-[240px] overflow-y-auto pr-1">
+                {pages.map((page) => (
+                  <div
+                    key={page.page_name}
+                    className="flex items-center justify-between gap-3 py-2 px-2 rounded-lg hover:bg-blue-100/50"
+                  >
+                    <span className="text-sm text-gray-800">{page.display_name}</span>
+                    <Toggle
+                      checked={page.is_allowed}
+                      onChange={() => onTogglePage(page.page_name)}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           ) : (
             <p className="text-sm text-gray-400 py-2">Nenhuma página encontrada neste relatório.</p>
@@ -941,23 +960,23 @@ in
               ) : allScreens.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">Nenhuma tela no grupo.</p>
               ) : (
-                <>
+                <div className="rounded-xl bg-blue-50 p-4 border border-blue-100">
                   <div className="flex items-center gap-3 mb-4">
                     <button
                       type="button"
                       onClick={() => toggleAccessAll(true)}
-                      className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg"
+                      className="px-3 py-1.5 text-sm bg-white hover:bg-blue-100 border border-blue-200 text-blue-800 rounded-lg"
                     >
                       Marcar todas
                     </button>
                     <button
                       type="button"
                       onClick={() => toggleAccessAll(false)}
-                      className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg"
+                      className="px-3 py-1.5 text-sm bg-white hover:bg-blue-100 border border-blue-200 text-blue-800 rounded-lg"
                     >
                       Desmarcar todas
                     </button>
-                    <span className="text-xs text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">
+                    <span className="text-xs text-blue-800 bg-blue-100 px-2.5 py-1 rounded-full">
                       {selectedScreenIds.length}/{allScreens.length} telas selecionadas
                     </span>
                   </div>
@@ -980,7 +999,7 @@ in
                       />
                     ))}
                   </div>
-                </>
+                </div>
               )}
             </>
           )}

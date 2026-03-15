@@ -50,6 +50,7 @@ const SUBDOMAIN_PUBLIC_ROUTES = [
   '/login',
   '/esqueci-senha',
   '/redefinir-senha',
+  '/funcionalidades',
   '/termos-de-uso',
   '/politica-de-privacidade',
   '/politica-de-cookies',
@@ -199,7 +200,10 @@ export async function middleware(request: NextRequest) {
   ];
 
   const isPublicApi = pathname.startsWith('/api/subdomain/');
-  const isPublicPath = publicRoutes.includes(pathname) || pathname.startsWith('/cadastro');
+  const isPublicPath =
+    publicRoutes.includes(pathname) ||
+    pathname.startsWith('/cadastro') ||
+    pathname.startsWith('/funcionalidades');
 
   if (isPublicPath || isPublicApi) {
     return NextResponse.next();

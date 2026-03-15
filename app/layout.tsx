@@ -20,38 +20,72 @@ const getBaseUrl = () => {
   return 'http://localhost:3000';
 };
 
+const siteUrl = getBaseUrl();
+
+// JSON-LD para SEO (Organization + WebSite)
+function SeoJsonLd() {
+  const orgSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'MeuDashboard',
+    url: siteUrl,
+    logo: `${siteUrl}/og-image.png`,
+    description: 'Plataforma de dashboards Power BI com IA. Embed, WhatsApp, alertas e controle de acesso.',
+  };
+  const webSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'MeuDashboard',
+    url: siteUrl,
+    description: 'Hospede dashboards Power BI, consulte por WhatsApp com IA e receba alertas. Comece grátis.',
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: { '@type': 'EntryPoint', urlTemplate: `${siteUrl}/login` },
+      'query-input': 'required name=query',
+    },
+  };
+  return (
+    <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(orgSchema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(webSchema) }} />
+    </>
+  );
+}
+
 export const metadata: Metadata = {
-  metadataBase: new URL(getBaseUrl()),
+  metadataBase: new URL(siteUrl),
   title: {
-    default: 'MeuDashboard — Dashboards Power BI com Inteligência Artificial',
-    template: '%s | MeuDashboard'
+    default: 'MeuDashboard — Dashboards Power BI com IA | Embed, WhatsApp e Alertas',
+    template: '%s | MeuDashboard',
   },
-  description: 'Hospede seus dashboards Power BI em uma plataforma inteligente. Consulte dados por WhatsApp com IA, receba alertas automáticos e controle o acesso por usuário. Comece grátis.',
+  description:
+    'Plataforma para hospedar e compartilhar dashboards Power BI. Consulte dados por WhatsApp com IA, receba alertas automáticos, controle de acesso por usuário e RLS. Sem licença Embed para quem visualiza. Comece grátis.',
   keywords: [
     'dashboard power bi',
     'power bi embed',
     'hospedar dashboard power bi',
-    'plataforma power bi',
+    'plataforma power bi brasil',
     'power bi whatsapp',
     'consultar dados whatsapp',
     'inteligência artificial power bi',
     'IA business intelligence',
     'relatórios power bi',
-    'business intelligence',
-    'análise de dados com IA',
     'alertas power bi whatsapp',
-    'gestão de dashboards',
+    'controle de acesso power bi',
+    'RLS power bi',
     'power bi para clientes',
     'white label power bi',
-    'embed power bi react',
-    'KPIs',
-    'métricas empresariais',
-    'SaaS dashboard',
-    'multi tenant power bi'
+    'multi tenant power bi',
+    'embed power bi sem licença',
+    'software house power bi',
+    'consultoria BI',
+    'KPIs empresariais',
+    'meudashboard',
   ],
   authors: [{ name: 'MeuDashboard', url: 'https://meudashboard.org' }],
   creator: 'MeuDashboard',
   publisher: 'MeuDashboard',
+  category: 'technology',
   robots: {
     index: true,
     follow: true,
@@ -66,10 +100,11 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'pt_BR',
-    url: getBaseUrl(),
+    url: siteUrl,
     siteName: 'MeuDashboard',
-    title: 'MeuDashboard — Dashboards Power BI com Inteligência Artificial',
-    description: 'Hospede dashboards Power BI, consulte dados por WhatsApp com IA e receba alertas automáticos. Plataforma completa para empresas e consultorias de BI.',
+    title: 'MeuDashboard — Dashboards Power BI com IA | Embed, WhatsApp e Alertas',
+    description:
+      'Hospede dashboards Power BI, consulte dados por WhatsApp com IA, receba alertas e controle o acesso. Sem licença Embed para quem visualiza. Comece grátis.',
     images: [
       {
         url: '/og-image.png',
@@ -82,14 +117,15 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'MeuDashboard — Dashboards Power BI com IA',
-    description: 'Consulte seus dados por WhatsApp com Inteligência Artificial. Hospede dashboards Power BI com controle de acesso e alertas automáticos.',
+    description:
+      'Consulte dados por WhatsApp com IA. Hospede Power BI com controle de acesso e alertas. Sem licença Embed para visualizadores.',
     images: ['/og-image.png'],
   },
-  verification: {
-    // google: 'seu-codigo-google-search-console',
-  },
   alternates: {
-    canonical: getBaseUrl(),
+    canonical: siteUrl,
+  },
+  other: {
+    'geo.region': 'BR',
   },
 };
 
@@ -101,6 +137,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body className={`${inter.variable} font-sans antialiased`}>
+        <SeoJsonLd />
         <ToastProvider>
           <Providers>
             {children}

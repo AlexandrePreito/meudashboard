@@ -86,23 +86,16 @@ function AnimatedCounter({ end, suffix = '', duration = 2000 }: { end: number; s
   return <span ref={ref}>{count}{suffix}</span>;
 }
 
-function FeatureCard({ icon: Icon, title, description, gradient = 'from-cyan-500 to-blue-600', href, iconClassName = 'text-white' }: { icon: any; title: string; description: string; gradient?: string; href?: string; iconClassName?: string }) {
-  const content = (
-    <div className="group bg-white rounded-2xl p-8 shadow-sm border border-slate-100 hover:shadow-xl hover:border-cyan-200 transition-all duration-300 cursor-pointer">
+function FeatureCard({ icon: Icon, title, description, gradient = 'from-cyan-500 to-blue-600' }: { icon: any; title: string; description: string; gradient?: string }) {
+  return (
+    <div className="group bg-white rounded-2xl p-8 shadow-sm border border-slate-100 hover:shadow-xl hover:border-cyan-200 transition-all duration-300">
       <div className={`w-14 h-14 bg-gradient-to-br ${gradient} rounded-xl flex items-center justify-center mb-5 group-hover:scale-110 transition-transform`}>
-        <Icon className={`w-7 h-7 ${iconClassName}`} />
+        <Icon className="w-7 h-7 text-white" />
       </div>
       <h3 className="text-xl font-semibold text-slate-900 mb-3">{title}</h3>
       <p className="text-slate-600 leading-relaxed">{description}</p>
-      <div className="mt-4 flex items-center gap-1.5 text-sm font-medium text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
-        Saiba mais <ArrowRight className="w-4 h-4" />
-      </div>
     </div>
   );
-  if (href) {
-    return <Link href={href}>{content}</Link>;
-  }
-  return content;
 }
 
 function ParaQuemCard({ icon: Icon, title, description, tag }: { icon: any; title: string; description: string; tag: string }) {
@@ -506,12 +499,12 @@ export default function LandingPage() {
             <p className="text-xl text-slate-600 max-w-2xl mx-auto">Uma plataforma completa para gerenciar e compartilhar seus dashboards</p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <FeatureCard icon={BarChart3} title="Dashboards Power BI" description="Integre seus relatórios Power BI com embed seguro, performance e acesso controlado por usuários." gradient="from-yellow-400 to-amber-500" href="/funcionalidades/dashboards-power-bi" iconClassName="text-amber-900" />
-            <FeatureCard icon={Brain} title="IA no WhatsApp" description="Consulte dados pelo WhatsApp. A IA analisa, interpreta padrões e sugere ações baseadas nos seus indicadores." gradient="from-purple-500 to-purple-600" href="/funcionalidades/ia-whatsapp" />
-            <FeatureCard icon={Bell} title="Alertas automáticos" description="Receba alertas no WhatsApp quando métricas ultrapassarem limites. Agendamentos e notificações em tempo real." gradient="from-purple-500 to-purple-600" href="/funcionalidades/alertas-automaticos" />
-            <FeatureCard icon={Shield} title="Controle de acesso" description="Cada usuário com acesso limitado às suas informações. Permissões por pessoa, dashboard e dados." gradient="from-teal-500 to-cyan-600" href="/funcionalidades/controle-de-acesso" />
-            <FeatureCard icon={RefreshCw} title="Atualização monitorada" description="Monitore datasets e dataflows. Alertas de erro, atraso e relatório diário por WhatsApp." gradient="from-amber-500 to-amber-600" href="/funcionalidades/atualizacao-monitorada" />
-            <FeatureCard icon={Database} title="Multi-tenant" description="Grupos de empresa isolados. Ideal para software houses e consultorias com múltiplos clientes." gradient="from-indigo-500 to-indigo-600" href="/funcionalidades/multi-tenant" />
+            <FeatureCard icon={BarChart3} title="Dashboards Power BI" description="Integre seus relatórios Power BI com embed seguro, performance e acesso controlado por usuários." gradient="from-blue-500 to-blue-600" />
+            <FeatureCard icon={Brain} title="IA no WhatsApp" description="Consulte dados pelo WhatsApp. A IA analisa, interpreta padrões e sugere ações baseadas nos seus indicadores." gradient="from-purple-500 to-purple-600" />
+            <FeatureCard icon={Bell} title="Alertas automáticos" description="Receba alertas no WhatsApp quando métricas ultrapassarem limites. Agendamentos e notificações em tempo real." gradient="from-amber-500 to-orange-500" />
+            <FeatureCard icon={Shield} title="Controle de acesso" description="Cada usuário com acesso limitado às suas informações. Permissões por pessoa, dashboard e dados." gradient="from-emerald-500 to-green-600" />
+            <FeatureCard icon={RefreshCw} title="Atualização monitorada" description="Monitore datasets e dataflows. Alertas de erro, atraso e relatório diário por WhatsApp." gradient="from-amber-500 to-amber-600" />
+            <FeatureCard icon={Database} title="Multi-tenant" description="Grupos de empresa isolados. Ideal para software houses e consultorias com múltiplos clientes." gradient="from-indigo-500 to-indigo-600" />
           </div>
         </div>
       </section>
