@@ -92,6 +92,11 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
   const [countdown, setCountdown] = useState(0);
   const [loadingPresentation, setLoadingPresentation] = useState(false);
 
+  // Controle de páginas permitidas
+  const [hasPageRestriction, setHasPageRestriction] = useState(false);
+  const [allowedPages, setAllowedPages] = useState<{ name: string; displayName: string }[]>([]);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+
   // Chat states
   const [chatOpen, setChatOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -136,10 +141,29 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
       const report = embedInstanceRef.current;
       const pages = await report.getPages();
 
-      const visiblePages = pages.filter((p: any) => p.visibility === 0 || p.visibility === undefined);
+      let visiblePages = pages.filter((p: any) => p.visibility === 0 || p.visibility === undefined);
 
       if (visiblePages.length === 0) {
         alert('Nenhuma página encontrada no relatório.');
+        return;
+      }
+
+      try {
+        const pageAccessRes = await fetch(`/api/user/page-access?screen_id=${id}`);
+        if (pageAccessRes.ok) {
+          const pageAccessData = await pageAccessRes.json();
+          if (
+            pageAccessData.has_custom_config &&
+            pageAccessData.allowed_pages.length > 0
+          ) {
+            const allowedSet = new Set(pageAccessData.allowed_pages);
+            visiblePages = visiblePages.filter((p: any) => allowedSet.has(p.name));
+          }
+        }
+      } catch {}
+
+      if (visiblePages.length === 0) {
+        alert('Nenhuma página permitida para apresentação.');
         return;
       }
 
@@ -270,8 +294,68 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
 
       embedInstanceRef.current = powerbi.embed(embedContainerRef.current, config);
 
-      embedInstanceRef.current.on('loaded', () => {
+      embedInstanceRef.current.on('loaded', async () => {
         console.log('Relatório carregado com sucesso');
+
+        try {
+          const report = embedInstanceRef.current;
+          if (!report) return;
+
+          const pageAccessRes = await fetch(`/api/user/page-access?screen_id=${id}`);
+          if (pageAccessRes.ok) {
+            const pageAccessData = await pageAccessRes.json();
+
+            if (
+              pageAccessData.has_custom_config &&
+              pageAccessData.allowed_pages.length > 0
+            ) {
+              const pages = await report.getPages();
+              const allowedSet = new Set(pageAccessData.allowed_pages);
+
+              const activePage = pages.find((p: any) => p.isActive);
+              if (activePage && !allowedSet.has(activePage.name)) {
+                const firstAllowed = pages.find((p: any) => allowedSet.has(p.name));
+                if (firstAllowed) await report.setPage(firstAllowed.name);
+              }
+
+              await report.updateSettings({
+                panes: {
+                  filters: { visible: false },
+                  pageNavigation: { visible: false },
+                },
+              });
+
+              const visiblePages = pages
+                .filter(
+                  (p: any) =>
+                    allowedSet.has(p.name) &&
+                    (p.visibility === 0 || p.visibility === undefined)
+                )
+                .map((p: any) => ({
+                  name: p.name,
+                  displayName: p.displayName || p.name,
+                }));
+
+              setAllowedPages(visiblePages);
+              setHasPageRestriction(true);
+              const active = pages.find((p: any) => p.isActive);
+              const idx =
+                active && allowedSet.has(active.name)
+                  ? visiblePages.findIndex((p) => p.name === active.name)
+                  : 0;
+              setCurrentPageIndex(idx >= 0 ? idx : 0);
+
+              console.log(
+                `[Page Access] ${visiblePages.length}/${pages.length} páginas permitidas`
+              );
+            } else {
+              setHasPageRestriction(false);
+              setAllowedPages([]);
+            }
+          }
+        } catch (err) {
+          console.error('Erro ao aplicar filtro de páginas:', err);
+        }
       });
 
       embedInstanceRef.current.on('error', (event: any) => {
@@ -1043,6 +1127,34 @@ ${'='.repeat(50)}
               </div>
             )}
           </div>
+
+          {/* Navegação customizada de páginas (quando há restrição de acesso) */}
+          {hasPageRestriction && allowedPages.length > 1 && !presentationMode && (
+            <div className="flex items-center gap-1 px-4 py-2 bg-white border-t border-gray-200 overflow-x-auto">
+              {allowedPages.map((page, index) => (
+                <button
+                  key={page.name}
+                  onClick={async () => {
+                    if (embedInstanceRef.current) {
+                      try {
+                        await embedInstanceRef.current.setPage(page.name);
+                        setCurrentPageIndex(index);
+                      } catch (err) {
+                        console.error('Erro ao navegar:', err);
+                      }
+                    }
+                  }}
+                  className={`px-3 py-1.5 text-sm rounded-lg whitespace-nowrap transition-colors ${
+                    currentPageIndex === index
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {page.displayName}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Painel de Chat - Overlay */}

@@ -36,14 +36,20 @@ export async function GET(request: NextRequest) {
 
     const { data: companies } = await supabase
       .from('rls_user_companies')
-      .select('company_code')
+      .select('company_code, filter_type')
       .eq('user_id', userId)
       .eq('company_group_id', groupId)
+      .order('filter_type')
       .order('company_code');
 
-    const codes = (companies || []).map((c) => c.company_code);
+    const grouped: Record<string, string[]> = {};
+    (companies || []).forEach((c: { company_code: string; filter_type?: string }) => {
+      const type = c.filter_type ?? 'default';
+      if (!grouped[type]) grouped[type] = [];
+      grouped[type].push(c.company_code);
+    });
 
-    return NextResponse.json({ companies: codes });
+    return NextResponse.json({ filters: grouped });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Erro desconhecido';
     return NextResponse.json({ error: message }, { status: 500 });
@@ -62,7 +68,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { user_id, group_id, user_email, companies } = body;
+    const { user_id, group_id, user_email, filters } = body;
 
     if (!user_id || !group_id || !user_email) {
       return NextResponse.json(
@@ -90,18 +96,32 @@ export async function POST(request: NextRequest) {
       .eq('user_id', user_id)
       .eq('company_group_id', group_id);
 
-    const codes = (companies || [])
-      .map((c: string) => String(c).trim())
-      .filter((c: string) => c.length > 0);
+    const inserts: Array<{
+      user_id: string;
+      company_group_id: string;
+      user_email: string;
+      company_code: string;
+      filter_type: string;
+    }> = [];
 
-    if (codes.length > 0) {
-      const inserts = codes.map((code: string) => ({
-        user_id,
-        company_group_id: group_id,
-        user_email: String(user_email).trim().toLowerCase(),
-        company_code: code,
-      }));
+    if (filters && typeof filters === 'object') {
+      for (const [filterType, values] of Object.entries(filters)) {
+        const codes = (values as string[])
+          .map((c: string) => String(c).trim())
+          .filter((c: string) => c.length > 0);
+        for (const code of codes) {
+          inserts.push({
+            user_id,
+            company_group_id: group_id,
+            user_email: String(user_email).trim().toLowerCase(),
+            company_code: code,
+            filter_type: filterType,
+          });
+        }
+      }
+    }
 
+    if (inserts.length > 0) {
       const { error } = await supabase.from('rls_user_companies').insert(inserts);
       if (error) throw error;
     }

@@ -54,7 +54,7 @@ const tabs: { id: TabId; label: string; icon: typeof Monitor }[] = [
   { id: 'access', label: 'Acesso', icon: Monitor },
   { id: 'order', label: 'Ordem', icon: ListOrdered },
   { id: 'presentation', label: 'Apresentação', icon: Tv },
-  { id: 'options', label: 'Opções', icon: Settings },
+  { id: 'options', label: 'RLS', icon: Settings },
   { id: 'integration', label: 'Integração', icon: Link2 },
 ];
 
@@ -215,7 +215,9 @@ export default function ScreenConfigModal({
   const [rlsScreenId, setRlsScreenId] = useState<string | null>(null);
   const [rlsEnabled, setRlsEnabled] = useState(false);
   const [rlsRoleName, setRlsRoleName] = useState('');
-  const [rlsCompanyCodes, setRlsCompanyCodes] = useState<string[]>([]);
+  // Filtros RLS dinâmicos: { "Filial": ["01", "02"], "Regiao": ["SUL"] }
+  const [rlsFilters, setRlsFilters] = useState<Record<string, string[]>>({});
+  const [newFilterName, setNewFilterName] = useState('');
   const [loadingCompanies, setLoadingCompanies] = useState(false);
 
   // --- Aba Integração (API key Power BI)
@@ -404,7 +406,7 @@ export default function ScreenConfigModal({
         );
         if (res.ok) {
           const data = await res.json();
-          setRlsCompanyCodes(data.companies || []);
+          setRlsFilters(data.filters || {});
         }
       } catch (e) {
         console.error('Erro ao carregar filiais RLS:', e);
@@ -488,27 +490,30 @@ export default function ScreenConfigModal({
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Erro ao salvar');
+        throw new Error(data.error || 'Erro ao salvar telas');
       }
 
       for (const screenId of Object.keys(screenPages)) {
         const pages = screenPages[screenId];
         if (!pages?.length) continue;
-        const allAllowed = pages.every((p) => p.is_allowed);
-        await fetch('/api/dev/users/page-access', {
+        const pageAccessRes = await fetch('/api/dev/users/page-access', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             user_id: userId,
             screen_id: screenId,
             group_id: groupId,
-            pages: allAllowed ? pages.map((p) => ({ ...p, is_allowed: true })) : pages.map((p) => ({
+            pages: pages.map((p) => ({
               page_name: p.page_name,
               display_name: p.display_name,
               is_allowed: p.is_allowed,
             })),
           }),
         });
+        if (!pageAccessRes.ok) {
+          const data = await pageAccessRes.json();
+          throw new Error(data.error || 'Erro ao salvar acesso por página');
+        }
       }
     } finally {
       setSavingAccess(false);
@@ -659,10 +664,6 @@ export default function ScreenConfigModal({
   }
 
   async function saveRlsCompanies() {
-    const codes = rlsCompanyCodes
-      .map((c) => c.trim())
-      .filter((c) => c.length > 0);
-
     const res = await fetch('/api/dev/users/rls-companies', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -670,12 +671,12 @@ export default function ScreenConfigModal({
         user_id: userId,
         group_id: groupId,
         user_email: userEmail,
-        companies: codes,
+        filters: rlsFilters,
       }),
     });
     if (!res.ok) {
       const data = await res.json();
-      throw new Error(data.error || 'Erro ao salvar filiais');
+      throw new Error(data.error || 'Erro ao salvar filtros RLS');
     }
   }
 
@@ -737,8 +738,8 @@ export default function ScreenConfigModal({
         )
     ),
     Tabela = Table.FromList(Fonte, Splitter.SplitByNothing(), null, null, ExtraValues.Error),
-    Expandir = Table.ExpandRecordColumn(Tabela, "Column1", {"user_email", "company_code"}, {"Email", "Codigo_Filial"}),
-    TipoDefinido = Table.TransformColumnTypes(Expandir, {{"Email", type text}, {"Codigo_Filial", type text}})
+    Expandir = Table.ExpandRecordColumn(Tabela, "Column1", {"user_email", "filter_type", "filter_value"}, {"Email", "Tipo_Filtro", "Valor_Filtro"}),
+    TipoDefinido = Table.TransformColumnTypes(Expandir, {{"Email", type text}, {"Tipo_Filtro", type text}, {"Valor_Filtro", type text}})
 in
     TipoDefinido`;
   }
@@ -1204,12 +1205,12 @@ in
                       <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-3">
                         <p className="text-xs text-amber-700">
                           <strong>Como usar:</strong> No Power BI Desktop → Página Inicial → Obter
-                          Dados → Consulta em Branco → Editor Avançado → Cole o código acima → OK. A
-                          tabela será criada com as colunas <code>Email</code> e{' '}
-                          <code>Codigo_Filial</code>. Relacione <code>Codigo_Filial</code> com a
-                          coluna de filial do seu modelo. Crie uma role RLS com filtro:{' '}
-                          <code>[Email] = USERPRINCIPALNAME()</code>. Na autenticação do Power BI,
-                          selecione <strong>Anônimo</strong>.
+                          Dados → Consulta em Branco → Editor Avançado → Cole o código acima → OK.
+                          Na autenticação, selecione <strong>Anônimo</strong>. A tabela terá 3
+                          colunas: <code>Email</code>, <code>Tipo_Filtro</code> e{' '}
+                          <code>Valor_Filtro</code>. Filtre por <code>Tipo_Filtro</code> para criar
+                          relacionamentos específicos (ex: Filial, Região). Crie uma role RLS com
+                          filtro: <code>[Email] = USERPRINCIPALNAME()</code>.
                         </p>
                       </div>
                     </div>
@@ -1286,14 +1287,15 @@ in
                 )}
               </div>
 
-              {/* Filiais / Empresas do usuário (RLS) */}
+              {/* Filtros RLS dinâmicos */}
               <div className="border-t border-gray-200 pt-6 mt-6">
                 <h3 className="text-sm font-semibold text-gray-900 mb-1">
-                  Filiais com Acesso (RLS)
+                  Filtros de Acesso (RLS)
                 </h3>
                 <p className="text-xs text-gray-500 mb-3">
-                  Códigos das filiais/empresas que este usuário pode visualizar no Power BI. Adicione
-                  uma filial por linha. Essa configuração vale para todas as telas com RLS ativo.
+                  Configure os filtros de dados que este usuário pode visualizar no Power BI. Cada
+                  filtro corresponde a uma coluna no modelo. Essa configuração vale para todas as
+                  telas com RLS ativo.
                 </p>
 
                 {loadingCompanies ? (
@@ -1303,44 +1305,111 @@ in
                   </div>
                 ) : (
                   <>
-                    <div className="space-y-2">
-                      {rlsCompanyCodes.map((code, index) => (
-                        <div key={index} className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={code}
-                            onChange={(e) =>
-                              setRlsCompanyCodes((prev) =>
-                                prev.map((c, i) => (i === index ? e.target.value : c))
-                              )
-                            }
-                            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Ex: 01"
-                          />
+                    {Object.entries(rlsFilters).map(([filterType, values]) => (
+                      <div
+                        key={filterType}
+                        className="mb-4 border border-gray-200 rounded-xl p-4"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-gray-900">{filterType}</span>
                           <button
                             type="button"
-                            onClick={() =>
-                              setRlsCompanyCodes((prev) => prev.filter((_, i) => i !== index))
-                            }
-                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Remover"
+                            onClick={() => {
+                              const next = { ...rlsFilters };
+                              delete next[filterType];
+                              setRlsFilters(next);
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Remover filtro"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
-                      ))}
+
+                        <div className="space-y-2">
+                          {values.map((value, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={value}
+                                onChange={(e) => {
+                                  const next = { ...rlsFilters };
+                                  next[filterType] = [...values];
+                                  next[filterType][index] = e.target.value;
+                                  setRlsFilters(next);
+                                }}
+                                className="flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder={`Valor ${index + 1}`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = { ...rlsFilters };
+                                  next[filterType] = values.filter((_, i) => i !== index);
+                                  if (next[filterType].length === 0) delete next[filterType];
+                                  setRlsFilters(next);
+                                }}
+                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = { ...rlsFilters };
+                              next[filterType] = [...values, ''];
+                              setRlsFilters(next);
+                            }}
+                            className="text-xs text-blue-600 hover:underline"
+                          >
+                            + Adicionar valor
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+
+                    <div className="flex items-center gap-2 mt-3">
+                      <input
+                        type="text"
+                        value={newFilterName}
+                        onChange={(e) => setNewFilterName(e.target.value)}
+                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        placeholder="Nome do filtro (ex: Filial, Regiao, Vendedor)"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && newFilterName.trim()) {
+                            setRlsFilters((prev) => ({
+                              ...prev,
+                              [newFilterName.trim()]: [''],
+                            }));
+                            setNewFilterName('');
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (newFilterName.trim()) {
+                            setRlsFilters((prev) => ({
+                              ...prev,
+                              [newFilterName.trim()]: [''],
+                            }));
+                            setNewFilterName('');
+                          }
+                        }}
+                        disabled={!newFilterName.trim()}
+                        className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Adicionar
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setRlsCompanyCodes((prev) => [...prev, ''])}
-                      className="mt-2 flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Adicionar filial
-                    </button>
-                    <p className="text-xs text-gray-400 mt-2">
-                      Os códigos devem corresponder à coluna de filial/empresa no Power BI. Se não
-                      houver nenhuma, o usuário não terá restrição por filial.
+
+                    <p className="text-xs text-gray-400 mt-3">
+                      O nome do filtro deve corresponder ao nome da coluna na tabela RLS_Acesso do
+                      Power BI. No Power BI, crie um relacionamento entre cada coluna de filtro e a
+                      tabela correspondente do modelo.
                     </p>
                   </>
                 )}
