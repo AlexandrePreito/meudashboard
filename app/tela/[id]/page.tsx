@@ -55,6 +55,8 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
   const embedContainerRef = useRef<HTMLDivElement>(null);
   const embedInstanceRef = useRef<any>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const isNavigatingRef = useRef(false);
+  const allowedPagesRef = useRef<string[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -241,7 +243,9 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
       embedInstanceRef.current.updateSettings({
         panes: {
           filters: { visible: false },
-          pageNavigation: { visible: embedConfig.showPageNavigation !== false },
+          pageNavigation: {
+            visible: hasPageRestriction ? false : (embedConfig.showPageNavigation !== false),
+          },
         },
       });
     }
@@ -338,6 +342,8 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
 
               setAllowedPages(visiblePages);
               setHasPageRestriction(true);
+              const allowedNames = visiblePages.map((p) => p.name);
+              allowedPagesRef.current = allowedNames;
               const active = pages.find((p: any) => p.isActive);
               const idx =
                 active && allowedSet.has(active.name)
@@ -348,9 +354,41 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
               console.log(
                 `[Page Access] ${visiblePages.length}/${pages.length} páginas permitidas`
               );
+
+              report.off('pageChanged');
+              report.on('pageChanged', async (event: any) => {
+                if (isNavigatingRef.current) return;
+                const newPage = event.detail?.newPage;
+                if (!newPage) return;
+
+                const allowed = allowedPagesRef.current;
+                if (allowed.length === 0) return;
+
+                if (!allowed.includes(newPage.name)) {
+                  console.warn(
+                    `[Page Access] Bloqueado acesso à página "${newPage.displayName}". Redirecionando...`
+                  );
+                  isNavigatingRef.current = true;
+                  try {
+                    const firstAllowedName = allowed[0];
+                    await report.setPage(firstAllowedName);
+                    setCurrentPageIndex(0);
+                  } catch (err) {
+                    console.error('Erro ao redirecionar página:', err);
+                  } finally {
+                    setTimeout(() => {
+                      isNavigatingRef.current = false;
+                    }, 500);
+                  }
+                } else {
+                  const idx = allowed.indexOf(newPage.name);
+                  if (idx >= 0) setCurrentPageIndex(idx);
+                }
+              });
             } else {
               setHasPageRestriction(false);
               setAllowedPages([]);
+              allowedPagesRef.current = [];
             }
           }
         } catch (err) {
@@ -1136,11 +1174,16 @@ ${'='.repeat(50)}
                   key={page.name}
                   onClick={async () => {
                     if (embedInstanceRef.current) {
+                      isNavigatingRef.current = true;
                       try {
                         await embedInstanceRef.current.setPage(page.name);
                         setCurrentPageIndex(index);
                       } catch (err) {
                         console.error('Erro ao navegar:', err);
+                      } finally {
+                        setTimeout(() => {
+                          isNavigatingRef.current = false;
+                        }, 500);
                       }
                     }
                   }}

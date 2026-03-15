@@ -57,21 +57,18 @@ export async function POST(request: NextRequest) {
     const groupScreenIds = groupScreens?.map((s) => s.id) || [];
     const targetSet = new Set(screenIds);
 
-    for (const screenId of groupScreenIds) {
-      const { data: current } = await supabase
-        .from('powerbi_screen_users')
-        .select('user_id')
-        .eq('screen_id', screenId);
+    await supabase
+      .from('powerbi_screen_users')
+      .delete()
+      .eq('user_id', userId)
+      .in('screen_id', groupScreenIds);
 
-      const currentUserIds = current?.map((r) => r.user_id) || [];
-      const hasUser = currentUserIds.includes(userId);
-      const shouldHave = targetSet.has(screenId);
+    const toInsert = groupScreenIds
+      .filter((screenId) => targetSet.has(screenId))
+      .map((screenId) => ({ screen_id: screenId, user_id: userId }));
 
-      if (shouldHave && !hasUser) {
-        await supabase.from('powerbi_screen_users').insert({ screen_id: screenId, user_id: userId });
-      } else if (!shouldHave && hasUser) {
-        await supabase.from('powerbi_screen_users').delete().eq('screen_id', screenId).eq('user_id', userId);
-      }
+    if (toInsert.length > 0) {
+      await supabase.from('powerbi_screen_users').insert(toInsert);
     }
 
     return NextResponse.json({ ok: true });

@@ -254,10 +254,11 @@ export default function ScreenConfigModal({
         if (idsRes.ok) {
           const d = await idsRes.json();
           const ids = d.screen_ids || [];
-          if (ids.length === 0) {
-            // Sem config específica = acesso a todas (padrão do sistema)
+          if (ids.length === 0 && !d.has_explicit_config) {
+            // Nunca configurado = todas marcadas (padrão)
             setSelectedScreenIds(screenList.map((s: ScreenItem) => s.id));
           } else {
+            // Configurado explicitamente (mesmo que vazio = nenhuma tela)
             setSelectedScreenIds(ids);
           }
         }

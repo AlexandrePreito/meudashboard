@@ -56,7 +56,14 @@ export async function GET(request: NextRequest) {
 
     const screenIds = screens?.map((s) => s.id) || [];
     if (screenIds.length === 0) {
-      return NextResponse.json({ screen_ids: [] });
+      const { count } = await supabase
+        .from('powerbi_screen_users')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
+      return NextResponse.json({
+        screen_ids: [],
+        has_explicit_config: (count ?? 0) > 0,
+      });
     }
 
     // powerbi_screen_users onde screen_id está no grupo e user_id = userId
@@ -67,7 +74,17 @@ export async function GET(request: NextRequest) {
       .in('screen_id', screenIds);
 
     const screen_ids = [...new Set(userScreens?.map((r) => r.screen_id) || [])];
-    return NextResponse.json({ screen_ids });
+
+    // Verificar se o usuário tem alguma config explícita (em qualquer grupo) para diferenciar
+    // "nunca configurado" (acesso a todas) de "configurado para nenhuma tela"
+    const { count } = await supabase
+      .from('powerbi_screen_users')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId);
+
+    const has_explicit_config = (count ?? 0) > 0 || screen_ids.length > 0;
+
+    return NextResponse.json({ screen_ids, has_explicit_config });
   } catch (error) {
     console.error('Erro user-screen-ids:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
