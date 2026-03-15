@@ -344,6 +344,12 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
               setHasPageRestriction(true);
               const allowedNames = visiblePages.map((p) => p.name);
               allowedPagesRef.current = allowedNames;
+
+              // DEBUG — remover após confirmar o fix
+              console.log('[Page Access DEBUG] allowedPagesRef:', allowedPagesRef.current);
+              console.log('[Page Access DEBUG] visiblePages:', visiblePages);
+              console.log('[Page Access DEBUG] pageAccessData.allowed_pages:', pageAccessData.allowed_pages);
+
               const active = pages.find((p: any) => p.isActive);
               const idx =
                 active && allowedSet.has(active.name)
@@ -358,31 +364,44 @@ export default function TelaPage({ params }: { params: Promise<{ id: string }> }
               report.off('pageChanged');
               report.on('pageChanged', async (event: any) => {
                 if (isNavigatingRef.current) return;
-                const newPage = event.detail?.newPage;
-                if (!newPage) return;
 
                 const allowed = allowedPagesRef.current;
-                if (allowed.length === 0) return;
+                if (!allowed || allowed.length === 0) return;
 
-                if (!allowed.includes(newPage.name)) {
+                const newPage = event.detail?.newPage;
+                if (!newPage || !newPage.name) return;
+
+                // DEBUG — remover após confirmar o fix
+                console.log('[pageChanged DEBUG] newPage.name:', newPage.name);
+                console.log('[pageChanged DEBUG] newPage.displayName:', newPage.displayName);
+                console.log('[pageChanged DEBUG] allowed list:', allowed);
+                console.log('[pageChanged DEBUG] includes(name)?', allowed.includes(newPage.name));
+                console.log('[pageChanged DEBUG] includes(displayName)?', allowed.includes(newPage.displayName));
+
+                // Aceitar tanto name técnico quanto displayName (banco pode ter salvo um ou outro)
+                const isAllowed =
+                  allowed.includes(newPage.name) || allowed.includes(newPage.displayName);
+
+                if (!isAllowed) {
                   console.warn(
-                    `[Page Access] Bloqueado acesso à página "${newPage.displayName}". Redirecionando...`
+                    `[Page Access] Bloqueado: "${newPage.displayName}". Redirecionando...`
                   );
                   isNavigatingRef.current = true;
                   try {
-                    const firstAllowedName = allowed[0];
-                    await report.setPage(firstAllowedName);
+                    await report.setPage(allowed[0]);
                     setCurrentPageIndex(0);
                   } catch (err) {
-                    console.error('Erro ao redirecionar página:', err);
+                    console.error('Erro ao redirecionar:', err);
                   } finally {
                     setTimeout(() => {
                       isNavigatingRef.current = false;
-                    }, 500);
+                    }, 800);
                   }
                 } else {
                   const idx = allowed.indexOf(newPage.name);
-                  if (idx >= 0) setCurrentPageIndex(idx);
+                  const idxByDisplay = allowed.indexOf(newPage.displayName);
+                  const finalIdx = idx >= 0 ? idx : idxByDisplay >= 0 ? idxByDisplay : -1;
+                  if (finalIdx >= 0) setCurrentPageIndex(finalIdx);
                 }
               });
             } else {
