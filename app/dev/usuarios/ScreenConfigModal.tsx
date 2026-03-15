@@ -16,6 +16,9 @@ import {
   Trash2,
   Link2,
   Key,
+  Shield,
+  Filter,
+  AlertTriangle,
 } from 'lucide-react';
 
 type TabId = 'access' | 'order' | 'presentation' | 'integration' | 'options';
@@ -88,11 +91,15 @@ function ScreenAccessItem({
 
   return (
     <div
-      className={`border rounded-xl transition-all ${
-        isEnabled ? 'border-gray-200' : 'border-gray-100 opacity-60'
+      className={`border rounded-xl transition-all overflow-hidden ${
+        isEnabled ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50/50 opacity-60'
       }`}
     >
-      <div className="flex items-center gap-3 p-3">
+      <div
+        className={`flex items-center gap-3 p-3 ${
+          !isEnabled ? 'border-l-4 border-l-red-300' : 'border-l-4 border-l-transparent'
+        }`}
+      >
         <input
           type="checkbox"
           checked={isEnabled}
@@ -104,6 +111,11 @@ function ScreenAccessItem({
         >
           {screen.title}
         </span>
+        {isEnabled && !hasCustomConfig && totalCount > 0 && (
+          <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+            Todas as páginas
+          </span>
+        )}
         {isEnabled && hasCustomConfig && (
           <span className="text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">
             {allowedCount}/{totalCount} páginas
@@ -131,21 +143,27 @@ function ScreenAccessItem({
             </div>
           ) : pages && pages.length > 0 ? (
             <div className="space-y-1">
-              <div className="flex gap-2 mb-2">
-                <button
-                  type="button"
-                  onClick={onMarkAllPages}
-                  className="text-xs text-blue-600 hover:underline"
-                >
-                  Todas
-                </button>
-                <button
-                  type="button"
-                  onClick={onUnmarkAllPages}
-                  className="text-xs text-blue-600 hover:underline"
-                >
-                  Nenhuma
-                </button>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                  Páginas do relatório
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={onMarkAllPages}
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    Marcar todas
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <button
+                    type="button"
+                    onClick={onUnmarkAllPages}
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    Desmarcar todas
+                  </button>
+                </div>
               </div>
               {pages.map((page) => (
                 <label
@@ -219,6 +237,7 @@ export default function ScreenConfigModal({
   const [rlsFilters, setRlsFilters] = useState<Record<string, string[]>>({});
   const [newFilterName, setNewFilterName] = useState('');
   const [loadingCompanies, setLoadingCompanies] = useState(false);
+  const [rlsGlobalEnabled, setRlsGlobalEnabled] = useState(false);
 
   // --- Aba Integração (API key Power BI)
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -391,6 +410,7 @@ export default function ScreenConfigModal({
         const data = await screenRes.json();
         setRlsEnabled(data.rls_enabled || false);
         setRlsRoleName(data.rls_role_name || '');
+        if (data.rls_enabled) setRlsGlobalEnabled(true);
       }
     }
 
@@ -407,7 +427,11 @@ export default function ScreenConfigModal({
         );
         if (res.ok) {
           const data = await res.json();
-          setRlsFilters(data.filters || {});
+          const filters = data.filters || {};
+          setRlsFilters(filters);
+          if (filters && Object.keys(filters).length > 0) {
+            setRlsGlobalEnabled(true);
+          }
         }
       } catch (e) {
         console.error('Erro ao carregar filiais RLS:', e);
@@ -572,19 +596,19 @@ export default function ScreenConfigModal({
 
   // --- Aba 3: Apresentação
   function togglePage(index: number) {
-    setPresentationPages((prev) => {
-      const next = [...prev];
-      next[index].is_enabled = !next[index].is_enabled;
-      return next;
-    });
+    setPresentationPages((prev) =>
+      prev.map((page, i) =>
+        i === index ? { ...page, is_enabled: !page.is_enabled } : page
+      )
+    );
   }
 
   function updatePageDuration(index: number, value: number) {
-    setPresentationPages((prev) => {
-      const next = [...prev];
-      next[index].duration_seconds = Math.max(5, Math.min(120, value));
-      return next;
-    });
+    setPresentationPages((prev) =>
+      prev.map((page, i) =>
+        i === index ? { ...page, duration_seconds: Math.max(5, Math.min(120, value)) } : page
+      )
+    );
   }
 
   function handlePageDragStart(e: React.DragEvent, index: number) {
@@ -764,15 +788,63 @@ in
       else if (activeTab === 'order') await saveOrder();
       else if (activeTab === 'presentation') await savePresentation();
       else if (activeTab === 'options') {
-        await saveRls();
-        await saveRlsCompanies();
+        if (rlsGlobalEnabled) {
+          await saveRls();
+          await saveRlsCompanies();
+        } else {
+          const screensRes = await fetch(`/api/powerbi/screens?group_id=${groupId}`);
+          if (screensRes.ok) {
+            const screensData = await screensRes.json();
+            const screens = screensData.screens || [];
+            for (const screen of screens) {
+              const screenRes = await fetch('/api/dev/screens/rls', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  screen_id: screen.id,
+                  rls_enabled: false,
+                  rls_role_name: '',
+                }),
+              });
+              if (!screenRes.ok) {
+                const data = await screenRes.json();
+                throw new Error(data.error || 'Erro ao desativar RLS da tela');
+              }
+            }
+          }
+          const companiesRes = await fetch('/api/dev/users/rls-companies', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: userId,
+              group_id: groupId,
+              user_email: userEmail,
+              filters: {},
+            }),
+          });
+          if (!companiesRes.ok) {
+            const data = await companiesRes.json();
+            throw new Error(data.error || 'Erro ao limpar filtros RLS');
+          }
+        }
       }
+      setSaveSuccess('Configurações salvas com sucesso!');
       onSaved?.();
-      onClose();
+      setTimeout(() => {
+        onClose();
+      }, 1500);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erro ao salvar');
     }
   }
+
+  const saveLabels: Record<TabId, string> = {
+    access: 'Salvar acesso',
+    order: 'Salvar ordem',
+    presentation: 'Salvar apresentação',
+    options: 'Salvar RLS',
+    integration: '',
+  };
 
   const enabledPresentationPages = presentationPages.filter((p) => p.is_enabled);
   const totalSeconds = enabledPresentationPages.reduce((s, p) => s + p.duration_seconds, 0);
@@ -801,21 +873,44 @@ in
         </div>
 
         <div className="flex border-b border-gray-200 px-6">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab.id
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <tab.icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          ))}
+          {tabs.map((tab) => {
+            const badge =
+              tab.id === 'access' && allScreens.length > 0
+                ? `${selectedScreenIds.length}/${allScreens.length}`
+                : tab.id === 'presentation'
+                  ? presentationEnabled
+                    ? 'ON'
+                    : null
+                  : tab.id === 'options'
+                    ? rlsGlobalEnabled
+                      ? 'ON'
+                      : null
+                    : tab.id === 'integration'
+                      ? apiKeyActive
+                        ? 'Ativa'
+                        : null
+                      : null;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <tab.icon className="w-4 h-4" />
+                {tab.label}
+                {badge != null && (
+                  <span className="ml-1 px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 text-blue-700 rounded-full">
+                    {badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
@@ -832,6 +927,13 @@ in
 
           {activeTab === 'access' && (
             <>
+              <div className="mb-5">
+                <h3 className="text-base font-semibold text-gray-900 mb-1">Controle de acesso</h3>
+                <p className="text-sm text-gray-500">
+                  Selecione quais telas e páginas este usuário pode visualizar. Expanda uma tela para
+                  controlar páginas específicas.
+                </p>
+              </div>
               {loadingAccess ? (
                 <div className="flex justify-center py-12">
                   <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
@@ -840,7 +942,7 @@ in
                 <p className="text-gray-500 text-center py-8">Nenhuma tela no grupo.</p>
               ) : (
                 <>
-                  <div className="flex gap-2 mb-4">
+                  <div className="flex items-center gap-3 mb-4">
                     <button
                       type="button"
                       onClick={() => toggleAccessAll(true)}
@@ -855,6 +957,9 @@ in
                     >
                       Desmarcar todas
                     </button>
+                    <span className="text-xs text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">
+                      {selectedScreenIds.length}/{allScreens.length} telas selecionadas
+                    </span>
                   </div>
                   <div className="space-y-2 max-h-[50vh] overflow-y-auto">
                     {allScreens.map((screen) => (
@@ -882,6 +987,12 @@ in
 
           {activeTab === 'order' && (
             <>
+              <div className="mb-5">
+                <h3 className="text-base font-semibold text-gray-900 mb-1">Ordem das telas</h3>
+                <p className="text-sm text-gray-500">
+                  Arraste para reordenar. A primeira tela será exibida ao fazer login.
+                </p>
+              </div>
               {loadingOrder ? (
                 <div className="flex justify-center py-12">
                   <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
@@ -892,12 +1003,6 @@ in
                 </p>
               ) : (
                 <>
-                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-5">
-                    <p className="text-sm text-blue-700">
-                      <strong>Dica:</strong> Arraste as telas para reordenar. A primeira será
-                      exibida ao fazer login.
-                    </p>
-                  </div>
                   <div className="space-y-2">
                     {orderScreens.map((screen, index) => (
                       <div
@@ -913,7 +1018,7 @@ in
                         }}
                         className={`flex items-center gap-4 p-4 rounded-xl border-2 transition-all cursor-grab active:cursor-grabbing ${
                           dragOrderIndex === index
-                            ? 'opacity-50 border-blue-400 bg-blue-50'
+                            ? 'opacity-70 border-blue-400 bg-blue-50 shadow-lg scale-[1.02]'
                             : dragOverOrderIndex === index
                               ? 'border-blue-400 bg-blue-50 scale-[1.02]'
                               : index === 0
@@ -947,6 +1052,15 @@ in
 
           {activeTab === 'presentation' && (
             <>
+              <div className="mb-5">
+                <h3 className="text-base font-semibold text-gray-900 mb-1">
+                  Modo apresentação (TV)
+                </h3>
+                <p className="text-sm text-gray-500">
+                  Configure a rotação automática de páginas. Use o ícone do olho para incluir ou
+                  excluir páginas do ciclo.
+                </p>
+              </div>
               {/* Modo Apresentação */}
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl mb-6">
                 <div>
@@ -1001,14 +1115,26 @@ in
                 </p>
               ) : (
                 <>
-                  <div className="bg-purple-50 border border-purple-100 rounded-xl p-4 mb-5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-purple-700">
-                        {enabledPresentationPages.length} página(s) ativa(s)
-                      </span>
-                      <span className="text-sm text-purple-700">
-                        Ciclo: {totalMin > 0 ? `${totalMin}min ` : ''}{totalSec}s
-                      </span>
+                  <div className="grid grid-cols-3 gap-3 mb-5">
+                    <div className="bg-purple-50 rounded-xl p-3 text-center">
+                      <p className="text-2xl font-bold text-purple-700">
+                        {enabledPresentationPages.length}
+                      </p>
+                      <p className="text-xs text-purple-600">Páginas ativas</p>
+                    </div>
+                    <div className="bg-purple-50 rounded-xl p-3 text-center">
+                      <p className="text-2xl font-bold text-purple-700">
+                        {presentationPages.length}
+                      </p>
+                      <p className="text-xs text-purple-600">Total de páginas</p>
+                    </div>
+                    <div className="bg-purple-50 rounded-xl p-3 text-center">
+                      <p className="text-2xl font-bold text-purple-700">
+                        {totalMin > 0
+                          ? `${totalMin}m${totalSec > 0 ? ` ${totalSec}s` : ''}`
+                          : `${totalSec}s`}
+                      </p>
+                      <p className="text-xs text-purple-600">Duração do ciclo</p>
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -1051,21 +1177,30 @@ in
                             {page.displayName}
                           </p>
                         </div>
-                        <input
-                          type="number"
-                          min={5}
-                          max={120}
-                          value={page.duration_seconds}
-                          onChange={(e) =>
-                            updatePageDuration(index, parseInt(e.target.value) || 10)
-                          }
-                          disabled={!page.is_enabled}
-                          className="w-14 h-8 text-center text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 disabled:bg-gray-100"
-                        />
-                        <span className="text-xs text-gray-400">seg</span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-purple-500 rounded-full"
+                              style={{ width: `${(page.duration_seconds / 120) * 100}%` }}
+                            />
+                          </div>
+                          <input
+                            type="number"
+                            min={5}
+                            max={120}
+                            value={page.duration_seconds}
+                            onChange={(e) =>
+                              updatePageDuration(index, parseInt(e.target.value) || 10)
+                            }
+                            disabled={!page.is_enabled}
+                            className="w-14 h-8 text-center text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 disabled:bg-gray-100"
+                          />
+                          <span className="text-xs text-gray-400">seg</span>
+                        </div>
                         <button
                           type="button"
                           onClick={() => togglePage(index)}
+                          title={page.is_enabled ? 'Excluir do ciclo' : 'Incluir no ciclo'}
                           className={`p-1.5 rounded-lg ${page.is_enabled ? 'text-purple-600 hover:bg-purple-50' : 'text-gray-400 hover:bg-gray-100'}`}
                         >
                           {page.is_enabled ? (
@@ -1084,12 +1219,45 @@ in
 
           {activeTab === 'integration' && (
             <div className="space-y-6 py-4">
-              <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-                <p className="text-sm text-blue-700">
-                  <strong>Integração Power BI</strong> — Gere uma chave de API para conectar o Power
-                  BI à tabela de filiais (RLS). O código M já vem pronto para copiar e colar no
-                  Editor Avançado do Power Query.
+              <div className="mb-5">
+                <h3 className="text-base font-semibold text-gray-900 mb-1">
+                  Integração Power BI
+                </h3>
+                <p className="text-sm text-gray-500">
+                  Gere uma chave de API e copie o código M para importar os dados de RLS no Power BI
+                  Desktop.
                 </p>
+              </div>
+
+              <div className="flex items-center gap-2 mb-6">
+                <div
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
+                    apiKey ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+                  }`}
+                >
+                  <span className="w-5 h-5 rounded-full bg-current/20 flex items-center justify-center text-[10px]">
+                    1
+                  </span>
+                  Gerar chave
+                </div>
+                <div className="w-6 h-px bg-gray-300" />
+                <div
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
+                    apiKey && apiKeyActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                  }`}
+                >
+                  <span className="w-5 h-5 rounded-full bg-current/20 flex items-center justify-center text-[10px]">
+                    2
+                  </span>
+                  Copiar código M
+                </div>
+                <div className="w-6 h-px bg-gray-300" />
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                  <span className="w-5 h-5 rounded-full bg-current/20 flex items-center justify-center text-[10px]">
+                    3
+                  </span>
+                  Colar no Power BI
+                </div>
               </div>
 
               {loadingApiKey ? (
@@ -1188,21 +1356,21 @@ in
 
                   {apiKeyActive && (
                     <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block text-sm font-medium text-gray-700">
-                          Código M (Power Query)
-                        </label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Código M (Power Query)
+                      </label>
+                      <div className="relative">
                         <button
                           type="button"
                           onClick={() => copyToClipboard(getMCode(), 'm')}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                          className="absolute top-2 right-2 z-10 inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-white/10 text-green-300 rounded-lg hover:bg-white/20 transition-colors font-medium backdrop-blur-sm"
                         >
-                          {copiedM ? '✓ Copiado!' : 'Copiar Código M'}
+                          {copiedM ? '✓ Copiado!' : 'Copiar'}
                         </button>
+                        <pre className="bg-gray-900 text-green-400 p-5 rounded-xl text-xs font-mono overflow-x-auto whitespace-pre max-h-64 overflow-y-auto">
+                          {getMCode()}
+                        </pre>
                       </div>
-                      <pre className="bg-gray-900 text-green-400 p-4 rounded-xl text-xs font-mono overflow-x-auto whitespace-pre max-h-64 overflow-y-auto">
-                        {getMCode()}
-                      </pre>
                       <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-3">
                         <p className="text-xs text-amber-700">
                           <strong>Como usar:</strong> No Power BI Desktop → Página Inicial → Obter
@@ -1223,10 +1391,64 @@ in
 
           {activeTab === 'options' && (
             <div className="space-y-6 py-4">
-              {/* Seção RLS */}
-              <div className="border-t border-gray-200 pt-6 mt-6">
-                <h3 className="text-sm font-semibold text-gray-900 mb-4">Segurança (RLS)</h3>
+              <div className="mb-5">
+                <h3 className="text-base font-semibold text-gray-900 mb-1">
+                  Segurança por linha (RLS)
+                </h3>
+                <p className="text-sm text-gray-500">
+                  Configure a Row-Level Security para filtrar os dados que este usuário pode ver no
+                  Power BI.
+                </p>
+              </div>
 
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                <div>
+                  <p className="font-medium text-gray-900">Habilitar RLS para este usuário</p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {rlsGlobalEnabled
+                      ? 'O usuário verá apenas os dados permitidos pelos filtros configurados abaixo'
+                      : 'Quando desativado, o usuário vê todos os dados sem filtros de linha'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRlsGlobalEnabled(!rlsGlobalEnabled)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    rlsGlobalEnabled ? 'bg-blue-600' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      rlsGlobalEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {!rlsGlobalEnabled && (
+                <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                  <p className="text-sm text-amber-700">
+                    RLS desativado — este usuário terá acesso a todos os dados de todas as telas,
+                    sem filtros de segurança por linha.
+                  </p>
+                </div>
+              )}
+
+              {rlsGlobalEnabled && (
+                <>
+              <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                    <Shield className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900">RLS por tela</h4>
+                    <p className="text-xs text-gray-500">
+                      Ativar segurança e definir a role do Power BI para cada tela
+                    </p>
+                  </div>
+                </div>
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Tela</label>
                   <select
@@ -1288,16 +1510,18 @@ in
                 )}
               </div>
 
-              {/* Filtros RLS dinâmicos */}
-              <div className="border-t border-gray-200 pt-6 mt-6">
-                <h3 className="text-sm font-semibold text-gray-900 mb-1">
-                  Filtros de Acesso (RLS)
-                </h3>
-                <p className="text-xs text-gray-500 mb-3">
-                  Configure os filtros de dados que este usuário pode visualizar no Power BI. Cada
-                  filtro corresponde a uma coluna no modelo. Essa configuração vale para todas as
-                  telas com RLS ativo.
-                </p>
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center">
+                    <Filter className="w-4 h-4 text-orange-600" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900">Filtros de acesso</h4>
+                    <p className="text-xs text-gray-500">
+                      Defina quais valores (filiais, regiões, etc.) este usuário pode ver
+                    </p>
+                  </div>
+                </div>
 
                 {loadingCompanies ? (
                   <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -1312,7 +1536,13 @@ in
                         className="mb-4 border border-gray-200 rounded-xl p-4"
                       >
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-gray-900">{filterType}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-gray-900">{filterType}</span>
+                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                              {values.filter((v) => v.trim()).length}{' '}
+                              {values.filter((v) => v.trim()).length === 1 ? 'valor' : 'valores'}
+                            </span>
+                          </div>
                           <button
                             type="button"
                             onClick={() => {
@@ -1415,6 +1645,8 @@ in
                   </>
                 )}
               </div>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -1445,7 +1677,7 @@ in
               (activeTab === 'presentation' && savingPresentation) ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : null}
-              Salvar
+              {saveLabels[activeTab] || 'Salvar'}
             </button>
           )}
         </div>

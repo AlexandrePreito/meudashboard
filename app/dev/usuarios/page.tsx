@@ -18,7 +18,8 @@ import {
   Filter,
   UserCheck,
   UserX,
-  Settings
+  Settings,
+  BookOpen,
 } from 'lucide-react';
 import ScreenConfigModal from './ScreenConfigModal';
 import Pagination, { PAGE_SIZE } from '@/components/ui/Pagination';
@@ -290,14 +291,23 @@ export default function DevUsuariosPage() {
               {users.length} {users.length === 1 ? 'usuário cadastrado' : 'usuários cadastrados'}
             </p>
           </div>
-          <button
-            onClick={openNewUser}
-            disabled={groups.length === 0}
-            className="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg disabled:opacity-50"
-          >
-            <Plus className="w-5 h-5" />
-            Novo Usuário
-          </button>
+          <div className="flex items-center gap-2">
+            <a
+              href="/dev/tutorial-rls"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all"
+            >
+              <BookOpen size={16} />
+              Como configurar?
+            </a>
+            <button
+              onClick={openNewUser}
+              disabled={groups.length === 0}
+              className="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg disabled:opacity-50"
+            >
+              <Plus className="w-5 h-5" />
+              Novo Usuário
+            </button>
+          </div>
         </div>
 
         {groups.length === 0 && (

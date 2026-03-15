@@ -110,10 +110,18 @@ export async function POST(request: Request) {
 
     // ── RLS Dinâmico ──────────────────────────────────────────
     let rlsIdentity: { username: string; roles: string[]; datasets: string[] } | null = null;
+    const datasetId = report?.dataset_id || (connection as { dataset_id?: string })?.dataset_id;
 
-    if (screen.rls_enabled && screen.rls_role_name) {
-      const datasetId = report?.dataset_id || (connection as { dataset_id?: string })?.dataset_id;
-      if (datasetId) {
+    if (screen.rls_enabled) {
+      if (!screen.rls_role_name) {
+        console.warn(
+          `[Embed] Tela ${screen_id} tem rls_enabled=true mas rls_role_name está vazio. Ignorando RLS.`
+        );
+      } else if (!datasetId) {
+        console.warn(
+          `[Embed] Tela ${screen_id} tem rls_enabled=true mas não há dataset_id. Ignorando RLS.`
+        );
+      } else {
         rlsIdentity = {
           username: user.email,
           roles: [screen.rls_role_name],
@@ -158,26 +166,57 @@ export async function POST(request: Request) {
 
     // 2. Gerar embed token para o relatório
     const embedUrl = `https://api.powerbi.com/v1.0/myorg/groups/${connection.workspace_id}/reports/${report.report_id}/GenerateToken`;
-    
-    const embedResponse = await fetch(embedUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        accessLevel: 'View',
-        allowSaveAs: false,
-        ...(rlsIdentity ? { identities: [rlsIdentity] } : {}),
-      }),
-    });
+
+    async function generateEmbedToken(useIdentity: boolean) {
+      return fetch(embedUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          accessLevel: 'View',
+          allowSaveAs: false,
+          ...(useIdentity && rlsIdentity ? { identities: [rlsIdentity] } : {}),
+        }),
+      });
+    }
+
+    let embedResponse = await generateEmbedToken(!!rlsIdentity);
 
     if (!embedResponse.ok) {
       const errorData = await embedResponse.json();
-      console.error('Erro ao gerar embed token:', errorData);
-      return NextResponse.json({ 
-        error: 'Falha ao gerar token de visualização: ' + (errorData.error?.message || 'Erro desconhecido')
-      }, { status: 500 });
+      const errorMessage = errorData?.error?.message || errorData?.message || JSON.stringify(errorData);
+
+      if (
+        rlsIdentity &&
+        (errorMessage.includes("shouldn't have effective identity") ||
+          errorMessage.includes('effective identity') ||
+          errorMessage.includes('EffectiveIdentity'))
+      ) {
+        console.warn(
+          `[Embed] RLS configurado na tela mas o dataset não tem role. Gerando token sem identity. Screen: ${screen_id}`
+        );
+        await supabase
+          .from('powerbi_dashboard_screens')
+          .update({ rls_enabled: false, rls_role_name: '' })
+          .eq('id', screen_id);
+
+        embedResponse = await generateEmbedToken(false);
+      }
+
+      if (!embedResponse.ok) {
+        const retryErrorData = await embedResponse.json();
+        console.error('Erro ao gerar embed token:', retryErrorData);
+        return NextResponse.json(
+          {
+            error:
+              'Falha ao gerar token de visualização: ' +
+              (retryErrorData?.error?.message || 'Erro desconhecido'),
+          },
+          { status: 500 }
+        );
+      }
     }
 
     const embedData = await embedResponse.json();
